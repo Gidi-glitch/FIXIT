@@ -1,6 +1,8 @@
+import 'package:flutter_fixit_application/screens/tradesperson_dashboard.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_fixit_application/screens/userlogin_screen.dart';
+//
 
 /// Tradesperson / Pro login screen for the Fix It Marketplace Android app.
 /// This screen provides email/password authentication UI for verified
@@ -58,12 +60,45 @@ class _ProLoginScreenState extends State<ProLoginScreen>
   void _handleLogin() {
     if (_formKey.currentState?.validate() ?? false) {
       setState(() => _isLoading = true);
-      // TODO: Integrate tradesperson authentication service
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) setState(() => _isLoading = false);
+      print("DEBUG: Validation passed. Starting timer...");
+
+      Future.delayed(const Duration(seconds: 1), () {
+        print("DEBUG: Timer finished. Checking mounted status...");
+
+        if (!mounted) {
+          print("DEBUG: Error - Widget is no longer mounted.");
+          return;
+        }
+
+        setState(() => _isLoading = false);
+
+        final String email = _emailController.text.trim();
+        final String password =
+            _passwordController.text; // Huwag i-trim ang password para safe
+
+        print("DEBUG: Checking credentials for: $email");
+
+        if (email == 'pro@test.com' && password == 'password123') {
+          print("DEBUG: Login Success! Navigating...");
+
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const TradesmanDashboard()),
+          );
+        } else {
+          print("DEBUG: Login Failed - Wrong credentials.");
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Use pro@test.com and password123'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
       });
+    } else {
+      print("DEBUG: Validation failed. Check your input format.");
     }
   }
+  // Helper to show a quick error message (removed - use ScaffoldMessenger.of(context).showSnackBar directly where needed)
 
   void _navigateToHomeownerLogin() {
     Navigator.pushReplacement(
@@ -85,9 +120,9 @@ class _ProLoginScreenState extends State<ProLoginScreen>
   void _navigateToCreateProAccount() {
     // TODO: Navigate to tradesperson registration screen
   }
-
+// TODO: Navigate to forgot password screen
   void _navigateToForgotPassword() {
-    // TODO: Navigate to forgot password screen
+    
   }
 
   @override

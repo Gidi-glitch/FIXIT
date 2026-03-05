@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_fixit_application/screens/prologin_screen.dart';
 import 'package:flutter_fixit_application/screens/homeowner_registration.dart';
+import 'package:flutter_fixit_application/screens/users_dashboard.dart';
 
 /// Homeowner login screen for the Fix It Marketplace Android app.
 /// This screen provides email/password authentication UI for homeowners.
@@ -24,6 +25,10 @@ class _UserLoginScreenState extends State<UserLoginScreen>
 
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
+
+  // ── Dummy Account Credentials ──────────────────────────────────
+  static const String _dummyEmail = 'homeowner@fixit.com';
+  static const String _dummyPassword = 'fixit123';
 
   // ── Color Palette ──────────────────────────────────────────────
   static const Color _primaryBlue = Color(0xFF1E3A8A);
@@ -59,9 +64,68 @@ class _UserLoginScreenState extends State<UserLoginScreen>
   void _handleLogin() {
     if (_formKey.currentState?.validate() ?? false) {
       setState(() => _isLoading = true);
-      // TODO: Integrate authentication service
+
+      // Dummy account authentication
       Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) setState(() => _isLoading = false);
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+
+        final email = _emailController.text.trim();
+        final password = _passwordController.text;
+
+        if (email == _dummyEmail && password == _dummyPassword) {
+          // ✅ Credentials match — navigate to Homeowner Dashboard
+          Navigator.pushReplacement(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) =>
+                  const HomeownerDashboardScreen(),
+              transitionsBuilder:
+                  (context, animation, secondaryAnimation, child) {
+                    return FadeTransition(
+                      opacity: CurvedAnimation(
+                        parent: animation,
+                        curve: Curves.easeOut,
+                      ),
+                      child: child,
+                    );
+                  },
+              transitionDuration: const Duration(milliseconds: 300),
+            ),
+          );
+        } else {
+          // ❌ Wrong credentials — show error snackbar
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(
+                    Icons.error_outline_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Invalid email or password. Please try again.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: const Color(0xFFDC2626),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.all(16),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
       });
     }
   }
