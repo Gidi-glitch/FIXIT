@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 //import '../services/api_service.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_fixit_application/screens/prologin_screen.dart';
 import 'package:flutter_fixit_application/screens/homeowner_registration.dart';
+import 'package:flutter_fixit_application/screens/tradesperson_registration.dart';
 
-/// Homeowner login screen for the Fix It Marketplace Android app.
-/// This screen provides email/password authentication UI for homeowners.
+/// Login screen for the Fix It Marketplace Android app.
+/// This screen provides email/password authentication UI for users.
 /// Navigation stubs are marked with TODO for service integration.
 class UserLoginScreen extends StatefulWidget {
   const UserLoginScreen({super.key});
@@ -66,12 +66,208 @@ class _UserLoginScreenState extends State<UserLoginScreen>
     }
   }
 
-  void _navigateToProLogin() {
-    Navigator.pushReplacement(
+  void _showAccountTypeDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.15),
+                  blurRadius: 30,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Header Icon ─────────────────────────────────
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: _primaryBlue.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.person_add_rounded,
+                    size: 32,
+                    color: _primaryBlue,
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // ── Title ───────────────────────────────────────
+                Text(
+                  'Create an Account',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: _textDark,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // ── Subtitle ────────────────────────────────────
+                Text(
+                  'Choose your account type to get started',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: _textMuted,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+
+                const SizedBox(height: 28),
+
+                // ── Homeowner Option ────────────────────────────
+                _buildAccountTypeOption(
+                  icon: Icons.home_rounded,
+                  title: 'Homeowner',
+                  description:
+                      'Find trusted professionals for your home projects',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _navigateToHomeownerRegistration();
+                  },
+                ),
+
+                const SizedBox(height: 12),
+
+                // ── Tradesperson Option ─────────────────────────
+                _buildAccountTypeOption(
+                  icon: Icons.handyman_rounded,
+                  title: 'Tradesperson',
+                  description: 'Offer your services and grow your business',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _navigateToTradespersonRegistration();
+                  },
+                ),
+
+                const SizedBox(height: 24),
+
+                // ── Cancel Button ───────────────────────────────
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _textMuted,
+                      side: BorderSide(color: _inputBorder, width: 1.5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: Text(
+                      'Cancel',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: _textMuted,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAccountTypeOption({
+    required IconData icon,
+    required String title,
+    required String description,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            border: Border.all(color: _inputBorder, width: 1.5),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              // ── Icon Container ────────────────────────────────
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: _primaryBlue.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 26, color: _primaryBlue),
+              ),
+
+              const SizedBox(width: 14),
+
+              // ── Text Content ──────────────────────────────────
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      description,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: _textMuted,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Arrow Icon ────────────────────────────────────
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 16,
+                color: _accentOrange,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _navigateToHomeownerRegistration() {
+    Navigator.push(
       context,
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) =>
-            const ProLoginScreen(),
+            const HomeownerRegistrationScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(
             opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
@@ -83,12 +279,12 @@ class _UserLoginScreenState extends State<UserLoginScreen>
     );
   }
 
-  void _navigateToCreateAccount() {
+  void _navigateToTradespersonRegistration() {
     Navigator.push(
       context,
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) =>
-            const HomeownerRegistrationScreen(),
+            const TradespersonRegistrationScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(
             opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
@@ -128,10 +324,7 @@ class _UserLoginScreenState extends State<UserLoginScreen>
                       padding: const EdgeInsets.symmetric(horizontal: 24.0),
                       child: Column(
                         children: [
-                          // ── "Login as a Pro" button ─────────────
-                          _buildProLoginHeader(),
-
-                          SizedBox(height: constraints.maxHeight * 0.04),
+                          SizedBox(height: constraints.maxHeight * 0.08),
 
                           // ── Logo & Branding ────────────────────
                           _buildBranding(),
@@ -169,48 +362,7 @@ class _UserLoginScreenState extends State<UserLoginScreen>
   //  WIDGETS
   // ═══════════════════════════════════════════════════════════════
 
-  /// Top-right "Login as a Pro" text button with orange accent arrow.
-  Widget _buildProLoginHeader() {
-    return Align(
-      alignment: Alignment.centerRight,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 12.0),
-        child: TextButton(
-          onPressed: _navigateToProLogin,
-          style: TextButton.styleFrom(
-            foregroundColor: _accentOrange,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Login as a Pro',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: _accentOrange,
-                  letterSpacing: 0.2,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                size: 12,
-                color: _accentOrange,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Centered branding section: logo icon, app name, tagline, and
-  /// "Homeowner Login" pill badge.
+  /// Centered branding section: logo icon, app name, and tagline.
   Widget _buildBranding() {
     return Column(
       children: [
@@ -280,26 +432,6 @@ class _UserLoginScreenState extends State<UserLoginScreen>
             _buildTaglineDot(),
             _buildTaglineChip('Local'),
           ],
-        ),
-
-        const SizedBox(height: 8),
-
-        // ── Homeowner Login pill badge ─────────────────────────
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-          decoration: BoxDecoration(
-            color: _primaryBlue.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            'Homeowner Login',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: _primaryBlue,
-              letterSpacing: 0.5,
-            ),
-          ),
         ),
       ],
     );
@@ -547,7 +679,7 @@ class _UserLoginScreenState extends State<UserLoginScreen>
           ),
         ),
         GestureDetector(
-          onTap: _navigateToCreateAccount,
+          onTap: _showAccountTypeDialog,
           child: Text(
             'Create an Account',
             style: TextStyle(
