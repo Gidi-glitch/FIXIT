@@ -2,13 +2,14 @@ package middleware
 
 import (
 	"context"
-	"net/http"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"fixit-backend/models"
+
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -17,12 +18,12 @@ type key string
 
 const UserContextKey key = "user"
 
-// GenerateJWT generates a token for a homeowner
-func GenerateJWT(homeowner models.Homeowner) (string, error) {
+func GenerateJWT(user models.User) (string, error) {
 	claims := jwt.MapClaims{
-		"user_id": homeowner.ID,
-		"email":   homeowner.Email,
-		"exp":     time.Now().Add(time.Hour * 72).Unix(), // token expires in 3 days
+		"user_id": user.ID,
+		"email":   user.Email,
+		"role":    user.Role,
+		"exp":     time.Now().Add(time.Hour * 72).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -69,5 +70,25 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		// Add user info to request context
 		ctx := context.WithValue(r.Context(), UserContextKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// AdminOnly must be chained AFTER AuthMiddleware.
+// It rejects requests whose JWT role claim is not "admin".
+func AdminOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := r.Context().Value(UserContextKey).(jwt.MapClaims)
+		if !ok {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		role, _ := claims["role"].(string)
+		if role != "admin" {
+			http.Error(w, "Forbidden: admin access required", http.StatusForbidden)
+			return
+		}
+
+		next.ServeHTTP(w, r)
 	})
 }

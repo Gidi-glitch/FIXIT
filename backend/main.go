@@ -4,9 +4,10 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/joho/godotenv"
 	"fixit-backend/config"
 	"fixit-backend/routes"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -18,7 +19,9 @@ func main() {
 
 	config.ConnectDB()
 
-	routes.HomeownerRoutes()
+	routes.RegisterAuthRoutes()
+	routes.RegisterProfileRoutes()
+	routes.RegisterAdminRoutes()
 
 	http.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("FIXIT backend is running"))

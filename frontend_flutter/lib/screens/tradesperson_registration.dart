@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_fixit_application/screens/login_screen.dart';
+import 'dart:io';
+import 'package:flutter_fixit_application/services/api_service.dart';
 
 /// Multi-step tradesperson registration screen for the Fix It Marketplace.
 /// Three steps: Basic Information, Professional Details, Verification & Documents.
@@ -182,7 +184,7 @@ class _TradespersonRegistrationScreenState
     }
   }
 
-  void _handleSubmit() {
+  Future<void> _handleSubmit() async {
     if (_step3Key.currentState?.validate() ?? false) {
       // Validate government ID upload
       if (_governmentIdFile == null) {
@@ -201,14 +203,42 @@ class _TradespersonRegistrationScreenState
         return;
       }
 
-      setState(() => _isSubmitting = true);
-      // TODO: Integrate tradesperson registration service / API call
-      Future.delayed(const Duration(seconds: 2), () {
+            setState(() => _isSubmitting = true);
+
+      try {
+        await ApiService.registerTradesperson(
+          firstName: _nameController.text.trim(),
+          lastName: _lastNameController.text.trim(),
+          email: _emailController.text.trim(),
+          phone: _phoneController.text.trim(),
+          password: _passwordController.text,
+          tradeCategory: _selectedTradeCategory!,
+          yearsExperience: int.tryParse(_experienceController.text.trim()) ?? 0,
+          serviceBarangay: _selectedBarangay!,
+          bio: _bioController.text.trim(),
+          governmentIdType: _selectedGovernmentIdType!,
+          governmentIdDocument: File(_governmentIdFile!.path!),
+          licenseType: _selectedLicenseType!,
+          licenseDocument: File(_professionalLicenseFile!.path!),
+        );
         if (mounted) {
-          setState(() => _isSubmitting = false);
-          // TODO: Navigate to confirmation or pending screen
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Registration submitted! Your documents are pending verification.'),
+              backgroundColor: Color(0xFF1E3A8A),
+              behavior: SnackBarBehavior.floating,
+              margin: EdgeInsets.all(16),
+            ),
+          );
+          _navigateToLogin();
         }
-      });
+      } on HttpException catch (e) {
+        if (mounted) _showErrorSnackBar(e.message);
+      } catch (_) {
+        if (mounted) _showErrorSnackBar('Connection error. Is the server running?');
+      } finally {
+        if (mounted) setState(() => _isSubmitting = false);
+      }
     }
   }
 
@@ -394,9 +424,7 @@ class _TradespersonRegistrationScreenState
             child: Padding(
               padding: const EdgeInsets.only(top: 12),
               child: TextButton(
-                onPressed: _currentStep > 0
-                    ? _previousStep
-                    : _navigateToLogin,
+                onPressed: _currentStep > 0 ? _previousStep : _navigateToLogin,
                 style: TextButton.styleFrom(
                   foregroundColor: _primaryBlue,
                   padding: const EdgeInsets.symmetric(
@@ -537,27 +565,41 @@ class _TradespersonRegistrationScreenState
 
           // ── Step labels ──────────────────────────────────────
           Row(
-            children: List.generate(_totalSteps, (index) {
-              final isActive = index == _currentStep;
-              final isCompleted = index < _currentStep;
-              return Expanded(
-                child: Text(
-                  _stepTitles[index],
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: isActive || isCompleted
-                        ? FontWeight.w600
-                        : FontWeight.w400,
-                    color: isActive
-                        ? _accentOrange
-                        : isCompleted
-                        ? _primaryBlue
-                        : _textMuted,
-                    letterSpacing: 0.1,
+            children: List.generate(_totalSteps * 2 - 1, (index) {
+              if (index.isEven) {
+                final stepIndex = index ~/ 2;
+                final isActive = stepIndex == _currentStep;
+                final isCompleted = stepIndex < _currentStep;
+                final double labelOffsetX = switch (stepIndex) {
+                  0 => -24,
+                  1 => 0,
+                  _ => 24,
+                };
+                return Transform.translate(
+                  offset: Offset(labelOffsetX, 0),
+                  child: SizedBox(
+                    width: 80,
+                    child: Text(
+                      _stepTitles[stepIndex],
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: isActive || isCompleted
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                        color: isActive
+                            ? _accentOrange
+                            : isCompleted
+                            ? _primaryBlue
+                            : _textMuted,
+                        letterSpacing: 0.1,
+                      ),
+                    ),
                   ),
-                ),
-              );
+                );
+              } else {
+                return const Expanded(child: SizedBox());
+              }
             }),
           ),
         ],
@@ -1215,14 +1257,19 @@ class _TradespersonRegistrationScreenState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            title,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: _textDark,
-                              letterSpacing: -0.2,
+                          Expanded(
+                            child: Text(
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: _textDark,
+                                letterSpacing: -0.2,
+                              ),
                             ),
                           ),
                           if (hasFile) ...[

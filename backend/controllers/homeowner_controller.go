@@ -1,121 +1,111 @@
 package controllers
 
 import (
-	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"fixit-backend/config"
 	"fixit-backend/models"
-	"fixit-backend/middleware"
+	"fixit-backend/services"
 
 	"golang.org/x/crypto/bcrypt"
-	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 )
 
-type RegisterHomeownerRequest struct {
-	FullName string `json:"full_name"`
-	Email    string `json:"email"`
-	Phone    string `json:"phone"`
-	Barangay string `json:"barangay"`
-	Password string `json:"password"`
-}
-
 func RegisterHomeowner(w http.ResponseWriter, r *http.Request) {
-
-	var req RegisterHomeownerRequest
-
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), 10)
-	if err != nil {
-		http.Error(w, "Error hashing password", http.StatusInternalServerError)
-		return
-	}
-
-	homeowner := models.Homeowner{
-		FullName: req.FullName,
-		Email:    req.Email,
-		Phone:    req.Phone,
-		Barangay: req.Barangay,
-		Password: string(hashedPassword),
-	}
-
-	result := config.DB.Create(&homeowner)
-
-	if result.Error != nil {
-		http.Error(w, result.Error.Error(), http.StatusBadRequest)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	json.NewEncoder(w).Encode(map[string]string{
-		"message": "Homeowner registered successfully",
-	})
-}
-
-func LoginHomeowner(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodPost {
-        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        writeError(w, http.StatusMethodNotAllowed, "method not allowed")
         return
     }
 
-    var loginData struct {
-        Email    string `json:"email"`
-        Password string `json:"password"`
+    if err := r.ParseMultipartForm(12 << 20); err != nil {
+        writeError(w, http.StatusBadRequest, "invalid multipart form data")
+		return
+	}
+
+    firstName := strings.TrimSpace(r.FormValue("first_name"))
+    lastName := strings.TrimSpace(r.FormValue("last_name"))
+    email := normalizeEmail(r.FormValue("email"))
+    phone := strings.TrimSpace(r.FormValue("phone"))
+    barangay := strings.TrimSpace(r.FormValue("barangay"))
+    password := r.FormValue("password")
+    idType := strings.TrimSpace(r.FormValue("id_type"))
+
+    if firstName == "" || lastName == "" || email == "" || phone == "" || barangay == "" || password == "" || idType == "" {
+        writeError(w, http.StatusBadRequest, "missing required registration fields")
+        return
     }
 
-    err := json.NewDecoder(r.Body).Decode(&loginData)
+    file, header, err := r.FormFile("id_document")
     if err != nil {
-        http.Error(w, "Invalid request body", http.StatusBadRequest)
-        return
+        file, header, err = r.FormFile("government_id_document")
     }
-
-    var homeowner models.Homeowner
-    result := config.DB.Where("email = ?", loginData.Email).First(&homeowner)
-    if result.Error != nil {
-        http.Error(w, "Invalid email or password", http.StatusUnauthorized)
-        return
-    }
-
-    // Compare hashed password
-    err = bcrypt.CompareHashAndPassword([]byte(homeowner.Password), []byte(loginData.Password))
     if err != nil {
-        http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+        writeError(w, http.StatusBadRequest, "government ID document is required")
+        return
+    }
+    defer file.Close()
+
+    if err := services.ValidateUpload(header); err != nil {
+        writeError(w, http.StatusBadRequest, err.Error())
         return
     }
 
-	// Generate JWT token
-    token, err := middleware.GenerateJWT(homeowner)
-    if err != nil {
-        http.Error(w, "Error generating token", http.StatusInternalServerError)
-        return
-    }
+    hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+        writeError(w, http.StatusInternalServerError, "failed to hash password")
+		return
+	}
 
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(map[string]string{
-        "message": "Login successful",
-		"token":   token,
+    err = config.DB.Transaction(func(tx *gorm.DB) error {
+        user := models.User{
+            Email:        email,
+            PasswordHash: string(hashedPassword),
+            Role:         "homeowner",
+            IsActive:     true,
+        }
+
+        if err := tx.Create(&user).Error; err != nil {
+            return err
+        }
+
+        profile := models.HomeownerProfile{
+            UserID:    user.ID,
+            FirstName: firstName,
+            LastName:  lastName,
+            Phone:     phone,
+            Barangay:  barangay,
+        }
+        if err := tx.Create(&profile).Error; err != nil {
+            return err
+        }
+
+        storedName, filePath, err := services.SaveUploadedFile(file, header, "homeowners/ids")
+        if err != nil {
+            return err
+        }
+
+        document := models.VerificationDocument{
+            UserID:        user.ID,
+            DocumentGroup: "government_id",
+            DocumentType:  idType,
+            OriginalName:  header.Filename,
+            StoredName:    storedName,
+            FilePath:      filePath,
+            MimeType:      header.Header.Get("Content-Type"),
+            FileSize:      header.Size,
+            Status:        "pending",
+        }
+
+        return tx.Create(&document).Error
     })
-}
-
-func GetProfile(w http.ResponseWriter, r *http.Request) {
-    // Get JWT claims from context
-    claims, ok := r.Context().Value(middleware.UserContextKey).(jwt.MapClaims)
-    if !ok {
-        http.Error(w, "Unauthorized", http.StatusUnauthorized)
+    if err != nil {
+        writeError(w, http.StatusBadRequest, fmt.Sprintf("failed to register homeowner: %v", err))
         return
     }
 
-    // Return homeowner info
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(map[string]interface{}{
-        "user_id": claims["user_id"],
-        "email":   claims["email"],
-    })
+    writeJSON(w, http.StatusCreated, map[string]string{
+        "message": "homeowner registered successfully",
+	})
 }

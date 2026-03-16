@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_fixit_application/screens/login_screen.dart';
+import 'dart:io';
+import 'package:flutter_fixit_application/services/api_service.dart';
 
 /// Homeowner registration screen for the Fix It Marketplace Android app.
 /// Collects: Full Name, Email, Phone, Barangay, Password, Confirm Password.
@@ -107,7 +109,7 @@ class _HomeownerRegistrationScreenState
   }
 
   // REGISTER BUTTON LOGIC
-  void _handleRegister() {
+  Future<void> _handleRegister() async {
     if (_formKey.currentState?.validate() ?? false) {
       if (_uploadedIdFile == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -136,16 +138,81 @@ class _HomeownerRegistrationScreenState
 
       setState(() => _isLoading = true);
 
-      // TODO: Send form data + PDF to backend
-
-      Future.delayed(const Duration(seconds: 2), () {
+      try {
+        await ApiService.registerHomeowner(
+          firstName: _nameController.text.trim(),
+          lastName: _lastNameController.text.trim(),
+          email: _emailController.text.trim(),
+          phone: _phoneController.text.trim(),
+          barangay: _selectedBarangay!,
+          password: _passwordController.text,
+          idType: _selectedIdType!,
+          idDocument: File(_uploadedIdFile!.path!),
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Registration successful! Please log in.'),
+              backgroundColor: Color(0xFF10B981),
+              behavior: SnackBarBehavior.floating,
+              margin: EdgeInsets.all(16),
+            ),
+          );
+          _navigateToLogin();
+        }
+      } on HttpException catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.message),
+              backgroundColor: _errorRed,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              margin: const EdgeInsets.all(16),
+            ),
+          );
+        }
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Connection error. Is the server running?'),
+              backgroundColor: Color(0xFFEF4444),
+              behavior: SnackBarBehavior.floating,
+              margin: EdgeInsets.all(16),
+            ),
+          );
+        }
+      } finally {
         if (mounted) setState(() => _isLoading = false);
-      });
+      }
     }
   }
 
   // FILE PICKER FUNCTION
   Future<void> _pickIdFile() async {
+    // Check if ID type is selected first
+    if (_selectedIdType == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 12),
+              const Text('Please select an ID type first'),
+            ],
+          ),
+          backgroundColor: _errorRed,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isUploadingFile = true);
 
     try {
@@ -940,7 +1007,7 @@ class _HomeownerRegistrationScreenState
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: _successGreen.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(16),
@@ -953,8 +1020,8 @@ class _HomeownerRegistrationScreenState
         children: [
           // File type icon
           Container(
-            width: 52,
-            height: 52,
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
               color: isImage
                   ? _accentOrange.withValues(alpha: 0.1)
@@ -981,7 +1048,7 @@ class _HomeownerRegistrationScreenState
             ),
           ),
 
-          const SizedBox(width: 14),
+          const SizedBox(width: 4),
 
           // File details
           Expanded(
@@ -1040,23 +1107,22 @@ class _HomeownerRegistrationScreenState
                 icon: Icon(
                   Icons.refresh_rounded,
                   color: _primaryBlue,
-                  size: 22,
+                  size: 20,
                 ),
                 tooltip: 'Replace file',
                 style: IconButton.styleFrom(
                   backgroundColor: _primaryBlue.withValues(alpha: 0.08),
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(4),
                 ),
               ),
-              const SizedBox(width: 6),
               // Delete button
               IconButton(
                 onPressed: _removeUploadedFile,
-                icon: Icon(Icons.close_rounded, color: _errorRed, size: 22),
+                icon: Icon(Icons.close_rounded, color: _errorRed, size: 20),
                 tooltip: 'Remove file',
                 style: IconButton.styleFrom(
                   backgroundColor: _errorRed.withValues(alpha: 0.08),
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(4),
                 ),
               ),
             ],

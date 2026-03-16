@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-//import '../services/api_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_service.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_fixit_application/screens/homeowner_registration.dart';
 import 'package:flutter_fixit_application/screens/tradesperson_registration.dart';
@@ -56,13 +59,65 @@ class _UserLoginScreenState extends State<UserLoginScreen>
     super.dispose();
   }
 
-  void _handleLogin() {
+  Future<void> _handleLogin() async {
     if (_formKey.currentState?.validate() ?? false) {
       setState(() => _isLoading = true);
-      // TODO: Integrate authentication service
-      Future.delayed(const Duration(seconds: 2), () {
+      try {
+        final result = await ApiService.loginUser(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        );
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('token', result['token'] as String);
+        final role = (result['user'] as Map)['role'] as String;
+        await prefs.setString('role', role);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Welcome back! Logged in as $role'),
+              backgroundColor: _primaryBlue,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.all(16),
+            ),
+          );
+          // TODO: Navigator.pushReplacement to your home screen based on role
+        }
+      } on HttpException catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.message),
+              backgroundColor: const Color(0xFFEF4444),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.all(16),
+            ),
+          );
+        }
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Connection error. Is the server running?'),
+              backgroundColor: Color(0xFFEF4444),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: EdgeInsets.all(16),
+            ),
+          );
+        }
+      } finally {
         if (mounted) setState(() => _isLoading = false);
-      });
+      }
     }
   }
 

@@ -5,9 +5,10 @@ import (
 	"log"
 	"os"
 
+	"fixit-backend/models"
+
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"fixit-backend/models"
 )
 
 var DB *gorm.DB
@@ -33,5 +34,12 @@ func ConnectDB() {
 
 	DB = db
 
-	db.AutoMigrate(&models.Homeowner{})
+	if err := db.AutoMigrate(
+		&models.User{},
+		&models.HomeownerProfile{},
+		&models.TradespersonProfile{},
+		&models.VerificationDocument{},
+	); err != nil {
+		log.Fatal("❌ Failed to migrate database:", err)
+	}
 }
