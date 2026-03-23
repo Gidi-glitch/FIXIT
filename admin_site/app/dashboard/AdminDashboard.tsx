@@ -50,6 +50,14 @@ interface Verification {
   createdAt?: string;
 }
 
+interface ActivityEntry {
+  id: string;
+  dot: string;
+  title: string;
+  sub: string;
+  time: string;
+}
+
 const toTitle = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 const verificationTypeLabel = (t: Verification["type"]) =>
   t === "homeowner_id" ? "Homeowner ID" : "Tradesperson License";
@@ -534,12 +542,13 @@ const VCard = ({ t, onApprove, onReject }: { t: Tradesman; onApprove: () => void
 };
 
 const VerificationCard = ({
-  v, onApprove, onReject, onView, name,
+  v, onApprove, onReject, onView, onArchive, name,
 }: {
   v: Verification;
   onApprove: () => void;
   onReject: () => void;
   onView: () => void;
+  onArchive: () => void;
   name: string;
 }) => {
   const [hov, setHov] = useState(false);
@@ -583,6 +592,7 @@ const VerificationCard = ({
         {v.type === "tradesperson_license" && (
           <Btn variant="view" onClick={onView}>{icons.license} View ID/Cert</Btn>
         )}
+        <Btn variant="reject" onClick={onArchive}>{icons.x} Archive</Btn>
       </div>
     </div>
   );
@@ -666,6 +676,13 @@ export default function DashboardPage() {
   const [verificationFilters, setVerificationFilters] = useState<string[]>(["", ""]);
   const [tradesmenFilters, setTradesmenFilters] = useState<string[]>(["", ""]);
   const [homeownerFilters, setHomeownerFilters] = useState<string[]>(["", ""]);
+  const [activity, setActivity] = useState<ActivityEntry[]>([
+    { id: "a1", dot: "#1A7A4A", title: "New tradesman registered", sub: "Jose Buenaventura · Carpenter", time: "2m ago" },
+    { id: "a2", dot: "#E87722", title: "Verification submitted", sub: "Ana Lim · HVAC-2024-05563", time: "14m ago" },
+    { id: "a3", dot: "#1B2B5E", title: "New homeowner signed up", sub: "Maria Garcia · San Miguel", time: "1h ago" },
+    { id: "a4", dot: "#1A7A4A", title: "License approved", sub: "Ramon Dela Cruz · APPL-2022", time: "3h ago" },
+    { id: "a5", dot: "#DC3545", title: "License rejected", sub: "Unknown applicant", time: "5h ago" },
+  ]);
 
   const pendingCount  = verifications.filter((v) => v.status === "pending").length;
   const verifiedCount = tradesmen.filter((t) => t.status === "Verified").length;
@@ -684,6 +701,12 @@ export default function DashboardPage() {
   const matchesLooseFilter = (filter: string, value: string) => {
     if (!filter) return true;
     return value.toLowerCase().includes(filter.toLowerCase());
+  };
+  const pushActivity = (entry: Omit<ActivityEntry, "id">) => {
+    setActivity((prev) => [
+      { ...entry, id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` },
+      ...prev,
+    ].slice(0, 6));
   };
   const getVerificationUserName = (v: Verification) => {
     if (v.name) return v.name;
@@ -862,7 +885,11 @@ export default function DashboardPage() {
           t.status ?? t.Status ?? t.verification_status ?? t.VerificationStatus ?? "pending"
         ).toLowerCase();
         const status: Tradesman["status"] =
-          statusRaw === "verified" ? "Verified" : statusRaw === "suspended" ? "Suspended" : "Pending";
+          statusRaw === "verified" || statusRaw === "approved"
+            ? "Verified"
+            : statusRaw === "suspended" || statusRaw === "rejected"
+              ? "Suspended"
+              : "Pending";
         const credentialUrl = withApiBase(
           t.credential_url ??
             t.CredentialUrl ??
@@ -936,6 +963,38 @@ export default function DashboardPage() {
     setTradesmen((prev) => prev.filter((t) => t.id !== id));
     showToast(`${name} rejected`, "error");
   };
+  const revokeTradesman = async (id: string, name: string) => {
+    if (!authToken) {
+      showToast("Please sign in again.", "error");
+      return;
+    }
+    try {
+      const res = await fetch(`${apiBase}/api/admin/tradespeople/${id}/revoke`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          localStorage.removeItem("admin_token");
+          router.push("/login");
+          return;
+        }
+        showToast("Failed to re-verify tradesman.", "error");
+        return;
+      }
+      setTradesmen((prev) => prev.map((t) => (t.id === id ? { ...t, status: "Pending" } : t)));
+      showToast(`${name} set to re-verify`, "info");
+      pushActivity({
+        dot: "#E87722",
+        title: "Re-verification requested",
+        sub: `${name} · Status reset to pending`,
+        time: "just now",
+      });
+      loadUsers();
+    } catch {
+      showToast("Failed to re-verify tradesman.", "error");
+    }
+  };
 
   const reviewVerification = async (id: number, status: "approved" | "rejected") => {
     if (!authToken) return;
@@ -976,9 +1035,44 @@ export default function DashboardPage() {
       if (status === "approved") {
         loadUsers();
       }
+      if (reviewed) {
+        const name = getVerificationUserName(reviewed) || `User #${reviewed.userId}`;
+        const typeLabel = verificationTypeLabel(reviewed.type);
+        pushActivity({
+          dot: status === "approved" ? "#1A7A4A" : "#DC3545",
+          title: status === "approved" ? "Verification approved" : "Verification rejected",
+          sub: `${name} · ${typeLabel}`,
+          time: "just now",
+        });
+      }
       showToast(`Verification ${status}`, status === "approved" ? "success" : "error");
     } catch {
       showToast("Failed to update verification.", "error");
+    }
+  };
+  const archiveVerification = async (id: number) => {
+    if (!authToken) {
+      showToast("Please sign in again.", "error");
+      return;
+    }
+    try {
+      const res = await fetch(`${apiBase}/api/verifications/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          localStorage.removeItem("admin_token");
+          router.push("/login");
+          return;
+        }
+        showToast("Failed to archive verification.", "error");
+        return;
+      }
+      setVerifications((prev) => prev.filter((v) => v.id !== id));
+      showToast("Verification archived", "success");
+    } catch {
+      showToast("Failed to archive verification.", "error");
     }
   };
 
@@ -1107,6 +1201,7 @@ export default function DashboardPage() {
                 onApprove={() => reviewVerification(v.id, "approved")}
                 onReject={() => reviewVerification(v.id, "rejected")}
                 onView={() => openDocumentModal(`User #${v.userId}`, v.documentUrl)}
+                onArchive={() => archiveVerification(v.id)}
               />
             ))}
             {pendingCount === 0 && (
@@ -1125,11 +1220,16 @@ export default function DashboardPage() {
         {/* Recent activity */}
         <Card>
           <CardHead title="Recent Activity" subtitle="Latest events" />
-          <ActivityItem dot="#1A7A4A" title="New tradesman registered" sub="Jose Buenaventura · Carpenter"  time="2m ago" />
-          <ActivityItem dot="#E87722" title="Verification submitted"   sub="Ana Lim · HVAC-2024-05563"      time="14m ago" />
-          <ActivityItem dot="#1B2B5E" title="New homeowner signed up"  sub="Maria Garcia · San Miguel"          time="1h ago" />
-          <ActivityItem dot="#1A7A4A" title="License approved"         sub="Ramon Dela Cruz · APPL-2022"    time="3h ago" />
-          <ActivityItem dot="#DC3545" title="License rejected"         sub="Unknown applicant"              time="5h ago" isLast />
+          {activity.map((a, i) => (
+            <ActivityItem
+              key={a.id}
+              dot={a.dot}
+              title={a.title}
+              sub={a.sub}
+              time={a.time}
+              isLast={i === activity.length - 1}
+            />
+          ))}
         </Card>
       </div>
 
@@ -1227,6 +1327,7 @@ export default function DashboardPage() {
                       {v.status === "pending" && v.type === "tradesperson_license" && (
                         <Btn variant="view" onClick={() => openDocumentModal(`User #${v.userId}`, v.documentUrl)}>{icons.license} View ID/Cert</Btn>
                       )}
+                      <Btn variant="reject" onClick={() => archiveVerification(v.id)}>{icons.x} Archive</Btn>
                     </div>
                   </Td>
                 </tr>
@@ -1279,7 +1380,7 @@ export default function DashboardPage() {
                 <Td>
                   <div style={{ display: "flex", gap: 8 }}>
                     <Btn variant="view" onClick={() => openTMModal(t)}>View</Btn>
-                    {t.status === "Verified" && <Btn variant="reject" onClick={() => showToast(`${t.name} revoked`, "error")}>{icons.x} Revoke</Btn>}
+                    {t.status === "Verified" && <Btn variant="reject" onClick={() => revokeTradesman(t.id, t.name)}>{icons.x} Revoke</Btn>}
                   </div>
                 </Td>
               </tr>

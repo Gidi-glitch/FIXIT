@@ -159,7 +159,7 @@ class _HomeownerRegistrationScreenState
               margin: EdgeInsets.all(16),
             ),
           );
-          _navigateToHomeownerDashboard();
+          _navigateToLogin();
         }
       } on HttpException catch (e) {
         if (mounted) {
@@ -276,8 +276,7 @@ class _HomeownerRegistrationScreenState
   }
 
   void _navigateToLogin() {
-    Navigator.pushReplacement(
-      context,
+    Navigator.of(context).pushAndRemoveUntil(
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) =>
             const UserLoginScreen(),
@@ -289,25 +288,10 @@ class _HomeownerRegistrationScreenState
         },
         transitionDuration: const Duration(milliseconds: 300),
       ),
+      (route) => false,
     );
   }
 
-  void _navigateToHomeownerDashboard() {
-    Navigator.pushReplacement(
-      context,
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            const HomeownerDashboardScreen(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(
-            opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
-            child: child,
-          );
-        },
-        transitionDuration: const Duration(milliseconds: 300),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
