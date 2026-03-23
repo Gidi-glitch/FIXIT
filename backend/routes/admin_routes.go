@@ -29,6 +29,9 @@ func RegisterAdminRoutes() {
 	// GET  /api/admin/homeowners
 	http.Handle("/api/admin/homeowners", admin(http.HandlerFunc(controllers.ListHomeowners)))
 
+	// GET  /api/admin/activity?limit=6
+	http.Handle("/api/admin/activity", admin(http.HandlerFunc(controllers.ListActivity)))
+
 	// GET  /api/verifications
 	// POST /api/verifications/review
 	// DELETE /api/verifications/{id}

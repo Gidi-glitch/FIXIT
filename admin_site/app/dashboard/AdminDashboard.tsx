@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, ReactNode, useEffect } from "react";
+import { useState, ReactNode, useEffect, CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 
 // ─────────────────────────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────────────────────────
-type Page = "dashboard" | "verification" | "tradesmen" | "homeowners" | "profile";
+type Page = "dashboard" | "verification" | "tradesmen" | "homeowners" | "profile" | "settings";
 type ToastType = "success" | "error" | "info";
 
 interface Tradesman {
@@ -19,6 +19,7 @@ interface Tradesman {
   category: string;
   license: string;
   credentialUrl: string;
+  governmentIdUrl?: string;
   joined: string;
   jobs: number;
   status: "Pending" | "Verified" | "Suspended";
@@ -33,6 +34,7 @@ interface Homeowner {
   email: string;
   location: string;
   registered: string;
+  createdAt?: string;
   jobs: number;
   status: "Active" | "Inactive" | "Pending";
   idNumber: string;
@@ -45,7 +47,7 @@ interface Verification {
   userId: number;
   name?: string;
   type: "homeowner_id" | "tradesperson_license";
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "archived";
   documentUrl: string;
   createdAt?: string;
 }
@@ -94,6 +96,39 @@ const formatDate = (value?: string) => {
   return d.toLocaleDateString();
 };
 
+const formatTimeAgo = (value?: string) => {
+  if (!value) return "—";
+  const d = new Date(value);
+  const ts = d.getTime();
+  if (Number.isNaN(ts)) return "—";
+  const diffMs = Date.now() - ts;
+  const sec = Math.floor(diffMs / 1000);
+  if (sec < 30) return "just now";
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d ago`;
+  return d.toLocaleDateString();
+};
+
+const activityDot = (type: string) => {
+  switch (type) {
+    case "verification_approved":
+    case "verification_restored":
+      return "var(--success-solid)";
+    case "verification_rejected":
+      return "var(--danger-solid)";
+    case "verification_archived":
+    case "tradesperson_reverify":
+      return "var(--warning-solid)";
+    default:
+      return "var(--info-solid)";
+  }
+};
+
 // ─────────────────────────────────────────────────────────────────
 // MOCK DATA
 // ─────────────────────────────────────────────────────────────────
@@ -132,13 +167,14 @@ const Avatar = ({ initials, color, size = 40 }: { initials: string; color: strin
 // Status badge
 const Badge = ({ status }: { status: string }) => {
   const styles: Record<string, { bg: string; color: string; border: string }> = {
-    Pending:  { bg: "#FEF3E0", color: "#B86A00", border: "1px solid rgba(184,106,0,0.2)" },
-    Verified: { bg: "#E6F5EE", color: "#1A7A4A", border: "1px solid rgba(26,122,74,0.2)"  },
-    Approved: { bg: "#E6F5EE", color: "#1A7A4A", border: "1px solid rgba(26,122,74,0.2)"  },
-    Active:   { bg: "#E6F5EE", color: "#1A7A4A", border: "1px solid rgba(26,122,74,0.2)"  },
-    Inactive: { bg: "#FFF0F1", color: "#DC3545", border: "1px solid rgba(220,53,69,0.2)"  },
-    Rejected: { bg: "#FFF0F1", color: "#DC3545", border: "1px solid rgba(220,53,69,0.2)"  },
-    Suspended:{ bg: "#FFF0F1", color: "#DC3545", border: "1px solid rgba(220,53,69,0.2)"  },
+    Pending:  { bg: "var(--warning-bg)", color: "var(--warning-text)", border: "1px solid var(--warning-border)" },
+    Verified: { bg: "var(--success-bg)", color: "var(--success-text)", border: "1px solid var(--success-border)"  },
+    Approved: { bg: "var(--success-bg)", color: "var(--success-text)", border: "1px solid var(--success-border)"  },
+    Active:   { bg: "var(--success-bg)", color: "var(--success-text)", border: "1px solid var(--success-border)"  },
+    Inactive: { bg: "var(--danger-bg)", color: "var(--danger-text)", border: "1px solid var(--danger-border)"  },
+    Rejected: { bg: "var(--danger-bg)", color: "var(--danger-text)", border: "1px solid var(--danger-border)"  },
+    Suspended:{ bg: "var(--danger-bg)", color: "var(--danger-text)", border: "1px solid var(--danger-border)"  },
+    Archived: { bg: "var(--neutral-bg)", color: "var(--neutral-text)", border: "1px solid var(--neutral-border)" },
   };
   const s = styles[status] || styles.Pending;
   return (
@@ -160,11 +196,11 @@ const Btn = ({
 }) => {
   const [hov, setHov] = useState(false);
   const base: Record<string, { bg: string; color: string; border: string; hovBg: string; hovColor: string }> = {
-    approve: { bg: "#E6F5EE", color: "#1A7A4A", border: "1.5px solid rgba(26,122,74,0.2)",  hovBg: "#1A7A4A", hovColor: "white" },
-    reject:  { bg: "#FFF0F1", color: "#DC3545", border: "1.5px solid rgba(220,53,69,0.18)", hovBg: "#DC3545", hovColor: "white" },
-    view:    { bg: "#EEF1FA", color: "#1B2B5E", border: "1.5px solid rgba(27,43,94,0.15)",  hovBg: "#1B2B5E", hovColor: "white" },
-    navy:    { bg: "#EEF1FA", color: "#1B2B5E", border: "1.5px solid rgba(27,43,94,0.15)",  hovBg: "#1B2B5E", hovColor: "white" },
-    default: { bg: "#F7F8FA", color: "#4A5568", border: "1.5px solid #E3E8F0",              hovBg: "#E3E8F0", hovColor: "#0F1923" },
+    approve: { bg: "var(--success-bg)", color: "var(--success-text)", border: "1.5px solid var(--success-border)",  hovBg: "var(--success-solid)", hovColor: "white" },
+    reject:  { bg: "var(--danger-bg)", color: "var(--danger-text)", border: "1.5px solid var(--danger-border)", hovBg: "var(--danger-solid)", hovColor: "white" },
+    view:    { bg: "var(--info-bg)", color: "var(--info-text)", border: "1.5px solid var(--info-border)",  hovBg: "var(--info-solid)", hovColor: "white" },
+    navy:    { bg: "var(--info-bg)", color: "var(--info-text)", border: "1.5px solid var(--info-border)",  hovBg: "var(--info-solid)", hovColor: "white" },
+    default: { bg: "var(--surface-2)", color: "var(--text)", border: "1.5px solid var(--border)",              hovBg: "var(--border)", hovColor: "var(--text)" },
   };
   const v = base[variant];
   return (
@@ -192,8 +228,8 @@ const Btn = ({
 // Card wrapper
 const Card = ({ children, style = {} }: { children: ReactNode; style?: React.CSSProperties }) => (
   <div style={{
-    background: "#fff", borderRadius: 12, border: "1.5px solid #E3E8F0",
-    boxShadow: "0 1px 3px rgba(15,25,35,.06)", overflow: "hidden", ...style,
+    background: "var(--surface)", borderRadius: 12, border: "1.5px solid var(--border)",
+    boxShadow: "var(--shadow)", overflow: "hidden", ...style,
   }}>
     {children}
   </div>
@@ -202,12 +238,12 @@ const Card = ({ children, style = {} }: { children: ReactNode; style?: React.CSS
 // Card header
 const CardHead = ({ title, subtitle, right }: { title: string; subtitle?: string; right?: ReactNode }) => (
   <div style={{
-    padding: "18px 24px", borderBottom: "1px solid #E3E8F0",
+    padding: "18px 24px", borderBottom: "1px solid var(--border)",
     display: "flex", alignItems: "center", justifyContent: "space-between",
   }}>
     <div>
-      <div style={{ fontSize: 15, fontWeight: 800, color: "#0F1923" }}>{title}</div>
-      {subtitle && <div style={{ fontSize: 12, color: "#9AA3B8", marginTop: 2 }}>{subtitle}</div>}
+      <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)" }}>{title}</div>
+      {subtitle && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{subtitle}</div>}
     </div>
     {right && <div style={{ display: "flex", alignItems: "center", gap: 10 }}>{right}</div>}
   </div>
@@ -215,13 +251,61 @@ const CardHead = ({ title, subtitle, right }: { title: string; subtitle?: string
 
 // Pill
 const Pill = ({ children, color = "orange" }: { children: ReactNode; color?: "orange" | "navy" | "green" }) => {
-  const c = { orange: ["#FEF0E4","#E87722"], navy: ["#EEF1FA","#1B2B5E"], green: ["#E6F5EE","#1A7A4A"] }[color] ?? ["#EEF1FA","#1B2B5E"];
+  const c = { orange: ["var(--warning-bg)","var(--warning-text)"], navy: ["var(--info-bg)","var(--info-text)"], green: ["var(--success-bg)","var(--success-text)"] }[color] ?? ["var(--info-bg)","var(--info-text)"];
   return (
     <span style={{ padding: "4px 12px", borderRadius: 100, fontSize: 12, fontWeight: 700, background: c[0], color: c[1] }}>
       {children}
     </span>
   );
 };
+
+// Toggle switch
+const Toggle = ({
+  checked,
+  onChange,
+  label,
+  description,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  label: string;
+  description?: string;
+}) => (
+  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "12px 0", borderBottom: "1px solid var(--border)" }}>
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{label}</div>
+      {description && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>{description}</div>}
+    </div>
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      aria-pressed={checked}
+      style={{
+        width: 46,
+        height: 26,
+        borderRadius: 999,
+        border: "1px solid var(--border)",
+        background: checked ? "var(--success-solid)" : "var(--surface-2)",
+        display: "flex",
+        alignItems: "center",
+        padding: 3,
+        cursor: "pointer",
+        transition: "all .2s",
+      }}
+    >
+      <span
+        style={{
+          width: 18,
+          height: 18,
+          borderRadius: 999,
+          background: "white",
+          transform: checked ? "translateX(20px)" : "translateX(0px)",
+          transition: "transform .2s",
+        }}
+      />
+    </button>
+  </div>
+);
 
 // Sidebar shield logo
 function SidebarShield() {
@@ -231,7 +315,7 @@ function SidebarShield() {
       <path d="M50 14L16 29V54C16 74 31.5 92 50 99C68.5 92 84 74 84 54V29L50 14Z" fill="rgba(255,255,255,0.07)" />
       <polygon points="50,30 30,46 30,66 42,66 42,54 58,54 58,66 70,66 70,46" fill="white" opacity="0.9" />
       <polygon points="22,49 50,26 78,49" fill="white" opacity="0.6" />
-      <circle cx="66" cy="70" r="12" fill="#E87722" />
+      <circle cx="66" cy="70" r="12" fill="var(--accent)" />
       <line x1="62" y1="66" x2="70" y2="74" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
     </svg>
   );
@@ -239,7 +323,7 @@ function SidebarShield() {
 
 // Toast component
 const Toast = ({ msg, type, show }: { msg: string; type: ToastType; show: boolean }) => {
-  const colors = { success: "#1A7A4A", error: "#DC3545", info: "#1B2B5E" };
+  const colors = { success: "var(--success-solid)", error: "var(--danger-solid)", info: "var(--info-solid)" };
   return (
     <div style={{
       position: "fixed", top: 20, left: "50%",
@@ -263,10 +347,11 @@ const Toast = ({ msg, type, show }: { msg: string; type: ToastType; show: boolea
 // MODAL
 // ─────────────────────────────────────────────────────────────────
 const Modal = ({
-  open, onClose, title, rows,
+  open, onClose, title, rows, actions,
 }: {
   open: boolean; onClose: () => void; title: string;
   rows: { label: string; value: string; highlight?: boolean }[];
+  actions?: ReactNode;
 }) => {
   if (!open) return null;
   return (
@@ -281,32 +366,37 @@ const Modal = ({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#fff", borderRadius: 16, padding: 28,
+          background: "var(--surface)", borderRadius: 16, padding: 28,
           width: "100%", maxWidth: 440,
           boxShadow: "0 12px 40px rgba(15,25,35,.18)",
           animation: "mIn .3s cubic-bezier(.16,1,.3,1)",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
-          <h3 style={{ fontSize: 18, fontWeight: 800, color: "#0F1923", margin: 0 }}>{title}</h3>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, background: "#F7F8FA", border: "1.5px solid #E3E8F0", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#4A5568" }}>
+          <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--text)", margin: 0 }}>{title}</h3>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, background: "var(--surface-2)", border: "1.5px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--muted)" }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
         </div>
         {rows.map((r, i) => (
-          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "11px 0", borderBottom: i < rows.length - 1 ? "1px solid #E3E8F0" : "none" }}>
-            <span style={{ fontSize: 13, color: "#9AA3B8", fontWeight: 500 }}>{r.label}</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: r.highlight ? "#1A7A4A" : "#0F1923" }}>{r.value}</span>
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "11px 0", borderBottom: i < rows.length - 1 ? "1px solid var(--border)" : "none" }}>
+            <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>{r.label}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: r.highlight ? "var(--success-solid)" : "var(--text)" }}>{r.value}</span>
           </div>
         ))}
+        {actions && (
+          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+            {actions}
+          </div>
+        )}
         <button onClick={onClose} style={{
           width: "100%", padding: 13, marginTop: 20,
-          background: "#E87722", border: "none", borderRadius: 8,
+          background: "var(--accent)", border: "none", borderRadius: 8,
           fontFamily: "inherit", fontSize: 14, fontWeight: 800, color: "white",
           cursor: "pointer", transition: "background .2s",
         }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "#F09040")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "#E87722")}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--accent-hover)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "var(--accent)")}
         >
           Close
         </button>
@@ -334,7 +424,7 @@ const ImageModal = ({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#fff", borderRadius: 16, padding: 24,
+          background: "var(--surface)", borderRadius: 16, padding: 24,
           width: "100%", maxWidth: 640,
           boxShadow: "0 12px 40px rgba(15,25,35,.18)",
           animation: "mIn .3s cubic-bezier(.16,1,.3,1)",
@@ -342,14 +432,14 @@ const ImageModal = ({
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <div>
-            <h3 style={{ fontSize: 18, fontWeight: 800, color: "#0F1923", margin: 0 }}>{title}</h3>
-            <div style={{ fontSize: 12, color: "#9AA3B8", marginTop: 3 }}>Uploaded ID image</div>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--text)", margin: 0 }}>{title}</h3>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>Uploaded ID image</div>
           </div>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, background: "#F7F8FA", border: "1.5px solid #E3E8F0", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#4A5568" }}>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, background: "var(--surface-2)", border: "1.5px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--muted)" }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
         </div>
-        <div style={{ borderRadius: 12, border: "1.5px solid #E3E8F0", background: "#F7F8FA", padding: 12 }}>
+        <div style={{ borderRadius: 12, border: "1.5px solid var(--border)", background: "var(--surface-2)", padding: 12 }}>
           {isPdf ? (
             <iframe
               src={imageUrl}
@@ -366,12 +456,12 @@ const ImageModal = ({
         </div>
         <button onClick={onClose} style={{
           width: "100%", padding: 12, marginTop: 18,
-          background: "#1B2B5E", border: "none", borderRadius: 8,
+          background: "var(--primary-bg)", border: "none", borderRadius: 8,
           fontFamily: "inherit", fontSize: 14, fontWeight: 800, color: "white",
           cursor: "pointer", transition: "background .2s",
         }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "#243673")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "#1B2B5E")}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--primary-bg-hover)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "var(--primary-bg)")}
         >
           Close
         </button>
@@ -389,12 +479,12 @@ const Table = ({ children }: { children: ReactNode }) => (
   </div>
 );
 const Th = ({ children }: { children: ReactNode }) => (
-  <th style={{ padding: "12px 20px", textAlign: "left", fontSize: 11, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "#9AA3B8", background: "#F7F8FA", borderBottom: "1px solid #E3E8F0", whiteSpace: "nowrap" }}>
+  <th style={{ padding: "12px 20px", textAlign: "left", fontSize: 11, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--muted)", background: "var(--table-head)", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" }}>
     {children}
   </th>
 );
 const Td = ({ children, style = {}, colSpan }: { children: ReactNode; style?: React.CSSProperties; colSpan?: number }) => (
-  <td colSpan={colSpan} style={{ padding: "14px 20px", fontSize: 13, color: "#0F1923", borderBottom: "1px solid #E3E8F0", verticalAlign: "middle", ...style }}>
+  <td colSpan={colSpan} style={{ padding: "14px 20px", fontSize: 13, color: "var(--text)", borderBottom: "1px solid var(--border)", verticalAlign: "middle", ...style }}>
     {children}
   </td>
 );
@@ -417,15 +507,15 @@ const Toolbar = ({
   filterValues: string[];
   onFilterChange: (index: number, value: string) => void;
 }) => (
-  <div style={{ padding: "14px 24px", borderBottom: "1px solid #E3E8F0", background: "#F7F8FA", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-    <div style={{ flex: 1, minWidth: 200, display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: "#fff", border: "1.5px solid #E3E8F0", borderRadius: 8 }}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9AA3B8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+  <div style={{ padding: "14px 24px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+    <div style={{ flex: 1, minWidth: 200, display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 8 }}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
       <input
         type="text"
         placeholder={placeholder}
         value={searchValue}
         onChange={(e) => onSearchChange(e.target.value)}
-        style={{ border: "none", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 13, color: "#0F1923", width: "100%" }}
+        style={{ border: "none", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 13, color: "var(--text)", width: "100%" }}
       />
     </div>
     {filters.map((opts, i) => (
@@ -433,7 +523,7 @@ const Toolbar = ({
         key={i}
         value={filterValues[i] ?? ""}
         onChange={(e) => onFilterChange(i, e.target.value)}
-        style={{ padding: "9px 14px", background: "#fff", border: "1.5px solid #E3E8F0", borderRadius: 8, fontFamily: "inherit", fontSize: 13, fontWeight: 600, color: "#4A5568", outline: "none", cursor: "pointer", minWidth: 140 }}
+        style={{ padding: "9px 14px", background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, fontWeight: 600, color: "var(--text)", outline: "none", cursor: "pointer", minWidth: 140 }}
       >
         {opts.map((o) => <option key={o} value={o === opts[0] ? "" : o}>{o}</option>)}
       </select>
@@ -445,16 +535,16 @@ const Toolbar = ({
 // ACTIVITY FEED ITEM
 // ─────────────────────────────────────────────────────────────────
 const ActivityItem = ({ dot, title, sub, time, isLast = false }: { dot: string; title: string; sub: string; time: string; isLast?: boolean }) => (
-  <div style={{ display: "flex", alignItems: "flex-start", gap: 14, padding: "14px 24px", borderBottom: isLast ? "none" : "1px solid #E3E8F0" }}>
+  <div style={{ display: "flex", alignItems: "flex-start", gap: 14, padding: "14px 24px", borderBottom: isLast ? "none" : "1px solid var(--border)" }}>
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 3 }}>
       <div style={{ width: 10, height: 10, borderRadius: "50%", background: dot, flexShrink: 0 }} />
-      {!isLast && <div style={{ width: 2, flex: 1, background: "#E3E8F0", marginTop: 4, minHeight: 24 }} />}
+      {!isLast && <div style={{ width: 2, flex: 1, background: "var(--border)", marginTop: 4, minHeight: 24 }} />}
     </div>
     <div style={{ flex: 1 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: "#0F1923", marginBottom: 3 }}>{title}</div>
-      <div style={{ fontSize: 12, color: "#9AA3B8" }}>{sub}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 3 }}>{title}</div>
+      <div style={{ fontSize: 12, color: "var(--muted)" }}>{sub}</div>
     </div>
-    <div style={{ fontSize: 11, color: "#9AA3B8", whiteSpace: "nowrap", paddingTop: 2 }}>{time}</div>
+    <div style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap", paddingTop: 2 }}>{time}</div>
   </div>
 );
 
@@ -471,8 +561,8 @@ const StatCard = ({ icon, iconBg, iconColor, num, label, trend, trendType }: {
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        background: "#fff", borderRadius: 12, border: "1.5px solid #E3E8F0",
-        padding: "20px", boxShadow: hov ? "0 4px 16px rgba(15,25,35,.09)" : "0 1px 3px rgba(15,25,35,.06)",
+        background: "var(--surface)", borderRadius: 12, border: "1.5px solid var(--border)",
+        padding: "20px", boxShadow: hov ? "0 4px 16px rgba(15,25,35,.09)" : "var(--shadow)",
         transform: hov ? "translateY(-2px)" : "translateY(0)",
         transition: "all .2s",
       }}
@@ -483,14 +573,14 @@ const StatCard = ({ icon, iconBg, iconColor, num, label, trend, trendType }: {
         </div>
         <span style={{
           display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 100, fontSize: 11, fontWeight: 700,
-          background: trendType === "up" ? "#E6F5EE" : "#FEF3E0",
-          color:      trendType === "up" ? "#1A7A4A"  : "#B86A00",
+          background: trendType === "up" ? "var(--success-bg)" : "var(--warning-bg)",
+          color:      trendType === "up" ? "var(--success-text)"  : "var(--warning-text)",
         }}>
           {trend}
         </span>
       </div>
-      <div style={{ fontSize: 32, fontWeight: 800, color: "#0F1923", letterSpacing: -1.5, lineHeight: 1, marginBottom: 5 }}>{num}</div>
-      <div style={{ fontSize: 13, color: "#9AA3B8", fontWeight: 500 }}>{label}</div>
+      <div style={{ fontSize: 32, fontWeight: 800, color: "var(--text)", letterSpacing: -1.5, lineHeight: 1, marginBottom: 5 }}>{num}</div>
+      <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>{label}</div>
     </div>
   );
 };
@@ -505,7 +595,7 @@ const VCard = ({ t, onApprove, onReject }: { t: Tradesman; onApprove: () => void
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        background: "#F7F8FA", border: "1.5px solid #E3E8F0", borderRadius: 12, padding: 18,
+        background: "var(--surface-2)", border: "1.5px solid var(--border)", borderRadius: 12, padding: 18,
         transform: hov ? "translateY(-2px)" : "translateY(0)",
         boxShadow: hov ? "0 4px 16px rgba(15,25,35,.09)" : "none",
         transition: "all .2s",
@@ -515,16 +605,16 @@ const VCard = ({ t, onApprove, onReject }: { t: Tradesman; onApprove: () => void
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Avatar initials={t.initials} color={t.color} size={46} />
           <div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: "#0F1923", marginBottom: 2 }}>{t.name}</div>
-            <div style={{ fontSize: 12, color: "#9AA3B8", fontWeight: 500 }}>{t.category}</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", marginBottom: 2 }}>{t.name}</div>
+            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>{t.category}</div>
           </div>
         </div>
         <Badge status={t.status} />
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 7, background: "#fff", border: "1px solid #E3E8F0", borderRadius: 8, padding: "8px 12px", marginBottom: 12 }}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9AA3B8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>
-        <span style={{ fontSize: 12, color: "#4A5568", fontWeight: 600 }}>
-          <strong style={{ color: "#9AA3B8", fontWeight: 600, marginRight: 6 }}>License:</strong>{t.license}
+      <div style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", marginBottom: 12 }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>
+        <span style={{ fontSize: 12, color: "var(--text)", fontWeight: 600 }}>
+          <strong style={{ color: "var(--muted)", fontWeight: 600, marginRight: 6 }}>License:</strong>{t.license}
         </span>
       </div>
       <div style={{ display: "flex", gap: 8 }}>
@@ -558,7 +648,7 @@ const VerificationCard = ({
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        background: "#F7F8FA", border: "1.5px solid #E3E8F0", borderRadius: 12, padding: 18,
+        background: "var(--surface-2)", border: "1.5px solid var(--border)", borderRadius: 12, padding: 18,
         transform: hov ? "translateY(-2px)" : "translateY(0)",
         boxShadow: hov ? "0 4px 16px rgba(15,25,35,.09)" : "none",
         transition: "all .2s",
@@ -566,17 +656,17 @@ const VerificationCard = ({
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: "#0F1923", marginBottom: 2 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)", marginBottom: 2 }}>
             {name ? `${name} · User #${v.userId}` : `User #${v.userId}`}
           </div>
-          <div style={{ fontSize: 12, color: "#9AA3B8", fontWeight: 600 }}>{verificationTypeLabel(v.type)}</div>
+          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>{verificationTypeLabel(v.type)}</div>
         </div>
         <Badge status={statusLabel} />
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 7, background: "#fff", border: "1px solid #E3E8F0", borderRadius: 8, padding: "8px 12px", marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", marginBottom: 12 }}>
         {icons.license}
-        <span style={{ fontSize: 12, color: "#4A5568", fontWeight: 600 }}>
-          <strong style={{ color: "#9AA3B8", fontWeight: 600, marginRight: 6 }}>Document:</strong>
+        <span style={{ fontSize: 12, color: "var(--text)", fontWeight: 600 }}>
+          <strong style={{ color: "var(--muted)", fontWeight: 600, marginRight: 6 }}>Document:</strong>
           {v.documentUrl ? "Uploaded" : "Missing"}
         </span>
       </div>
@@ -617,7 +707,7 @@ const NavItem = ({
         padding: "11px 12px", borderRadius: 10, width: "100%",
         fontFamily: "inherit", border: "none", textAlign: "left", cursor: "pointer",
         marginBottom: 2,
-        background: active ? "#E87722" : hov ? "rgba(255,255,255,0.06)" : "transparent",
+        background: active ? "var(--accent)" : hov ? "var(--sidebar-hover)" : "transparent",
         transition: "all .2s",
       }}
     >
@@ -628,7 +718,7 @@ const NavItem = ({
         {label}
       </span>
       {badge !== undefined && badge > 0 && (
-        <span style={{ background: active ? "rgba(255,255,255,0.3)" : "#E87722", color: "white", fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 100 }}>
+        <span style={{ background: active ? "rgba(255,255,255,0.3)" : "var(--accent)", color: "white", fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 100 }}>
           {badge}
         </span>
       )}
@@ -666,25 +756,134 @@ export default function DashboardPage() {
   const [homeowners, setHomeowners] = useState<Homeowner[]>([]);
   const [verifications, setVerifications] = useState<Verification[]>([]);
   const [authToken, setAuthToken] = useState<string | null>(null);
+  const [isDark, setIsDark] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
   const [toast, setToast]           = useState({ show: false, msg: "", type: "success" as ToastType });
-  const [modal, setModal]           = useState<{ open: boolean; title: string; rows: { label: string; value: string; highlight?: boolean }[] }>({ open: false, title: "", rows: [] });
+  const [modal, setModal]           = useState<{ open: boolean; title: string; rows: { label: string; value: string; highlight?: boolean }[]; actions?: ReactNode }>({ open: false, title: "", rows: [] });
   const [idModal, setIdModal]       = useState<{ open: boolean; title: string; imageUrl: string; contentType: string }>({ open: false, title: "", imageUrl: "", contentType: "" });
   const [searchVerification, setSearchVerification] = useState("");
   const [searchTradesmen, setSearchTradesmen] = useState("");
   const [searchHomeowners, setSearchHomeowners] = useState("");
   const [searchDashboard, setSearchDashboard] = useState("");
+  const [showArchivedOnly, setShowArchivedOnly] = useState(false);
   const [verificationFilters, setVerificationFilters] = useState<string[]>(["", ""]);
   const [tradesmenFilters, setTradesmenFilters] = useState<string[]>(["", ""]);
   const [homeownerFilters, setHomeownerFilters] = useState<string[]>(["", ""]);
-  const [activity, setActivity] = useState<ActivityEntry[]>([
-    { id: "a1", dot: "#1A7A4A", title: "New tradesman registered", sub: "Jose Buenaventura · Carpenter", time: "2m ago" },
-    { id: "a2", dot: "#E87722", title: "Verification submitted", sub: "Ana Lim · HVAC-2024-05563", time: "14m ago" },
-    { id: "a3", dot: "#1B2B5E", title: "New homeowner signed up", sub: "Maria Garcia · San Miguel", time: "1h ago" },
-    { id: "a4", dot: "#1A7A4A", title: "License approved", sub: "Ramon Dela Cruz · APPL-2022", time: "3h ago" },
-    { id: "a5", dot: "#DC3545", title: "License rejected", sub: "Unknown applicant", time: "5h ago" },
-  ]);
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("admin_theme");
+    if (stored === "dark") {
+      setIsDark(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("admin_theme", isDark ? "dark" : "light");
+  }, [isDark]);
+
+  useEffect(() => {
+    document.body.style.background = isDark ? "#0B1220" : "#F1F3F7";
+    document.body.style.color = isDark ? "#E5E7EB" : "#0F1923";
+  }, [isDark]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("admin_autorefresh");
+    if (stored === "off") {
+      setAutoRefresh(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("admin_autorefresh", autoRefresh ? "on" : "off");
+  }, [autoRefresh]);
+
+  const themeVars: CSSProperties & Record<string, string> = isDark
+    ? {
+        "--bg": "#0B1220",
+        "--surface": "#0F172A",
+        "--surface-2": "#111827",
+        "--border": "#1F2A3B",
+        "--text": "#E5E7EB",
+        "--muted": "#94A3B8",
+        "--shadow": "0 1px 3px rgba(0,0,0,.35)",
+        "--sidebar": "#0B1220",
+        "--sidebar-accent": "#111E35",
+        "--table-head": "#0F172A",
+        "--accent": "#F59E0B",
+        "--accent-hover": "#FBBF24",
+        "--accent-soft": "rgba(245,158,11,0.18)",
+        "--success-bg": "rgba(34,197,94,0.16)",
+        "--success-text": "#6EE7B7",
+        "--success-border": "rgba(34,197,94,0.35)",
+        "--success-solid": "#22C55E",
+        "--warning-bg": "rgba(245,158,11,0.16)",
+        "--warning-text": "#FACC15",
+        "--warning-border": "rgba(245,158,11,0.35)",
+        "--warning-solid": "#F59E0B",
+        "--danger-bg": "rgba(239,68,68,0.16)",
+        "--danger-text": "#FCA5A5",
+        "--danger-border": "rgba(239,68,68,0.35)",
+        "--danger-solid": "#EF4444",
+        "--info-bg": "rgba(59,130,246,0.16)",
+        "--info-text": "#93C5FD",
+        "--info-border": "rgba(59,130,246,0.35)",
+        "--info-solid": "#60A5FA",
+        "--neutral-bg": "rgba(148,163,184,0.18)",
+        "--neutral-text": "#CBD5E1",
+        "--neutral-border": "rgba(148,163,184,0.35)",
+        "--neutral-solid": "#94A3B8",
+        "--row-hover": "rgba(148,163,184,0.12)",
+        "--primary-bg": "#1D4ED8",
+        "--primary-bg-hover": "#2563EB",
+        "--sidebar-hover": "rgba(255,255,255,0.08)",
+        "--scrollbar": "#475569",
+        "--scrollbar-hover": "#64748B",
+      }
+    : {
+        "--bg": "#F1F3F7",
+        "--surface": "#FFFFFF",
+        "--surface-2": "#F7F8FA",
+        "--border": "#E3E8F0",
+        "--text": "#0F1923",
+        "--muted": "#9AA3B8",
+        "--shadow": "0 1px 3px rgba(15,25,35,.06)",
+        "--sidebar": "#1B2B5E",
+        "--sidebar-accent": "#1B2B5E",
+        "--table-head": "#F7F8FA",
+        "--accent": "#E87722",
+        "--accent-hover": "#F09040",
+        "--accent-soft": "#FEF0E4",
+        "--success-bg": "#E6F5EE",
+        "--success-text": "#1A7A4A",
+        "--success-border": "rgba(26,122,74,0.2)",
+        "--success-solid": "#1A7A4A",
+        "--warning-bg": "#FEF3E0",
+        "--warning-text": "#B86A00",
+        "--warning-border": "rgba(184,106,0,0.2)",
+        "--warning-solid": "#B86A00",
+        "--danger-bg": "#FFF0F1",
+        "--danger-text": "#DC3545",
+        "--danger-border": "rgba(220,53,69,0.2)",
+        "--danger-solid": "#DC3545",
+        "--info-bg": "#EEF1FA",
+        "--info-text": "#1B2B5E",
+        "--info-border": "rgba(27,43,94,0.15)",
+        "--info-solid": "#1B2B5E",
+        "--neutral-bg": "#EEF1FA",
+        "--neutral-text": "#4A5568",
+        "--neutral-border": "rgba(74,85,104,0.25)",
+        "--neutral-solid": "#4A5568",
+        "--row-hover": "#FAFBFD",
+        "--primary-bg": "#1B2B5E",
+        "--primary-bg-hover": "#243673",
+        "--sidebar-hover": "rgba(255,255,255,0.06)",
+        "--scrollbar": "#64748B",
+        "--scrollbar-hover": "#94A3B8",
+      };
 
   const pendingCount  = verifications.filter((v) => v.status === "pending").length;
+  const archivedCount = verifications.filter((v) => v.status === "archived").length;
   const verifiedCount = tradesmen.filter((t) => t.status === "Verified").length;
   const pendingHomeownerIds = homeowners.filter((h) => h.idStatus === "Pending").length;
 
@@ -702,12 +901,6 @@ export default function DashboardPage() {
     if (!filter) return true;
     return value.toLowerCase().includes(filter.toLowerCase());
   };
-  const pushActivity = (entry: Omit<ActivityEntry, "id">) => {
-    setActivity((prev) => [
-      { ...entry, id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` },
-      ...prev,
-    ].slice(0, 6));
-  };
   const getVerificationUserName = (v: Verification) => {
     if (v.name) return v.name;
     const id = String(v.userId ?? "");
@@ -720,12 +913,17 @@ export default function DashboardPage() {
     return "";
   };
 
-  const filteredVerifications = verifications.filter((v) => {
+  const statusFilter = showArchivedOnly ? "Archived" : (verificationFilters[0] ?? "");
+  const baseVerifications = showArchivedOnly
+    ? verifications.filter((v) => v.status === "archived")
+    : verifications.filter((v) => v.status !== "archived");
+
+  const filteredVerifications = baseVerifications.filter((v) => {
     const statusLabel = toTitle(v.status);
     const typeLabel = verificationTypeLabel(v.type);
     return (
       matchesQuery(searchVerification, [v.userId, v.id, statusLabel, typeLabel, getVerificationUserName(v)]) &&
-      matchesExactFilter(verificationFilters[0] ?? "", statusLabel) &&
+      matchesExactFilter(statusFilter, statusLabel) &&
       matchesExactFilter(verificationFilters[1] ?? "", typeLabel)
     );
   });
@@ -750,6 +948,11 @@ export default function DashboardPage() {
   const filteredDashboardHomeowners = homeowners.filter((h) =>
     matchesQuery(searchDashboard, [h.name, h.email, h.idNumber, h.location, h.status, h.idStatus, h.id])
   );
+  const recentDashboardHomeowners = [...filteredDashboardHomeowners].sort((a, b) => {
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return bTime - aTime;
+  });
 
   const canSearchTopbar =
     activePage === "dashboard" ||
@@ -901,6 +1104,13 @@ export default function DashboardPage() {
             t.DocumentUrl ??
             ""
         );
+        const governmentIdUrl = withApiBase(
+          t.government_id_document_url ??
+            t.GovernmentIdDocumentUrl ??
+            t.government_id_document ??
+            t.GovernmentIdDocument ??
+            ""
+        );
         return {
           id: String(t.id ?? t.ID ?? ""),
           userId: userId || undefined,
@@ -911,6 +1121,7 @@ export default function DashboardPage() {
           category: t.category ?? t.Category ?? t.trade_category ?? t.TradeCategory ?? "—",
           license: t.license ?? t.License ?? t.license_no ?? t.LicenseNo ?? "—",
           credentialUrl,
+          governmentIdUrl,
           joined: formatDate(t.created_at ?? t.CreatedAt),
           jobs: t.jobs_count ?? t.JobsCount ?? 0,
           status,
@@ -930,6 +1141,7 @@ export default function DashboardPage() {
         const idStatusRaw = String(h.id_status ?? h.IdStatus ?? h.idStatus ?? "pending").toLowerCase();
         const idStatus: Homeowner["idStatus"] =
           idStatusRaw === "approved" ? "Approved" : idStatusRaw === "rejected" ? "Rejected" : "Pending";
+        const createdAt = h.created_at ?? h.CreatedAt;
         return {
           id: String(h.id ?? h.ID ?? ""),
           userId: userId || undefined,
@@ -938,7 +1150,8 @@ export default function DashboardPage() {
           name,
           email: h.email ?? h.Email ?? h.user_email ?? h.UserEmail ?? "—",
           location: h.barangay ?? h.Barangay ?? h.location ?? "—",
-          registered: formatDate(h.created_at ?? h.CreatedAt),
+          registered: formatDate(createdAt),
+          createdAt,
           jobs: h.jobs_count ?? h.JobsCount ?? 0,
           status,
           idNumber: h.id_number ?? h.IdNumber ?? "—",
@@ -954,9 +1167,57 @@ export default function DashboardPage() {
     }
   };
 
+  const loadActivity = async () => {
+    if (!authToken) return;
+    try {
+      const res = await fetch(`${apiBase}/api/admin/activity?limit=6`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          localStorage.removeItem("admin_token");
+          router.push("/login");
+          return;
+        }
+        showToast("Failed to load activity.", "error");
+        return;
+      }
+      const data = await res.json();
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.activity)
+          ? data.activity
+          : [];
+      const mapped = list.map((a) => {
+        const createdAt = a.created_at ?? a.CreatedAt;
+        const type = String(a.type ?? a.Type ?? "");
+        return {
+          id: String(a.id ?? a.ID ?? ""),
+          title: String(a.title ?? a.Title ?? ""),
+          sub: String(a.sub ?? a.Sub ?? ""),
+          dot: activityDot(type),
+          time: formatTimeAgo(createdAt),
+        } as ActivityEntry;
+      });
+      setActivity(mapped);
+    } catch {
+      showToast("Failed to load activity.", "error");
+    }
+  };
+
   useEffect(() => {
     loadUsers();
+    loadActivity();
   }, [authToken, apiBase, router]);
+
+  useEffect(() => {
+    if (!authToken) return;
+    if (!autoRefresh) return;
+    const interval = setInterval(() => {
+      loadUsers();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [authToken, apiBase, autoRefresh]);
 
   // Approve / Reject
   const rejectTradesman = (id: string, name: string) => {
@@ -984,13 +1245,8 @@ export default function DashboardPage() {
       }
       setTradesmen((prev) => prev.map((t) => (t.id === id ? { ...t, status: "Pending" } : t)));
       showToast(`${name} set to re-verify`, "info");
-      pushActivity({
-        dot: "#E87722",
-        title: "Re-verification requested",
-        sub: `${name} · Status reset to pending`,
-        time: "just now",
-      });
       loadUsers();
+      loadActivity();
     } catch {
       showToast("Failed to re-verify tradesman.", "error");
     }
@@ -1035,16 +1291,7 @@ export default function DashboardPage() {
       if (status === "approved") {
         loadUsers();
       }
-      if (reviewed) {
-        const name = getVerificationUserName(reviewed) || `User #${reviewed.userId}`;
-        const typeLabel = verificationTypeLabel(reviewed.type);
-        pushActivity({
-          dot: status === "approved" ? "#1A7A4A" : "#DC3545",
-          title: status === "approved" ? "Verification approved" : "Verification rejected",
-          sub: `${name} · ${typeLabel}`,
-          time: "just now",
-        });
-      }
+      loadActivity();
       showToast(`Verification ${status}`, status === "approved" ? "success" : "error");
     } catch {
       showToast("Failed to update verification.", "error");
@@ -1066,13 +1313,78 @@ export default function DashboardPage() {
           router.push("/login");
           return;
         }
-        showToast("Failed to archive verification.", "error");
+        let message = "Failed to archive verification.";
+        try {
+          const data = await res.json();
+          message = String(data?.message ?? message);
+        } catch {}
+        showToast(message, "error");
         return;
       }
-      setVerifications((prev) => prev.filter((v) => v.id !== id));
+      setVerifications((prev) =>
+        prev.map((v) => (v.id === id ? { ...v, status: "archived" } : v))
+      );
+      loadActivity();
       showToast("Verification archived", "success");
     } catch {
       showToast("Failed to archive verification.", "error");
+    }
+  };
+  const restoreVerification = async (id: number) => {
+    if (!authToken) {
+      showToast("Please sign in again.", "error");
+      return;
+    }
+    try {
+      const res = await fetch(`${apiBase}/api/verifications/${id}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          localStorage.removeItem("admin_token");
+          router.push("/login");
+          return;
+        }
+        let message = "Failed to restore verification.";
+        try {
+          const data = await res.json();
+          message = String(data?.message ?? message);
+        } catch {}
+        showToast(message, "error");
+        return;
+      }
+
+      const restored = verifications.find((v) => v.id === id);
+      setVerifications((prev) =>
+        prev.map((v) => (v.id === id ? { ...v, status: "approved" } : v))
+      );
+
+      if (restored) {
+        const targetId = String(restored.userId ?? "");
+        if (restored.type === "tradesperson_license") {
+          setTradesmen((prev) =>
+            prev.map((t) =>
+              t.userId === targetId || t.id === targetId ? { ...t, status: "Verified" } : t
+            )
+          );
+        }
+        if (restored.type === "homeowner_id") {
+          setHomeowners((prev) =>
+            prev.map((h) =>
+              h.userId === targetId || h.id === targetId
+                ? { ...h, idStatus: "Approved", status: "Active" }
+                : h
+            )
+          );
+        }
+      }
+
+      loadUsers();
+      loadActivity();
+      showToast("Verification restored to approved", "success");
+    } catch {
+      showToast("Failed to restore verification. Check if the backend was restarted.", "error");
     }
   };
 
@@ -1139,8 +1451,26 @@ export default function DashboardPage() {
         { label: "Joined",     value: t.joined },
         { label: "Jobs Done",  value: String(t.jobs) },
         { label: "Status",     value: t.status, highlight: t.status === "Verified" },
-        { label: "Credentials", value: t.credentialUrl ? "Uploaded" : "Not uploaded", highlight: Boolean(t.credentialUrl) },
+        { label: "Credentials", value: (t.credentialUrl || t.governmentIdUrl) ? "Uploaded" : "Not uploaded", highlight: Boolean(t.credentialUrl || t.governmentIdUrl) },
       ],
+      actions: (
+        <>
+          <Btn
+            variant="view"
+            onClick={() => openDocumentModal(`${t.name} · Government ID`, t.governmentIdUrl ?? "")}
+            disabled={!t.governmentIdUrl}
+          >
+            {icons.license} View Gov ID
+          </Btn>
+          <Btn
+            variant="view"
+            onClick={() => openDocumentModal(`${t.name} · License/Cert`, t.credentialUrl)}
+            disabled={!t.credentialUrl}
+          >
+            {icons.license} View License/Cert
+          </Btn>
+        </>
+      ),
     });
   };
 
@@ -1156,6 +1486,7 @@ export default function DashboardPage() {
     tradesmen:    "Tradesmen",
     homeowners:   "Homeowners",
     profile:      "Profile",
+    settings:     "Settings",
   };
 
   // ── PAGES ──────────────────────────────────────────────────────
@@ -1164,16 +1495,16 @@ export default function DashboardPage() {
     <div style={{ animation: "fadeUp .35s ease both" }}>
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 28 }}>
-        <StatCard iconBg="#EEF1FA" iconColor="#1B2B5E" num={homeowners.length} label="Total Homeowners" trend="+12%" trendType="up"
+        <StatCard iconBg="var(--info-bg)" iconColor="var(--info-text)" num={homeowners.length} label="Total Homeowners" trend="+12%" trendType="up"
           icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>}
         />
-        <StatCard iconBg="#FEF0E4" iconColor="#E87722" num={tradesmen.length} label="Total Tradesmen" trend="+8%" trendType="up"
+        <StatCard iconBg="var(--accent-soft)" iconColor="var(--accent)" num={tradesmen.length} label="Total Tradesmen" trend="+8%" trendType="up"
           icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>}
         />
-        <StatCard iconBg="#FEF3E0" iconColor="#B86A00" num={pendingCount} label="Pending Verifications" trend="Needs review" trendType="warn"
+        <StatCard iconBg="var(--warning-bg)" iconColor="var(--warning-text)" num={pendingCount} label="Pending Verifications" trend="Needs review" trendType="warn"
           icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>}
         />
-        <StatCard iconBg="#E6F5EE" iconColor="#1A7A4A" num={verifiedCount} label="Verified Tradesmen" trend={`${Math.round((verifiedCount/Math.max(tradesmen.length,1))*100)}% rate`} trendType="up"
+        <StatCard iconBg="var(--success-bg)" iconColor="var(--success-text)" num={verifiedCount} label="Verified Tradesmen" trend={`${Math.round((verifiedCount/Math.max(tradesmen.length,1))*100)}% rate`} trendType="up"
           icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>}
         />
       </div>
@@ -1205,12 +1536,12 @@ export default function DashboardPage() {
               />
             ))}
             {pendingCount === 0 && (
-              <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "40px 20px", color: "#9AA3B8" }}>
+              <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "40px 20px", color: "var(--muted)" }}>
                 <div style={{ fontSize: 14, fontWeight: 600 }}>All caught up! No pending verifications.</div>
               </div>
             )}
             {pendingCount > 0 && filteredDashboardVerifications.length === 0 && (
-              <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "40px 20px", color: "#9AA3B8" }}>
+              <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "40px 20px", color: "var(--muted)" }}>
                 <div style={{ fontSize: 14, fontWeight: 600 }}>No matching verifications.</div>
               </div>
             )}
@@ -1243,16 +1574,16 @@ export default function DashboardPage() {
         <Table>
           <thead><tr><Th>User</Th><Th>Location</Th><Th>Joined</Th><Th>Jobs</Th><Th>Status</Th><Th>Actions</Th></tr></thead>
           <tbody>
-            {filteredDashboardHomeowners.slice(0, 4).map((h) => (
+            {recentDashboardHomeowners.slice(0, 4).map((h) => (
               <tr key={h.id} style={{ transition: "background .15s" }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#FAFBFD")}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--row-hover)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
                 <Td>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <Avatar initials={h.initials} color={h.color} size={38} />
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: "#0F1923" }}>{h.name}</div>
-                      <div style={{ fontSize: 12, color: "#9AA3B8" }}>{h.email}</div>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text)" }}>{h.name}</div>
+                      <div style={{ fontSize: 12, color: "var(--muted)" }}>{h.email}</div>
                     </div>
                   </div>
                 </Td>
@@ -1265,7 +1596,7 @@ export default function DashboardPage() {
             ))}
             {filteredDashboardHomeowners.length === 0 && (
               <tr>
-                <Td style={{ textAlign: "center", color: "#9AA3B8" }} colSpan={6}>No matching homeowners.</Td>
+                <Td style={{ textAlign: "center", color: "var(--muted)" }} colSpan={6}>No matching homeowners.</Td>
               </tr>
             )}
           </tbody>
@@ -1278,7 +1609,28 @@ export default function DashboardPage() {
     <div style={{ animation: "fadeUp .35s ease both" }}>
       <Card>
         <CardHead title="Verification Requests" subtitle="Review and approve ID/license submissions"
-          right={<Pill color="orange">{pendingCount} Pending</Pill>}
+          right={
+            <>
+              <Pill color="orange">{pendingCount} Pending</Pill>
+              <button
+                onClick={() => setShowArchivedOnly((prev) => !prev)}
+                style={{
+                  padding: "4px 12px",
+                  borderRadius: 100,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  border: "1px solid var(--border)",
+                  background: showArchivedOnly ? "var(--info-solid)" : "var(--info-bg)",
+                  color: showArchivedOnly ? "white" : "var(--info-text)",
+                  cursor: "pointer",
+                  transition: "all .2s",
+                  fontFamily: "inherit",
+                }}
+              >
+                {showArchivedOnly ? "Show All" : `Archived (${archivedCount})`}
+              </button>
+            </>
+          }
         />
         <Toolbar
           placeholder="Search by user ID or type…"
@@ -1299,12 +1651,12 @@ export default function DashboardPage() {
               const userName = getVerificationUserName(v);
               return (
                 <tr key={v.id}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#FAFBFD")}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--row-hover)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   style={{ transition: "background .15s" }}>
                   <Td>
                     <div style={{ fontWeight: 700, fontSize: 13 }}>{userName || `User #${v.userId}`}</div>
-                    {userName && <div style={{ fontSize: 12, color: "#9AA3B8" }}>User #{v.userId}</div>}
+                    {userName && <div style={{ fontSize: 12, color: "var(--muted)" }}>User #{v.userId}</div>}
                   </Td>
                   <Td>{verificationTypeLabel(v.type)}</Td>
                   <Td>{v.createdAt ? new Date(v.createdAt).toLocaleDateString() : "—"}</Td>
@@ -1327,7 +1679,11 @@ export default function DashboardPage() {
                       {v.status === "pending" && v.type === "tradesperson_license" && (
                         <Btn variant="view" onClick={() => openDocumentModal(`User #${v.userId}`, v.documentUrl)}>{icons.license} View ID/Cert</Btn>
                       )}
-                      <Btn variant="reject" onClick={() => archiveVerification(v.id)}>{icons.x} Archive</Btn>
+                      {v.status === "archived" ? (
+                        <Btn variant="approve" onClick={() => restoreVerification(v.id)}>{icons.check} Restore</Btn>
+                      ) : (
+                        <Btn variant="reject" onClick={() => archiveVerification(v.id)}>{icons.x} Archive</Btn>
+                      )}
                     </div>
                   </Td>
                 </tr>
@@ -1360,7 +1716,7 @@ export default function DashboardPage() {
           <tbody>
             {filteredTradesmen.map((t) => (
               <tr key={t.id}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#FAFBFD")}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--row-hover)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 style={{ transition: "background .15s" }}>
                 <Td>
@@ -1368,7 +1724,7 @@ export default function DashboardPage() {
                     <Avatar initials={t.initials} color={t.color} size={38} />
                     <div>
                       <div style={{ fontWeight: 700, fontSize: 13 }}>{t.name}</div>
-                      <div style={{ fontSize: 12, color: "#9AA3B8" }}>{t.email}</div>
+                      <div style={{ fontSize: 12, color: "var(--muted)" }}>{t.email}</div>
                     </div>
                   </div>
                 </Td>
@@ -1379,7 +1735,7 @@ export default function DashboardPage() {
                 <Td><Badge status={t.status} /></Td>
                 <Td>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <Btn variant="view" onClick={() => openTMModal(t)}>View</Btn>
+                    <Btn variant="view" onClick={() => openTMModal(t)}>View Details</Btn>
                     {t.status === "Verified" && <Btn variant="reject" onClick={() => revokeTradesman(t.id, t.name)}>{icons.x} Revoke</Btn>}
                   </div>
                 </Td>
@@ -1421,7 +1777,7 @@ export default function DashboardPage() {
           <tbody>
             {filteredHomeowners.map((h) => (
               <tr key={h.id}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#FAFBFD")}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--row-hover)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 style={{ transition: "background .15s" }}>
                 <Td>
@@ -1429,7 +1785,7 @@ export default function DashboardPage() {
                     <Avatar initials={h.initials} color={h.color} size={38} />
                     <div>
                       <div style={{ fontWeight: 700, fontSize: 13 }}>{h.name}</div>
-                      <div style={{ fontSize: 12, color: "#9AA3B8" }}>{h.email}</div>
+                      <div style={{ fontSize: 12, color: "var(--muted)" }}>{h.email}</div>
                     </div>
                   </div>
                 </Td>
@@ -1453,16 +1809,44 @@ export default function DashboardPage() {
     </div>
   );
 
+  const PageSettings = () => (
+    <div style={{ animation: "fadeUp .35s ease both" }}>
+      <Card>
+        <CardHead title="Settings" subtitle="Personalize your admin experience" />
+        <div style={{ padding: 24 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>
+            Appearance
+          </div>
+          <Toggle
+            checked={isDark}
+            onChange={setIsDark}
+            label="Dark mode"
+            description="Switch the admin portal to a darker theme."
+          />
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--muted)", margin: "18px 0 10px" }}>
+            Data
+          </div>
+          <Toggle
+            checked={autoRefresh}
+            onChange={setAutoRefresh}
+            label="Auto-refresh dashboard"
+            description="Refresh recent lists every 30 seconds."
+          />
+        </div>
+      </Card>
+    </div>
+  );
+
   const PageProfile = () => (
     <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 24, animation: "fadeUp .35s ease both" }}>
       {/* Left: profile card */}
       <div>
         <Card style={{ marginBottom: 16 }}>
           {/* Hero */}
-          <div style={{ background: "#1B2B5E", padding: "32px 24px", display: "flex", flexDirection: "column", alignItems: "center", position: "relative", overflow: "hidden" }}>
+          <div style={{ background: "var(--sidebar-accent)", padding: "32px 24px", display: "flex", flexDirection: "column", alignItems: "center", position: "relative", overflow: "hidden" }}>
             <div style={{ position: "absolute", width: 200, height: 200, borderRadius: "50%", background: "rgba(255,255,255,0.04)", top: -70, right: -60 }} />
             <div style={{ position: "absolute", width: 120, height: 120, borderRadius: "50%", background: "rgba(232,119,34,0.12)", bottom: -40, left: 10 }} />
-            <div style={{ width: 76, height: 76, background: "#E87722", borderRadius: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 800, color: "white", marginBottom: 14, border: "3px solid rgba(255,255,255,0.2)", position: "relative", zIndex: 1 }}>AD</div>
+            <div style={{ width: 76, height: 76, background: "var(--accent)", borderRadius: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 800, color: "white", marginBottom: 14, border: "3px solid rgba(255,255,255,0.2)", position: "relative", zIndex: 1 }}>AD</div>
             <div style={{ fontSize: 20, fontWeight: 800, color: "white", position: "relative", zIndex: 1 }}>Admin User</div>
             <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginTop: 4, position: "relative", zIndex: 1 }}>Super Administrator</div>
           </div>
@@ -1472,25 +1856,25 @@ export default function DashboardPage() {
             { icon: icons.shield, label: "Password", sub: "Last changed 30 days ago" },
             { icon: icons.shield, label: "Security", sub: "2FA enabled" },
           ].map((item, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 20px", borderBottom: i < 2 ? "1px solid #E3E8F0" : "none", cursor: "pointer", transition: "background .15s" }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#F7F8FA")}
+            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 20px", borderBottom: i < 2 ? "1px solid var(--border)" : "none", cursor: "pointer", transition: "background .15s" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 9, background: "#FEF0E4", display: "flex", alignItems: "center", justifyContent: "center", color: "#E87722" }}>{item.icon}</div>
+                <div style={{ width: 36, height: 36, borderRadius: 9, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent)" }}>{item.icon}</div>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#0F1923" }}>{item.label}</div>
-                  <div style={{ fontSize: 11, color: "#9AA3B8", marginTop: 1 }}>{item.sub}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{item.label}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 1 }}>{item.sub}</div>
                 </div>
               </div>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9AA3B8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
             </div>
           ))}
         </Card>
         {/* Sign out */}
         <button onClick={handleLogout}
-          style={{ width: "100%", padding: 14, background: "#FFF0F1", border: "1.5px solid rgba(220,53,69,0.2)", borderRadius: 12, fontFamily: "inherit", fontSize: 14, fontWeight: 800, color: "#DC3545", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "all .2s" }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = "#DC3545"; e.currentTarget.style.color = "white"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = "#FFF0F1"; e.currentTarget.style.color = "#DC3545"; }}>
+          style={{ width: "100%", padding: 14, background: "var(--danger-bg)", border: "1.5px solid var(--danger-border)", borderRadius: 12, fontFamily: "inherit", fontSize: 14, fontWeight: 800, color: "var(--danger-text)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "all .2s" }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--danger-solid)"; e.currentTarget.style.color = "white"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "var(--danger-bg)"; e.currentTarget.style.color = "var(--danger-text)"; }}>
           {icons.logout} Sign Out
         </button>
       </div>
@@ -1502,17 +1886,11 @@ export default function DashboardPage() {
           <div style={{ padding: 24, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
             {[["Full Name","Admin User"],["Role","Super Administrator"],["Email","admin@fixit.com"],["Last Login","Today, 5:29 AM"]].map(([l,v]) => (
               <div key={l}>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "#9AA3B8", marginBottom: 6 }}>{l}</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "#0F1923" }}>{v}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>{l}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{v}</div>
               </div>
             ))}
           </div>
-        </Card>
-        <Card>
-          <CardHead title="Activity Log" />
-          <ActivityItem dot="#1A7A4A" title="Approved: Ramon Dela Cruz" sub="License APPL-2022-00312 verified" time="3h ago" />
-          <ActivityItem dot="#DC3545" title="Rejected: Unknown applicant" sub="Insufficient documentation" time="5h ago" />
-          <ActivityItem dot="#1B2B5E" title="Admin login" sub="admin@fixit.com · Chrome · Pasig" time="Today" isLast />
         </Card>
       </div>
     </div>
@@ -1520,10 +1898,10 @@ export default function DashboardPage() {
 
   // ── RENDER ─────────────────────────────────────────────────────
   return (
-    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "'Plus Jakarta Sans', sans-serif", background: "#F1F3F7" }}>
+    <div style={{ ...themeVars, display: "flex", minHeight: "100vh", fontFamily: "'Plus Jakarta Sans', sans-serif", background: "var(--bg)", color: "var(--text)" }}>
 
       {/* SIDEBAR */}
-      <nav style={{ width: 260, flexShrink: 0, background: "#1B2B5E", display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 50, boxShadow: "2px 0 20px rgba(15,25,35,.15)", overflowY: "auto" }}>
+      <nav style={{ width: 260, flexShrink: 0, background: "var(--sidebar)", display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 50, boxShadow: "2px 0 20px rgba(15,25,35,.15)", overflowY: "auto" }}>
         {/* Logo */}
         <div style={{ padding: "22px 20px 18px", borderBottom: "1px solid rgba(255,255,255,.08)", display: "flex", alignItems: "center", gap: 12 }}>
           <SidebarShield />
@@ -1534,8 +1912,8 @@ export default function DashboardPage() {
         </div>
 
         {/* Admin tag */}
-        <div style={{ margin: "14px 14px 4px", padding: "10px 14px", background: "rgba(232,119,34,.12)", border: "1px solid rgba(232,119,34,.25)", borderRadius: 10, display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 9, background: "#E87722", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "white", flexShrink: 0 }}>AD</div>
+        <div style={{ margin: "14px 14px 4px", padding: "10px 14px", background: "var(--accent-soft)", border: "1px solid rgba(232,119,34,.25)", borderRadius: 10, display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 9, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "white", flexShrink: 0 }}>AD</div>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: "white" }}>Admin User</div>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,.45)", marginTop: 1 }}>Super Administrator</div>
@@ -1553,8 +1931,7 @@ export default function DashboardPage() {
             { icon: icons.home,     label: "Homeowners",    page: "homeowners" as Page },
             { label: "System" },
             { icon: icons.user,     label: "Profile",       page: "profile" as Page },
-            { icon: icons.chart,    label: "Activity Log",  page: undefined },
-            { icon: icons.settings, label: "Settings",      page: undefined },
+            { icon: icons.settings, label: "Settings",      page: "settings" as Page },
           ].map((item, i) =>
             !item.icon ? (
               <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1.5px", textTransform: "uppercase", color: "rgba(255,255,255,.3)", padding: "14px 8px 8px" }}>{item.label}</div>
@@ -1574,11 +1951,11 @@ export default function DashboardPage() {
         {/* Sign out */}
         <div style={{ padding: "12px 16px 24px", borderTop: "1px solid rgba(255,255,255,.08)" }}>
           <button onClick={handleLogout}
-            style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", borderRadius: 10, background: "rgba(220,53,69,.1)", border: "1px solid rgba(220,53,69,.2)", cursor: "pointer", width: "100%", fontFamily: "inherit", transition: "background .2s" }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(220,53,69,.2)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(220,53,69,.1)")}>
-            <span style={{ color: "#F08090", display: "flex" }}>{icons.logout}</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#F08090" }}>Sign Out</span>
+            style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", borderRadius: 10, background: "var(--danger-bg)", border: "1px solid var(--danger-border)", cursor: "pointer", width: "100%", fontFamily: "inherit", transition: "background .2s", color: "var(--danger-text)" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--danger-solid)"; e.currentTarget.style.color = "white"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "var(--danger-bg)"; e.currentTarget.style.color = "var(--danger-text)"; }}>
+            <span style={{ display: "flex" }}>{icons.logout}</span>
+            <span style={{ fontSize: 13, fontWeight: 700 }}>Sign Out</span>
           </button>
         </div>
       </nav>
@@ -1586,14 +1963,14 @@ export default function DashboardPage() {
       {/* MAIN */}
       <div style={{ marginLeft: 260, flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }}>
         {/* Topbar */}
-        <div style={{ background: "#fff", height: 64, borderBottom: "1px solid #E3E8F0", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 32px", position: "sticky", top: 0, zIndex: 40, boxShadow: "0 1px 3px rgba(15,25,35,.06)" }}>
+        <div style={{ background: "var(--surface)", height: 64, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 32px", position: "sticky", top: 0, zIndex: 40, boxShadow: "var(--shadow)" }}>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: "#0F1923", letterSpacing: -0.3 }}>{pageTitles[activePage]}</div>
-            <div style={{ fontSize: 12, color: "#9AA3B8", fontWeight: 500, marginTop: 1 }}>Fix It Marketplace › Admin Portal › {pageTitles[activePage]}</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text)", letterSpacing: -0.3 }}>{pageTitles[activePage]}</div>
+            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, marginTop: 1 }}>Fix It Marketplace › Admin Portal › {pageTitles[activePage]}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {/* Search */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: "#F7F8FA", border: "1.5px solid #E3E8F0", borderRadius: 8, width: 220, color: "#9AA3B8", fontSize: 13, cursor: canSearchTopbar ? "text" : "not-allowed", opacity: canSearchTopbar ? 1 : 0.6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: "var(--surface-2)", border: "1.5px solid var(--border)", borderRadius: 8, width: 220, color: "var(--muted)", fontSize: 13, cursor: canSearchTopbar ? "text" : "not-allowed", opacity: canSearchTopbar ? 1 : 0.6 }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input
                 type="text"
@@ -1601,20 +1978,20 @@ export default function DashboardPage() {
                 value={topbarSearchValue}
                 onChange={(e) => setTopbarSearchValue(e.target.value)}
                 disabled={!canSearchTopbar}
-                style={{ border: "none", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 13, color: "#0F1923", width: "100%" }}
+                style={{ border: "none", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 13, color: "var(--text)", width: "100%" }}
               />
             </div>
             {/* Bell */}
             <button onClick={() => showToast("3 pending verifications", "info")}
-              style={{ width: 38, height: 38, borderRadius: 9, border: "1.5px solid #E3E8F0", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative", transition: "all .2s" }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#E87722"; e.currentTarget.style.background = "#FEF0E4"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#E3E8F0"; e.currentTarget.style.background = "#fff"; }}>
-              <span style={{ color: "#4A5568" }}>{icons.bell}</span>
-              <span style={{ position: "absolute", top: 7, right: 7, width: 7, height: 7, background: "#E87722", borderRadius: "50%", border: "1.5px solid white" }} />
+              style={{ width: 38, height: 38, borderRadius: 9, border: "1.5px solid var(--border)", background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative", transition: "all .2s" }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--accent-soft)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--surface)"; }}>
+              <span style={{ color: "var(--muted)" }}>{icons.bell}</span>
+              <span style={{ position: "absolute", top: 7, right: 7, width: 7, height: 7, background: "var(--accent)", borderRadius: "50%", border: "1.5px solid white" }} />
             </button>
             {/* Avatar */}
             <div onClick={() => setActivePage("profile")}
-              style={{ width: 38, height: 38, borderRadius: 9, background: "#E87722", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "white", cursor: "pointer" }}>
+              style={{ width: 38, height: 38, borderRadius: 9, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "white", cursor: "pointer" }}>
               AD
             </div>
           </div>
@@ -1627,6 +2004,7 @@ export default function DashboardPage() {
           {activePage === "tradesmen"    && <PageTradesmen />}
           {activePage === "homeowners"   && <PageHomeowners />}
           {activePage === "profile"      && <PageProfile />}
+          {activePage === "settings"     && <PageSettings />}
         </div>
       </div>
 
@@ -1634,7 +2012,7 @@ export default function DashboardPage() {
       <Toast msg={toast.msg} type={toast.type} show={toast.show} />
 
       {/* Modal */}
-      <Modal open={modal.open} onClose={() => setModal((m) => ({ ...m, open: false }))} title={modal.title} rows={modal.rows} />
+      <Modal open={modal.open} onClose={() => setModal((m) => ({ ...m, open: false }))} title={modal.title} rows={modal.rows} actions={modal.actions} />
       <ImageModal open={idModal.open} onClose={closeIdModal} title={idModal.title} imageUrl={idModal.imageUrl} contentType={idModal.contentType} />
 
       <style suppressHydrationWarning>{`
@@ -1643,9 +2021,9 @@ export default function DashboardPage() {
         @keyframes mIn    { from{opacity:0;transform:scale(.95)} to{opacity:1;transform:scale(1)} }
         body { margin: 0; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #F1F3F7; }
-        ::-webkit-scrollbar-thumb { background: #C8D0DC; border-radius: 100px; }
-        ::-webkit-scrollbar-thumb:hover { background: #9AA3B8; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: #64748B; border-radius: 100px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
       `}</style>
     </div>
   );

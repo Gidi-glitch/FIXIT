@@ -39,6 +39,7 @@ func ConnectDB() {
 		&models.HomeownerProfile{},
 		&models.TradespersonProfile{},
 		&models.VerificationDocument{},
+		&models.ActivityLog{},
 	); err != nil {
 		log.Fatal("❌ Failed to migrate database:", err)
 	}

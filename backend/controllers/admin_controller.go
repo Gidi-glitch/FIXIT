@@ -187,6 +187,16 @@ func HandleTradesperson(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fullName := strings.TrimSpace(profile.FirstName + " " + profile.LastName)
+	if fullName == "" {
+		fullName = fmt.Sprintf("User #%d", profile.UserID)
+	}
+	_ = logActivity(
+		"Re-verification requested",
+		fmt.Sprintf("%s · Status reset to pending", fullName),
+		"tradesperson_reverify",
+	)
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"message":          "tradesperson set to pending",
 		"tradesperson_id":  profile.ID,
@@ -206,7 +216,8 @@ func ListTradespeople(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 
 	var profiles []models.TradespersonProfile
-	query := config.DB.Preload("User")
+	// Use an inner join to exclude orphaned profiles when users are deleted.
+	query := config.DB.Joins("User").Preload("User")
 	if status != "" {
 		query = query.Where("verification_status = ?", status)
 	}
@@ -215,9 +226,37 @@ func ListTradespeople(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userIDs := make([]uint, 0, len(profiles))
+	for _, p := range profiles {
+		userIDs = append(userIDs, p.UserID)
+	}
+
+	licenseDocMap := map[uint]models.VerificationDocument{}
+	governmentDocMap := map[uint]models.VerificationDocument{}
+	if len(userIDs) > 0 {
+		var docs []models.VerificationDocument
+		if err := config.DB.
+			Where("user_id IN ? AND LOWER(document_group) IN ?", userIDs, []string{"license", "government_id"}).
+			Order("created_at desc").
+			Find(&docs).Error; err == nil {
+			for _, d := range docs {
+				switch strings.ToLower(d.DocumentGroup) {
+				case "license":
+					if _, exists := licenseDocMap[d.UserID]; !exists {
+						licenseDocMap[d.UserID] = d
+					}
+				case "government_id":
+					if _, exists := governmentDocMap[d.UserID]; !exists {
+						governmentDocMap[d.UserID] = d
+					}
+				}
+			}
+		}
+	}
+
 	rows := make([]map[string]any, 0, len(profiles))
 	for _, p := range profiles {
-		rows = append(rows, map[string]any{
+		row := map[string]any{
 			"id":                  p.ID,
 			"user_id":             p.UserID,
 			"user_email":          p.User.Email,
@@ -230,7 +269,18 @@ func ListTradespeople(w http.ResponseWriter, r *http.Request) {
 			"bio":                 p.Bio,
 			"verification_status": p.VerificationStatus,
 			"created_at":          p.CreatedAt,
-		})
+		}
+
+		if doc, ok := licenseDocMap[p.UserID]; ok {
+			row["license_document_url"] = fmt.Sprintf("/api/admin/documents/%d/file", doc.ID)
+			row["license_document_type"] = doc.DocumentType
+		}
+		if doc, ok := governmentDocMap[p.UserID]; ok {
+			row["government_id_document_url"] = fmt.Sprintf("/api/admin/documents/%d/file", doc.ID)
+			row["government_id_document_type"] = doc.DocumentType
+		}
+
+		rows = append(rows, row)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"tradespeople": rows})
@@ -244,7 +294,8 @@ func ListHomeowners(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var profiles []models.HomeownerProfile
-	query := config.DB.Preload("User")
+	// Use an inner join to exclude orphaned profiles when users are deleted.
+	query := config.DB.Joins("User").Preload("User")
 	if err := query.Order("created_at asc").Find(&profiles).Error; err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list homeowners")
 		return
@@ -401,6 +452,12 @@ func ReviewVerification(w http.ResponseWriter, r *http.Request) {
 
 	syncTradespersonStatus(doc.UserID)
 
+	_ = logActivity(
+		fmt.Sprintf("Verification %s", body.Status),
+		fmt.Sprintf("User #%d · %s", doc.UserID, verificationTypeLabel(doc)),
+		"verification_"+body.Status,
+	)
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"message":         "verification " + body.Status,
 		"verification_id": doc.ID,
@@ -445,6 +502,7 @@ func ensureHomeownerProfile(userID uint) error {
 
 // HandleVerification routes:
 // DELETE /api/verifications/{id}
+// PATCH  /api/verifications/{id}
 func HandleVerification(w http.ResponseWriter, r *http.Request) {
 	// Split path into segments: ["api","verifications","{id}"]
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
@@ -459,23 +517,69 @@ func HandleVerification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Method != http.MethodDelete {
+	var doc models.VerificationDocument
+	if err := config.DB.First(&doc, id).Error; err != nil {
+		writeError(w, http.StatusNotFound, "verification not found")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodDelete:
+		if err := config.DB.Model(&doc).Update("status", "archived").Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to archive verification")
+			return
+		}
+
+		_ = logActivity(
+			"Verification archived",
+			fmt.Sprintf("User #%d · %s", doc.UserID, verificationTypeLabel(doc)),
+			"verification_archived",
+		)
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"message":         "verification archived",
+			"verification_id": id,
+			"status":          "archived",
+		})
+		return
+
+	case http.MethodPatch:
+		if doc.Status != "archived" {
+			writeError(w, http.StatusConflict, "only archived verifications can be restored")
+			return
+		}
+
+		if err := config.DB.Model(&doc).Update("status", "approved").Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to restore verification")
+			return
+		}
+
+		if strings.EqualFold(doc.DocumentGroup, "government_id") || strings.EqualFold(doc.DocumentGroup, "homeowner_id") {
+			if err := ensureHomeownerProfile(doc.UserID); err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to ensure homeowner profile")
+				return
+			}
+		}
+
+		syncTradespersonStatus(doc.UserID)
+
+		_ = logActivity(
+			"Verification restored",
+			fmt.Sprintf("User #%d · %s", doc.UserID, verificationTypeLabel(doc)),
+			"verification_restored",
+		)
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"message":         "verification restored",
+			"verification_id": id,
+			"status":          "approved",
+		})
+		return
+
+	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-
-	if err := config.DB.Model(&models.VerificationDocument{}).
-		Where("id = ?", id).
-		Update("status", "archived").Error; err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to archive verification")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"message":         "verification archived",
-		"verification_id": id,
-		"status":          "archived",
-	})
 }
 
 // syncTradespersonStatus re-evaluates the tradesperson profile's verification_status
@@ -508,5 +612,62 @@ func syncTradespersonStatus(userID uint) {
 		config.DB.Model(&models.TradespersonProfile{}).
 			Where("user_id = ?", userID).
 			Update("verification_status", "approved")
+	}
+}
+
+// ListActivity handles GET /api/admin/activity?limit=6
+func ListActivity(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	limit := 6
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			if n > 50 {
+				limit = 50
+			} else {
+				limit = n
+			}
+		}
+	}
+
+	var items []models.ActivityLog
+	if err := config.DB.Order("created_at desc").Limit(limit).Find(&items).Error; err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list activity")
+		return
+	}
+
+	rows := make([]map[string]any, 0, len(items))
+	for _, a := range items {
+		rows = append(rows, map[string]any{
+			"id":         a.ID,
+			"title":      a.Title,
+			"sub":        a.Sub,
+			"type":       a.Type,
+			"created_at": a.CreatedAt,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"activity": rows})
+}
+
+func logActivity(title, sub, activityType string) error {
+	return config.DB.Create(&models.ActivityLog{
+		Title: title,
+		Sub:   sub,
+		Type:  activityType,
+	}).Error
+}
+
+func verificationTypeLabel(doc models.VerificationDocument) string {
+	switch strings.ToLower(doc.DocumentGroup) {
+	case "license", "tradesperson_license":
+		return "Tradesperson License"
+	case "government_id", "homeowner_id":
+		return "Homeowner ID"
+	default:
+		return "Verification"
 	}
 }
