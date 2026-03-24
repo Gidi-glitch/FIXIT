@@ -20,15 +20,17 @@ class UserLoginScreen extends StatefulWidget {
 }
 
 class _UserLoginScreenState extends State<UserLoginScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
+  bool _isCreateAccountAnimating = false;
 
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
+  late AnimationController _createAccountSkeletonController;
 
   // ── Color Palette ──────────────────────────────────────────────
   static const Color _primaryBlue = Color(0xFF1E3A8A);
@@ -50,6 +52,10 @@ class _UserLoginScreenState extends State<UserLoginScreen>
       parent: _fadeController,
       curve: Curves.easeOut,
     );
+    _createAccountSkeletonController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    );
     _fadeController.forward();
   }
 
@@ -58,6 +64,7 @@ class _UserLoginScreenState extends State<UserLoginScreen>
     _emailController.dispose();
     _passwordController.dispose();
     _fadeController.dispose();
+    _createAccountSkeletonController.dispose();
     super.dispose();
   }
 
@@ -93,9 +100,9 @@ class _UserLoginScreenState extends State<UserLoginScreen>
               ? const TradesmanDashboard()
               : const HomeownerDashboardScreen();
 
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => destination),
-          );
+          Navigator.of(
+            context,
+          ).pushReplacement(MaterialPageRoute(builder: (_) => destination));
         }
       } on HttpException catch (e) {
         if (mounted) {
@@ -256,6 +263,18 @@ class _UserLoginScreenState extends State<UserLoginScreen>
     );
   }
 
+  Future<void> _handleCreateAccountTap() async {
+    if (_isCreateAccountAnimating) return;
+
+    setState(() => _isCreateAccountAnimating = true);
+    await _createAccountSkeletonController.forward(from: 0);
+
+    if (!mounted) return;
+
+    setState(() => _isCreateAccountAnimating = false);
+    _showAccountTypeDialog();
+  }
+
   Widget _buildAccountTypeOption({
     required IconData icon,
     required String title,
@@ -377,8 +396,6 @@ class _UserLoginScreenState extends State<UserLoginScreen>
       ),
     );
   }
-
-  
 
   @override
   Widget build(BuildContext context) {
@@ -754,22 +771,45 @@ class _UserLoginScreenState extends State<UserLoginScreen>
           "Don't have an account? ",
           style: TextStyle(
             fontSize: 14,
-            color: _textMuted,
+            color: _textMuted.withValues(alpha: 0.7),
             fontWeight: FontWeight.w400,
           ),
         ),
         GestureDetector(
-          onTap: _showAccountTypeDialog,
-          child: Text(
-            'Create an Account',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: _accentOrange,
-              decoration: TextDecoration.underline,
-              decorationColor: _accentOrange,
-            ),
-          ),
+          onTap: _handleCreateAccountTap,
+          child: _isCreateAccountAnimating
+              ? AnimatedBuilder(
+                  animation: _createAccountSkeletonController,
+                  builder: (context, child) {
+                    final pulse =
+                        0.55 + (_createAccountSkeletonController.value * 0.25);
+
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: SizedBox(
+                        width: 132,
+                        height: 18,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFFD1D5DB,
+                            ).withValues(alpha: pulse),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                )
+              : const Text(
+                  'Create an Account',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: _accentOrange,
+                    decoration: TextDecoration.underline,
+                    decorationColor: _accentOrange,
+                  ),
+                ),
         ),
       ],
     );
