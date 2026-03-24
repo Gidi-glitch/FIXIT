@@ -30,6 +30,7 @@ class _UserLoginScreenState extends State<UserLoginScreen>
 
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
+  late AnimationController _loginSkeletonController;
   late AnimationController _createAccountSkeletonController;
 
   // ── Color Palette ──────────────────────────────────────────────
@@ -52,6 +53,10 @@ class _UserLoginScreenState extends State<UserLoginScreen>
       parent: _fadeController,
       curve: Curves.easeOut,
     );
+    _loginSkeletonController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    );
     _createAccountSkeletonController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
@@ -64,77 +69,91 @@ class _UserLoginScreenState extends State<UserLoginScreen>
     _emailController.dispose();
     _passwordController.dispose();
     _fadeController.dispose();
+    _loginSkeletonController.dispose();
     _createAccountSkeletonController.dispose();
     super.dispose();
   }
 
   Future<void> _handleLogin() async {
-    if (_formKey.currentState?.validate() ?? false) {
-      setState(() => _isLoading = true);
-      try {
-        final result = await ApiService.loginUser(
-          email: _emailController.text.trim(),
-          password: _passwordController.text,
+    if (_isLoading || !(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    _loginSkeletonController.repeat(reverse: true);
+
+    try {
+      final loginRequest = ApiService.loginUser(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+      final result =
+          (await Future.wait<dynamic>([
+                loginRequest,
+                Future<void>.delayed(const Duration(seconds: 1)),
+              ])).first
+              as Map<String, dynamic>;
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('token', result['token'] as String);
+      final role = (result['user'] as Map)['role'] as String;
+      await prefs.setString('role', role);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Welcome back! Logged in as $role'),
+            backgroundColor: _primaryBlue,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            margin: const EdgeInsets.all(16),
+          ),
         );
+        final normalizedRole = role.toLowerCase();
+        final Widget destination =
+            normalizedRole == 'tradesperson' || normalizedRole == 'tradesman'
+            ? const TradesmanDashboard()
+            : const HomeownerDashboardScreen();
 
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('token', result['token'] as String);
-        final role = (result['user'] as Map)['role'] as String;
-        await prefs.setString('role', role);
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Welcome back! Logged in as $role'),
-              backgroundColor: _primaryBlue,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              margin: const EdgeInsets.all(16),
-            ),
-          );
-          final normalizedRole = role.toLowerCase();
-          final Widget destination =
-              normalizedRole == 'tradesperson' || normalizedRole == 'tradesman'
-              ? const TradesmanDashboard()
-              : const HomeownerDashboardScreen();
-
-          Navigator.of(
-            context,
-          ).pushReplacement(MaterialPageRoute(builder: (_) => destination));
-        }
-      } on HttpException catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(e.message),
-              backgroundColor: const Color(0xFFEF4444),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              margin: const EdgeInsets.all(16),
-            ),
-          );
-        }
-      } catch (_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Connection error. Is the server running?'),
-              backgroundColor: Color(0xFFEF4444),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              margin: EdgeInsets.all(16),
-            ),
-          );
-        }
-      } finally {
-        if (mounted) setState(() => _isLoading = false);
+        Navigator.of(
+          context,
+        ).pushReplacement(MaterialPageRoute(builder: (_) => destination));
       }
+    } on HttpException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message),
+            backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            margin: const EdgeInsets.all(16),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Connection error. Is the server running?'),
+            backgroundColor: Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            margin: EdgeInsets.all(16),
+          ),
+        );
+      }
+    } finally {
+      _loginSkeletonController
+        ..stop()
+        ..reset();
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -724,7 +743,7 @@ class _UserLoginScreenState extends State<UserLoginScreen>
     );
   }
 
-  /// Full-width LOGIN button with loading spinner state.
+  /// Full-width LOGIN button with a 1-second skeleton loading state.
   Widget _buildLoginButton() {
     return SizedBox(
       width: double.infinity,
@@ -742,14 +761,7 @@ class _UserLoginScreenState extends State<UserLoginScreen>
           ),
         ),
         child: _isLoading
-            ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              )
+            ? _buildLoginButtonSkeleton()
             : const Text(
                 'LOGIN',
                 style: TextStyle(
@@ -759,6 +771,31 @@ class _UserLoginScreenState extends State<UserLoginScreen>
                 ),
               ),
       ),
+    );
+  }
+
+  Widget _buildLoginButtonSkeleton() {
+    return AnimatedBuilder(
+      animation: _loginSkeletonController,
+      builder: (context, child) {
+        final animationValue = _loginSkeletonController.value;
+        final baseOpacity =
+            0.28 + ((1 - (animationValue - 0.5).abs() * 2) * 0.22);
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 94,
+              height: 14,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: baseOpacity),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

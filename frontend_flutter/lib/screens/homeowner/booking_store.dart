@@ -2,6 +2,7 @@
 /// BookingFormScreen writes here; BookingsScreen reads from here.
 /// Replace with a proper state-management solution (Riverpod/Provider)
 /// once you wire up the Go backend.
+library;
 
 class BookingModel {
   final String id;

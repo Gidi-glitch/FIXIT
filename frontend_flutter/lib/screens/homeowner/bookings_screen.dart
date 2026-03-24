@@ -440,7 +440,7 @@ class _BookingsScreenState extends State<BookingsScreen>
                     const SizedBox(width: 16),
                     _buildDetailItem(
                       Icons.attach_money_rounded,
-                      '${booking.offeredBudget.toStringAsFixed(0)}',
+                      booking.offeredBudget.toStringAsFixed(0),
                     ),
                     const Spacer(),
                     Container(
