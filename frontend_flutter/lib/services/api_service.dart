@@ -11,7 +11,7 @@ class ApiService {
 
 
   static const String _emulatorUrl = "http://10.0.2.2:8080";
-  static const String _physicalUrl = "http://192.168.1.5:8080";
+  static const String _physicalUrl = "http://192.168.1.6:8080";
 
   static String baseUrl = _emulatorUrl; // safe default
 
@@ -148,4 +148,43 @@ class ApiService {
       responseBody['message']?.toString() ?? 'Request failed',
     );
   }
+
+  static Future<void> forgotPassword({required String email}) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/auth/forgot-password'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"email": email}),
+    );
+    _decodeResponse(response);
+  }
+
+  static Future<void> verifyResetCode({
+    required String email,
+    required String otp,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/auth/verify-reset-code'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"email": email, "otp": otp}),
+    );
+    _decodeResponse(response);
+  }
+
+  static Future<void> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/auth/reset-password'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "email": email,
+        "otp": otp,
+        "new_password": newPassword,
+      }),
+    );
+    _decodeResponse(response);
+  }
+
 }

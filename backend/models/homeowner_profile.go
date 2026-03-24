@@ -9,6 +9,7 @@ type HomeownerProfile struct {
 	LastName  string `json:"last_name" gorm:"not null"`
 	Phone     string `json:"phone" gorm:"not null"`
 	Barangay  string `json:"barangay" gorm:"not null"`
+	StatusID  string `json:"status_id" gorm:"not null;default:pending"`
 
 	User User `json:"-" gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:UserID"`
 }

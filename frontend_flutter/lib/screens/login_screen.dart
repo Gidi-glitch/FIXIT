@@ -1,11 +1,13 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_fixit_application/screens/homeowner_registration.dart';
 import 'package:flutter_fixit_application/screens/tradesperson_registration.dart';
+import 'package:flutter_fixit_application/screens/forgot_password.dart';
+import 'package:flutter_fixit_application/screens/homeowner/homeowner_dashboard.dart';
+import 'package:flutter_fixit_application/screens/tradesperson/tradesperson_dashboard.dart';
 
 /// Login screen for the Fix It Marketplace Android app.
 /// This screen provides email/password authentication UI for users.
@@ -85,7 +87,15 @@ class _UserLoginScreenState extends State<UserLoginScreen>
               margin: const EdgeInsets.all(16),
             ),
           );
-          // TODO: Navigator.pushReplacement to your home screen based on role
+          final normalizedRole = role.toLowerCase();
+          final Widget destination =
+              normalizedRole == 'tradesperson' || normalizedRole == 'tradesman'
+              ? const TradesmanDashboard()
+              : const HomeownerDashboardScreen();
+
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => destination),
+          );
         }
       } on HttpException catch (e) {
         if (mounted) {
@@ -352,8 +362,23 @@ class _UserLoginScreenState extends State<UserLoginScreen>
   }
 
   void _navigateToForgotPassword() {
-    // TODO: Navigate to forgot password screen
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const ForgotPasswordScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(
+            opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 300),
+      ),
+    );
   }
+
+  
 
   @override
   Widget build(BuildContext context) {

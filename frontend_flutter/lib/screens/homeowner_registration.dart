@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_fixit_application/screens/login_screen.dart';
-import 'package:flutter_fixit_application/screens/homeowner_dashboard.dart';
 import 'dart:io';
 import 'package:flutter_fixit_application/services/api_service.dart';
 
@@ -153,7 +152,7 @@ class _HomeownerRegistrationScreenState
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Registration successful! Welcome home.'),
+              content: Text('Registration successful! Please log in.'),
               backgroundColor: Color(0xFF10B981),
               behavior: SnackBarBehavior.floating,
               margin: EdgeInsets.all(16),
@@ -276,7 +275,8 @@ class _HomeownerRegistrationScreenState
   }
 
   void _navigateToLogin() {
-    Navigator.of(context).pushAndRemoveUntil(
+    Navigator.pushReplacement(
+      context,
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) =>
             const UserLoginScreen(),
@@ -288,10 +288,8 @@ class _HomeownerRegistrationScreenState
         },
         transitionDuration: const Duration(milliseconds: 300),
       ),
-      (route) => false,
     );
   }
-
 
   @override
   Widget build(BuildContext context) {

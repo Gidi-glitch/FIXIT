@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -13,6 +14,16 @@ import (
 
 	"gorm.io/gorm"
 )
+
+func documentFileExists(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+	if _, err := os.Stat(path); err != nil {
+		return false
+	}
+	return true
+}
 
 // ListDocuments handles GET /api/admin/documents
 // Optional query param: ?status=pending|approved|rejected  (omit to return all)
@@ -87,6 +98,10 @@ func HandleDocument(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "document not found")
 			return
 		}
+		if !documentFileExists(doc.FilePath) {
+			writeError(w, http.StatusNotFound, "document file missing")
+			return
+		}
 
 		http.ServeFile(w, r, doc.FilePath)
 		return
@@ -142,6 +157,7 @@ func HandleDocument(w http.ResponseWriter, r *http.Request) {
 
 // HandleTradesperson routes:
 // PATCH /api/admin/tradespeople/{id}/revoke
+// PATCH /api/admin/tradespeople/{id}/restore
 func HandleTradesperson(w http.ResponseWriter, r *http.Request) {
 	// Split path into segments: ["api","admin","tradespeople","{id}","revoke"]
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
@@ -156,7 +172,8 @@ func HandleTradesperson(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if parts[4] != "revoke" {
+	action := parts[4]
+	if action != "revoke" && action != "restore" {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -175,34 +192,148 @@ func HandleTradesperson(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := config.DB.Model(&profile).Update("verification_status", "pending").Error; err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to set tradesperson to pending")
+	fullName := strings.TrimSpace(profile.FirstName + " " + profile.LastName)
+	if fullName == "" {
+		fullName = fmt.Sprintf("User #%d", profile.UserID)
+	}
+
+	switch action {
+	case "revoke":
+		if err := config.DB.Model(&profile).Update("verification_status", "pending").Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to set tradesperson to pending")
+			return
+		}
+
+		if err := config.DB.Model(&models.VerificationDocument{}).
+			Where("user_id = ? AND document_group = ?", profile.UserID, "license").
+			Update("status", "pending").Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to reset tradesperson documents")
+			return
+		}
+
+		_ = logActivity(
+			"Re-verification requested",
+			fmt.Sprintf("%s · Status reset to pending", fullName),
+			"tradesperson_reverify",
+		)
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"message":             "tradesperson set to pending",
+			"tradesperson_id":     profile.ID,
+			"user_id":             profile.UserID,
+			"verification_status": "pending",
+		})
+	case "restore":
+		if err := config.DB.Model(&profile).Update("verification_status", "approved").Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to restore tradesperson")
+			return
+		}
+
+		if err := config.DB.Model(&models.VerificationDocument{}).
+			Where("user_id = ? AND document_group = ?", profile.UserID, "license").
+			Update("status", "approved").Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to restore tradesperson documents")
+			return
+		}
+
+		_ = logActivity(
+			"Tradesperson restored",
+			fmt.Sprintf("%s · Status set to approved", fullName),
+			"tradesperson_restored",
+		)
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"message":             "tradesperson restored",
+			"tradesperson_id":     profile.ID,
+			"user_id":             profile.UserID,
+			"verification_status": "approved",
+		})
+	}
+}
+
+// HandleHomeowner routes:
+// PATCH /api/admin/homeowners/{id}/revoke
+// PATCH /api/admin/homeowners/{id}/restore
+func HandleHomeowner(w http.ResponseWriter, r *http.Request) {
+	// Split path into segments: ["api","admin","homeowners","{id}","revoke"]
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) != 5 {
+		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
 
-	if err := config.DB.Model(&models.VerificationDocument{}).
-		Where("user_id = ? AND document_group = ?", profile.UserID, "license").
-		Update("status", "pending").Error; err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to reset tradesperson documents")
+	id, err := strconv.ParseUint(parts[3], 10, 64)
+	if err != nil || id == 0 {
+		writeError(w, http.StatusBadRequest, "invalid homeowner id")
 		return
+	}
+
+	action := parts[4]
+	if action != "revoke" && action != "restore" {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	if r.Method != http.MethodPatch {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var profile models.HomeownerProfile
+	if err := config.DB.First(&profile, id).Error; err != nil {
+		// Fallback: allow passing user_id instead of profile id.
+		if err := config.DB.Where("user_id = ?", id).First(&profile).Error; err != nil {
+			writeError(w, http.StatusNotFound, "homeowner not found")
+			return
+		}
 	}
 
 	fullName := strings.TrimSpace(profile.FirstName + " " + profile.LastName)
 	if fullName == "" {
 		fullName = fmt.Sprintf("User #%d", profile.UserID)
 	}
-	_ = logActivity(
-		"Re-verification requested",
-		fmt.Sprintf("%s · Status reset to pending", fullName),
-		"tradesperson_reverify",
-	)
+	switch action {
+	case "revoke":
+		if err := config.DB.Model(&models.User{}).
+			Where("id = ?", profile.UserID).
+			Update("is_active", false).Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to revoke homeowner")
+			return
+		}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"message":          "tradesperson set to pending",
-		"tradesperson_id":  profile.ID,
-		"user_id":          profile.UserID,
-		"verification_status": "pending",
-	})
+		_ = logActivity(
+			"Homeowner revoked",
+			fmt.Sprintf("%s · Account set to inactive", fullName),
+			"homeowner_revoked",
+		)
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"message":        "homeowner revoked",
+			"homeowner_id":   profile.ID,
+			"user_id":        profile.UserID,
+			"account_status": "inactive",
+		})
+	case "restore":
+		if err := config.DB.Model(&models.User{}).
+			Where("id = ?", profile.UserID).
+			Update("is_active", true).Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to restore homeowner")
+			return
+		}
+
+		_ = logActivity(
+			"Homeowner restored",
+			fmt.Sprintf("%s · Account set to active", fullName),
+			"homeowner_restored",
+		)
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"message":        "homeowner restored",
+			"homeowner_id":   profile.ID,
+			"user_id":        profile.UserID,
+			"account_status": "active",
+		})
+	}
 }
 
 // ListTradespeople handles GET /api/admin/tradespeople
@@ -240,6 +371,9 @@ func ListTradespeople(w http.ResponseWriter, r *http.Request) {
 			Order("created_at desc").
 			Find(&docs).Error; err == nil {
 			for _, d := range docs {
+				if !documentFileExists(d.FilePath) {
+					continue
+				}
 				switch strings.ToLower(d.DocumentGroup) {
 				case "license":
 					if _, exists := licenseDocMap[d.UserID]; !exists {
@@ -315,6 +449,9 @@ func ListHomeowners(w http.ResponseWriter, r *http.Request) {
 			Order("created_at desc").
 			Find(&docs).Error; err == nil {
 			for _, d := range docs {
+				if !documentFileExists(d.FilePath) {
+					continue
+				}
 				if _, exists := docMap[d.UserID]; !exists {
 					docMap[d.UserID] = d
 				}
@@ -325,6 +462,10 @@ func ListHomeowners(w http.ResponseWriter, r *http.Request) {
 	rows := make([]map[string]any, 0, len(profiles))
 	for _, p := range profiles {
 		fullName := strings.TrimSpace(p.FirstName + " " + p.LastName)
+		status := "active"
+		if !p.User.IsActive {
+			status = "inactive"
+		}
 		row := map[string]any{
 			"id":         p.ID,
 			"user_id":    p.UserID,
@@ -332,12 +473,19 @@ func ListHomeowners(w http.ResponseWriter, r *http.Request) {
 			"full_name":  fullName,
 			"barangay":   p.Barangay,
 			"created_at": p.CreatedAt,
+			"status":     status,
 		}
 
+		idStatus := strings.TrimSpace(p.StatusID)
 		if doc, ok := docMap[p.UserID]; ok {
-			row["id_status"] = doc.Status
+			if idStatus == "" {
+				idStatus = doc.Status
+			}
 			row["id_document_url"] = fmt.Sprintf("/api/admin/documents/%d/file", doc.ID)
 			row["id_document_type"] = doc.DocumentType
+		}
+		if idStatus != "" {
+			row["id_status"] = idStatus
 		}
 
 		rows = append(rows, row)
@@ -390,7 +538,12 @@ func ListVerifications(w http.ResponseWriter, r *http.Request) {
 			"user_id":      d.UserID,
 			"type":         vType,
 			"status":       d.Status,
-			"document_url": fmt.Sprintf("/api/admin/documents/%d/file", d.ID),
+			"document_url": func() string {
+				if !documentFileExists(d.FilePath) {
+					return ""
+				}
+				return fmt.Sprintf("/api/admin/documents/%d/file", d.ID)
+			}(),
 			"created_at":   d.CreatedAt,
 		})
 	}
@@ -440,13 +593,11 @@ func ReviewVerification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if body.Status == "approved" {
-		switch strings.ToLower(doc.DocumentGroup) {
-		case "government_id", "homeowner_id":
-			if err := ensureHomeownerProfile(doc.UserID); err != nil {
-				writeError(w, http.StatusInternalServerError, "failed to ensure homeowner profile")
-				return
-			}
+	switch strings.ToLower(doc.DocumentGroup) {
+	case "government_id", "homeowner_id":
+		if err := updateHomeownerIDStatus(doc.UserID, body.Status); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to update homeowner id status")
+			return
 		}
 	}
 
@@ -500,6 +651,16 @@ func ensureHomeownerProfile(userID uint) error {
 	return config.DB.Create(&profile).Error
 }
 
+func updateHomeownerIDStatus(userID uint, status string) error {
+	if err := ensureHomeownerProfile(userID); err != nil {
+		return err
+	}
+	return config.DB.
+		Model(&models.HomeownerProfile{}).
+		Where("user_id = ?", userID).
+		Update("status_id", status).Error
+}
+
 // HandleVerification routes:
 // DELETE /api/verifications/{id}
 // PATCH  /api/verifications/{id}
@@ -530,6 +691,13 @@ func HandleVerification(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if strings.EqualFold(doc.DocumentGroup, "government_id") || strings.EqualFold(doc.DocumentGroup, "homeowner_id") {
+			if err := updateHomeownerIDStatus(doc.UserID, "archived"); err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to update homeowner id status")
+				return
+			}
+		}
+
 		_ = logActivity(
 			"Verification archived",
 			fmt.Sprintf("User #%d · %s", doc.UserID, verificationTypeLabel(doc)),
@@ -555,8 +723,8 @@ func HandleVerification(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if strings.EqualFold(doc.DocumentGroup, "government_id") || strings.EqualFold(doc.DocumentGroup, "homeowner_id") {
-			if err := ensureHomeownerProfile(doc.UserID); err != nil {
-				writeError(w, http.StatusInternalServerError, "failed to ensure homeowner profile")
+			if err := updateHomeownerIDStatus(doc.UserID, "approved"); err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to update homeowner id status")
 				return
 			}
 		}

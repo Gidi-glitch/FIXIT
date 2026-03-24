@@ -24,10 +24,14 @@ func RegisterAdminRoutes() {
 	// GET  /api/admin/tradespeople?status=pending|approved|rejected
 	http.Handle("/api/admin/tradespeople", admin(http.HandlerFunc(controllers.ListTradespeople)))
 	// PATCH /api/admin/tradespeople/{id}/revoke
+	// PATCH /api/admin/tradespeople/{id}/restore
 	http.Handle("/api/admin/tradespeople/", admin(http.HandlerFunc(controllers.HandleTradesperson)))
 
 	// GET  /api/admin/homeowners
 	http.Handle("/api/admin/homeowners", admin(http.HandlerFunc(controllers.ListHomeowners)))
+	// PATCH /api/admin/homeowners/{id}/revoke
+	// PATCH /api/admin/homeowners/{id}/restore
+	http.Handle("/api/admin/homeowners/", admin(http.HandlerFunc(controllers.HandleHomeowner)))
 
 	// GET  /api/admin/activity?limit=6
 	http.Handle("/api/admin/activity", admin(http.HandlerFunc(controllers.ListActivity)))

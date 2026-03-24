@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, ReactNode, useEffect, CSSProperties } from "react";
+import { useState, ReactNode, useEffect, CSSProperties, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 // ─────────────────────────────────────────────────────────────────
@@ -21,6 +21,7 @@ interface Tradesman {
   credentialUrl: string;
   governmentIdUrl?: string;
   joined: string;
+  createdAt?: string;
   jobs: number;
   status: "Pending" | "Verified" | "Suspended";
 }
@@ -38,7 +39,7 @@ interface Homeowner {
   jobs: number;
   status: "Active" | "Inactive" | "Pending";
   idNumber: string;
-  idStatus: "Pending" | "Approved" | "Rejected";
+  idStatus: "Pending" | "Approved" | "Rejected" | "Archived";
   idImageUrl: string;
 }
 
@@ -58,6 +59,14 @@ interface ActivityEntry {
   title: string;
   sub: string;
   time: string;
+}
+
+interface UserGrowthPoint {
+  key: string;
+  label: string;
+  homeowners: number;
+  tradesmen: number;
+  total: number;
 }
 
 const toTitle = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
@@ -112,6 +121,51 @@ const formatTimeAgo = (value?: string) => {
   const day = Math.floor(hr / 24);
   if (day < 7) return `${day}d ago`;
   return d.toLocaleDateString();
+};
+
+const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short" });
+const getMonthKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}`;
+
+const parseDashboardDate = (value?: string) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const buildUserGrowthData = (homeowners: Homeowner[], tradesmen: Tradesman[], months = 6) => {
+  const now = new Date();
+  const buckets: UserGrowthPoint[] = Array.from({ length: months }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - (months - 1 - index), 1);
+    return {
+      key: getMonthKey(date),
+      label: monthLabelFormatter.format(date),
+      homeowners: 0,
+      tradesmen: 0,
+      total: 0,
+    };
+  });
+
+  const bucketMap = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+
+  homeowners.forEach((homeowner) => {
+    const parsed = parseDashboardDate(homeowner.createdAt);
+    if (!parsed) return;
+    const bucket = bucketMap.get(getMonthKey(parsed));
+    if (!bucket) return;
+    bucket.homeowners += 1;
+    bucket.total += 1;
+  });
+
+  tradesmen.forEach((tradesman) => {
+    const parsed = parseDashboardDate(tradesman.createdAt);
+    if (!parsed) return;
+    const bucket = bucketMap.get(getMonthKey(parsed));
+    if (!bucket) return;
+    bucket.tradesmen += 1;
+    bucket.total += 1;
+  });
+
+  return buckets;
 };
 
 const activityDot = (type: string) => {
@@ -182,7 +236,7 @@ const Badge = ({ status }: { status: string }) => {
       display: "inline-block", padding: "4px 10px", borderRadius: 100,
       fontSize: 11, fontWeight: 700, background: s.bg, color: s.color, border: s.border,
     }}>
-      {status === "Verified" || status === "Approved" ? "✓ " : ""}{status}
+      {status === "Verified" || status === "Approved" ? "" : ""}{status}
     </span>
   );
 };
@@ -191,7 +245,7 @@ const Badge = ({ status }: { status: string }) => {
 const Btn = ({
   children, variant = "default", onClick, disabled,
 }: {
-  children: ReactNode; variant?: "approve" | "reject" | "view" | "default" | "navy";
+  children: ReactNode; variant?: "approve" | "reject" | "view" | "default" | "navy" | "neon";
   onClick?: () => void; disabled?: boolean;
 }) => {
   const [hov, setHov] = useState(false);
@@ -200,6 +254,7 @@ const Btn = ({
     reject:  { bg: "var(--danger-bg)", color: "var(--danger-text)", border: "1.5px solid var(--danger-border)", hovBg: "var(--danger-solid)", hovColor: "white" },
     view:    { bg: "var(--info-bg)", color: "var(--info-text)", border: "1.5px solid var(--info-border)",  hovBg: "var(--info-solid)", hovColor: "white" },
     navy:    { bg: "var(--info-bg)", color: "var(--info-text)", border: "1.5px solid var(--info-border)",  hovBg: "var(--info-solid)", hovColor: "white" },
+    neon:    { bg: "var(--neon-bg)", color: "var(--neon-text)", border: "1.5px solid var(--neon-border)",  hovBg: "var(--neon-bg-hover)", hovColor: "var(--neon-text)" },
     default: { bg: "var(--surface-2)", color: "var(--text)", border: "1.5px solid var(--border)",              hovBg: "var(--border)", hovColor: "var(--text)" },
   };
   const v = base[variant];
@@ -218,6 +273,7 @@ const Btn = ({
         color:      hov && !disabled ? v.hovColor : v.color,
         opacity: disabled ? 0.45 : 1, transition: "all .2s",
         whiteSpace: "nowrap",
+        boxShadow: variant === "neon" ? (hov && !disabled ? "var(--neon-glow-hover)" : "var(--neon-glow)") : "none",
       }}
     >
       {children}
@@ -405,6 +461,77 @@ const Modal = ({
   );
 };
 
+// ─────────────────────────────────────────────────────────────────
+// CONFIRMATION MODAL
+// ─────────────────────────────────────────────────────────────────
+const ConfirmModal = ({
+  open,
+  title,
+  message,
+  confirmLabel,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}) => {
+  if (!open) return null;
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15,25,35,.5)",
+        backdropFilter: "blur(4px)",
+        zIndex: 210,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface)",
+          borderRadius: 16,
+          padding: 24,
+          width: "100%",
+          maxWidth: 420,
+          boxShadow: "0 12px 40px rgba(15,25,35,.18)",
+          animation: "mIn .3s cubic-bezier(.16,1,.3,1)",
+        }}
+      >
+        <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text)", marginBottom: 8 }}>{title}</div>
+        <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 18 }}>{message}</div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: "9px 14px",
+              background: "var(--surface-2)",
+              border: "1.5px solid var(--border)",
+              borderRadius: 8,
+              fontFamily: "inherit",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "var(--text)",
+              cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+          <Btn variant="reject" onClick={onConfirm}>{confirmLabel}</Btn>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ImageModal = ({
   open, onClose, title, imageUrl, contentType,
 }: {
@@ -549,6 +676,24 @@ const ActivityItem = ({ dot, title, sub, time, isLast = false }: { dot: string; 
 );
 
 // ─────────────────────────────────────────────────────────────────
+// NOTIFICATION ITEM (Topbar)
+// ─────────────────────────────────────────────────────────────────
+const NotificationItem = ({
+  dot, title, sub, time, isLast = false,
+}: {
+  dot: string; title: string; sub: string; time: string; isLast?: boolean;
+}) => (
+  <div style={{ display: "grid", gridTemplateColumns: "10px 1fr auto", gap: 10, padding: "10px 14px", borderBottom: isLast ? "none" : "1px solid var(--border)" }}>
+    <div style={{ width: 8, height: 8, borderRadius: "50%", background: dot, marginTop: 5 }} />
+    <div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>{title}</div>
+      <div style={{ fontSize: 11, color: "var(--muted)" }}>{sub}</div>
+    </div>
+    <div style={{ fontSize: 10, color: "var(--muted)", whiteSpace: "nowrap", marginTop: 2 }}>{time}</div>
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────
 // STAT CARD
 // ─────────────────────────────────────────────────────────────────
 const StatCard = ({ icon, iconBg, iconColor, num, label, trend, trendType }: {
@@ -582,6 +727,142 @@ const StatCard = ({ icon, iconBg, iconColor, num, label, trend, trendType }: {
       <div style={{ fontSize: 32, fontWeight: 800, color: "var(--text)", letterSpacing: -1.5, lineHeight: 1, marginBottom: 5 }}>{num}</div>
       <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>{label}</div>
     </div>
+  );
+};
+
+const UserGrowthChart = ({
+  homeownerCount,
+  tradesmanCount,
+  totalUsers,
+  activeUsers,
+  latestMonthUsers,
+  averageMonthlyUsers,
+}: {
+  homeownerCount: number;
+  tradesmanCount: number;
+  totalUsers: number;
+  activeUsers: number;
+  latestMonthUsers: number;
+  averageMonthlyUsers: number;
+}) => {
+  const hasData = totalUsers > 0;
+  const homeownerRatio = hasData ? homeownerCount / totalUsers : 0;
+  const tradesmanRatio = hasData ? tradesmanCount / totalUsers : 0;
+  const radius = 76;
+  const circumference = 2 * Math.PI * radius;
+  const homeownerStroke = homeownerRatio * circumference;
+  const tradesmanStroke = tradesmanRatio * circumference;
+
+  return (
+    <Card style={{ marginBottom: 28 }}>
+      <CardHead
+        title="User Distribution"
+        subtitle="Current breakdown of homeowners and tradesmen on the platform"
+        right={<Pill color="navy">Live User Mix</Pill>}
+      />
+      <div style={{ padding: "24px", display: "grid", gridTemplateColumns: "minmax(0,2fr) minmax(220px,1fr)", gap: 24, alignItems: "stretch" }}>
+        <div>
+          {hasData ? (
+            <div style={{ minHeight: 260, display: "grid", gridTemplateColumns: "minmax(240px,320px) minmax(0,1fr)", gap: 24, alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ position: "relative", width: 220, height: 220 }}>
+                  <svg viewBox="0 0 220 220" style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }} aria-label="User distribution pie chart">
+                    <circle
+                      cx="110"
+                      cy="110"
+                      r={radius}
+                      fill="none"
+                      stroke="var(--surface-2)"
+                      strokeWidth="34"
+                    />
+                    <circle
+                      cx="110"
+                      cy="110"
+                      r={radius}
+                      fill="none"
+                      stroke="var(--info-solid)"
+                      strokeWidth="34"
+                      strokeDasharray={`${homeownerStroke} ${circumference - homeownerStroke}`}
+                      strokeLinecap="butt"
+                    />
+                    <circle
+                      cx="110"
+                      cy="110"
+                      r={radius}
+                      fill="none"
+                      stroke="var(--accent)"
+                      strokeWidth="34"
+                      strokeDasharray={`${tradesmanStroke} ${circumference - tradesmanStroke}`}
+                      strokeDashoffset={-homeownerStroke}
+                      strokeLinecap="butt"
+                    />
+                  </svg>
+                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", letterSpacing: 0.4, textTransform: "uppercase" }}>Total Users</div>
+                    <div style={{ fontSize: 38, lineHeight: 1, fontWeight: 800, color: "var(--text)", marginTop: 6 }}>{totalUsers}</div>
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: "grid", gap: 14 }}>
+                {[
+                  {
+                    label: "Homeowners",
+                    count: homeownerCount,
+                    ratio: homeownerRatio,
+                    color: "var(--info-solid)",
+                    bg: "var(--info-bg)",
+                  },
+                  {
+                    label: "Tradesmen",
+                    count: tradesmanCount,
+                    ratio: tradesmanRatio,
+                    color: "var(--accent)",
+                    bg: "var(--accent-soft)",
+                  },
+                ].map((item) => (
+                  <div key={item.label} style={{ border: "1px solid var(--border)", borderRadius: 16, background: "var(--surface-2)", padding: "16px 18px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ width: 12, height: 12, borderRadius: "50%", background: item.color, flexShrink: 0 }} />
+                        <span style={{ fontSize: 14, fontWeight: 800, color: "var(--text)" }}>{item.label}</span>
+                      </div>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: item.color }}>{Math.round(item.ratio * 100)}%</span>
+                    </div>
+                    <div style={{ fontSize: 28, lineHeight: 1, fontWeight: 800, color: "var(--text)", marginBottom: 12 }}>{item.count}</div>
+                    <div style={{ width: "100%", height: 10, borderRadius: 999, background: item.bg, overflow: "hidden" }}>
+                      <div style={{ width: `${item.ratio * 100}%`, height: "100%", background: item.color, borderRadius: 999 }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div style={{ minHeight: 260, borderRadius: 16, border: "1.5px dashed var(--border)", background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "24px" }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)", marginBottom: 6 }}>No users yet</div>
+                <div style={{ fontSize: 12, color: "var(--muted)" }}>The pie chart will populate once homeowner or tradesman accounts are available.</div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: "grid", gap: 12 }}>
+          {[
+            { label: "Total Users", value: totalUsers, tone: "var(--info-text)", bg: "var(--info-bg)" },
+            { label: "Active Accounts", value: activeUsers, tone: "var(--success-text)", bg: "var(--success-bg)" },
+            { label: "New This Month", value: latestMonthUsers, tone: "var(--accent)", bg: "var(--accent-soft)" },
+            { label: "Monthly Average", value: averageMonthlyUsers, tone: "var(--warning-text)", bg: "var(--warning-bg)" },
+          ].map((item) => (
+            <div key={item.label} style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "16px 18px", background: "var(--surface-2)" }}>
+              <div style={{ display: "inline-flex", padding: "5px 10px", borderRadius: 999, background: item.bg, color: item.tone, fontSize: 11, fontWeight: 800, marginBottom: 12 }}>
+                {item.label}
+              </div>
+              <div style={{ fontSize: 28, lineHeight: 1, fontWeight: 800, color: "var(--text)", letterSpacing: -1 }}>{item.value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
   );
 };
 
@@ -643,6 +924,7 @@ const VerificationCard = ({
 }) => {
   const [hov, setHov] = useState(false);
   const statusLabel = toTitle(v.status);
+  const viewLabel = v.type === "homeowner_id" ? "View ID" : "View License/Cert";
   return (
     <div
       onMouseEnter={() => setHov(true)}
@@ -679,9 +961,7 @@ const VerificationCard = ({
         ) : (
           <Btn disabled>{icons.check} {statusLabel}</Btn>
         )}
-        {v.type === "tradesperson_license" && (
-          <Btn variant="view" onClick={onView}>{icons.license} View ID/Cert</Btn>
-        )}
+        <Btn variant="view" onClick={onView} disabled={!v.documentUrl}>{icons.license} {viewLabel}</Btn>
         <Btn variant="reject" onClick={onArchive}>{icons.x} Archive</Btn>
       </div>
     </div>
@@ -707,14 +987,15 @@ const NavItem = ({
         padding: "11px 12px", borderRadius: 10, width: "100%",
         fontFamily: "inherit", border: "none", textAlign: "left", cursor: "pointer",
         marginBottom: 2,
-        background: active ? "var(--accent)" : hov ? "var(--sidebar-hover)" : "transparent",
+        background: active ? "var(--neon-bg)" : hov ? "var(--sidebar-hover)" : "transparent",
+        boxShadow: active ? "var(--neon-glow)" : "none",
         transition: "all .2s",
       }}
     >
-      <span style={{ color: active ? "white" : "rgba(255,255,255,0.45)", flexShrink: 0, display: "flex" }}>
+      <span style={{ color: active ? "var(--neon-text)" : "rgba(255,255,255,0.45)", flexShrink: 0, display: "flex" }}>
         {icon}
       </span>
-      <span style={{ fontSize: 13, fontWeight: 600, color: active ? "white" : "rgba(255,255,255,0.5)", flex: 1 }}>
+      <span style={{ fontSize: 13, fontWeight: 600, color: active ? "var(--neon-text)" : "rgba(255,255,255,0.5)", flex: 1 }}>
         {label}
       </span>
       {badge !== undefined && badge > 0 && (
@@ -761,6 +1042,13 @@ export default function DashboardPage() {
   const [toast, setToast]           = useState({ show: false, msg: "", type: "success" as ToastType });
   const [modal, setModal]           = useState<{ open: boolean; title: string; rows: { label: string; value: string; highlight?: boolean }[]; actions?: ReactNode }>({ open: false, title: "", rows: [] });
   const [idModal, setIdModal]       = useState<{ open: boolean; title: string; imageUrl: string; contentType: string }>({ open: false, title: "", imageUrl: "", contentType: "" });
+  const [confirm, setConfirm]       = useState<{ open: boolean; title: string; message: string; confirmLabel: string; onConfirm: () => void }>({
+    open: false,
+    title: "",
+    message: "",
+    confirmLabel: "Confirm",
+    onConfirm: () => {},
+  });
   const [searchVerification, setSearchVerification] = useState("");
   const [searchTradesmen, setSearchTradesmen] = useState("");
   const [searchHomeowners, setSearchHomeowners] = useState("");
@@ -770,6 +1058,9 @@ export default function DashboardPage() {
   const [tradesmenFilters, setTradesmenFilters] = useState<string[]>(["", ""]);
   const [homeownerFilters, setHomeownerFilters] = useState<string[]>(["", ""]);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [bellOpen, setBellOpen] = useState(false);
+  const bellButtonRef = useRef<HTMLButtonElement | null>(null);
+  const bellPanelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem("admin_theme");
@@ -797,6 +1088,29 @@ export default function DashboardPage() {
   useEffect(() => {
     localStorage.setItem("admin_autorefresh", autoRefresh ? "on" : "off");
   }, [autoRefresh]);
+
+  useEffect(() => {
+    if (!bellOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (bellButtonRef.current?.contains(target)) return;
+      if (bellPanelRef.current?.contains(target)) return;
+      setBellOpen(false);
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setBellOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [bellOpen]);
+
+  useEffect(() => {
+    setBellOpen(false);
+  }, [activePage]);
 
   const themeVars: CSSProperties & Record<string, string> = isDark
     ? {
@@ -837,6 +1151,12 @@ export default function DashboardPage() {
         "--primary-bg": "#1D4ED8",
         "--primary-bg-hover": "#2563EB",
         "--sidebar-hover": "rgba(255,255,255,0.08)",
+        "--neon-bg": "linear-gradient(135deg,#00E5FF,#A78BFA)",
+        "--neon-bg-hover": "linear-gradient(135deg,#00CFFF,#8B5CF6)",
+        "--neon-text": "#0B1220",
+        "--neon-border": "rgba(0,229,255,0.45)",
+        "--neon-glow": "0 0 14px rgba(0,229,255,0.35)",
+        "--neon-glow-hover": "0 0 20px rgba(0,229,255,0.55)",
         "--scrollbar": "#475569",
         "--scrollbar-hover": "#64748B",
       }
@@ -878,6 +1198,12 @@ export default function DashboardPage() {
         "--primary-bg": "#1B2B5E",
         "--primary-bg-hover": "#243673",
         "--sidebar-hover": "rgba(255,255,255,0.06)",
+        "--neon-bg": "linear-gradient(135deg,#00E5FF,#00FFB2)",
+        "--neon-bg-hover": "linear-gradient(135deg,#00CFFF,#00FF89)",
+        "--neon-text": "#0F1923",
+        "--neon-border": "rgba(0,229,255,0.6)",
+        "--neon-glow": "0 0 12px rgba(0,229,255,0.35)",
+        "--neon-glow-hover": "0 0 18px rgba(0,229,255,0.5)",
         "--scrollbar": "#64748B",
         "--scrollbar-hover": "#94A3B8",
       };
@@ -886,6 +1212,14 @@ export default function DashboardPage() {
   const archivedCount = verifications.filter((v) => v.status === "archived").length;
   const verifiedCount = tradesmen.filter((t) => t.status === "Verified").length;
   const pendingHomeownerIds = homeowners.filter((h) => h.idStatus === "Pending").length;
+  const notificationCount = activity.length;
+  const totalUsers = homeowners.length + tradesmen.length;
+  const activeUsers = homeowners.filter((h) => h.status === "Active").length + verifiedCount;
+  const userGrowthData = buildUserGrowthData(homeowners, tradesmen);
+  const latestMonthUsers = userGrowthData[userGrowthData.length - 1]?.total ?? 0;
+  const averageMonthlyUsers = Math.round(
+    userGrowthData.reduce((sum, point) => sum + point.total, 0) / Math.max(userGrowthData.length, 1)
+  );
 
   const normalize = (value: string) => value.trim().toLowerCase();
   const matchesQuery = (query: string, fields: Array<string | number | undefined>) => {
@@ -1123,6 +1457,7 @@ export default function DashboardPage() {
           credentialUrl,
           governmentIdUrl,
           joined: formatDate(t.created_at ?? t.CreatedAt),
+          createdAt: t.created_at ?? t.CreatedAt,
           jobs: t.jobs_count ?? t.JobsCount ?? 0,
           status,
         };
@@ -1140,7 +1475,13 @@ export default function DashboardPage() {
           statusRaw === "inactive" ? "Inactive" : statusRaw === "pending" ? "Pending" : "Active";
         const idStatusRaw = String(h.id_status ?? h.IdStatus ?? h.idStatus ?? "pending").toLowerCase();
         const idStatus: Homeowner["idStatus"] =
-          idStatusRaw === "approved" ? "Approved" : idStatusRaw === "rejected" ? "Rejected" : "Pending";
+          idStatusRaw === "approved"
+            ? "Approved"
+            : idStatusRaw === "rejected"
+              ? "Rejected"
+              : idStatusRaw === "archived"
+                ? "Archived"
+                : "Pending";
         const createdAt = h.created_at ?? h.CreatedAt;
         return {
           id: String(h.id ?? h.ID ?? ""),
@@ -1251,6 +1592,87 @@ export default function DashboardPage() {
       showToast("Failed to re-verify tradesman.", "error");
     }
   };
+  const restoreTradesman = async (id: string, name: string) => {
+    if (!authToken) {
+      showToast("Please sign in again.", "error");
+      return;
+    }
+    try {
+      const res = await fetch(`${apiBase}/api/admin/tradespeople/${id}/restore`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          localStorage.removeItem("admin_token");
+          router.push("/login");
+          return;
+        }
+        showToast("Failed to restore tradesman.", "error");
+        return;
+      }
+      setTradesmen((prev) => prev.map((t) => (t.id === id ? { ...t, status: "Verified" } : t)));
+      showToast(`${name} restored`, "success");
+      loadUsers();
+      loadActivity();
+    } catch {
+      showToast("Failed to restore tradesman.", "error");
+    }
+  };
+  const revokeHomeowner = async (id: string, name: string) => {
+    if (!authToken) {
+      showToast("Please sign in again.", "error");
+      return;
+    }
+    try {
+      const res = await fetch(`${apiBase}/api/admin/homeowners/${id}/revoke`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          localStorage.removeItem("admin_token");
+          router.push("/login");
+          return;
+        }
+        showToast("Failed to revoke homeowner.", "error");
+        return;
+      }
+      setHomeowners((prev) => prev.map((h) => (h.id === id ? { ...h, status: "Inactive" } : h)));
+      showToast(`${name} revoked`, "error");
+      loadUsers();
+      loadActivity();
+    } catch {
+      showToast("Failed to revoke homeowner.", "error");
+    }
+  };
+  const restoreHomeowner = async (id: string, name: string) => {
+    if (!authToken) {
+      showToast("Please sign in again.", "error");
+      return;
+    }
+    try {
+      const res = await fetch(`${apiBase}/api/admin/homeowners/${id}/restore`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          localStorage.removeItem("admin_token");
+          router.push("/login");
+          return;
+        }
+        showToast("Failed to restore homeowner.", "error");
+        return;
+      }
+      setHomeowners((prev) => prev.map((h) => (h.id === id ? { ...h, status: "Active" } : h)));
+      showToast(`${name} restored`, "success");
+      loadUsers();
+      loadActivity();
+    } catch {
+      showToast("Failed to restore homeowner.", "error");
+    }
+  };
 
   const reviewVerification = async (id: number, status: "approved" | "rejected") => {
     if (!authToken) return;
@@ -1269,9 +1691,9 @@ export default function DashboardPage() {
       }
       const reviewed = verifications.find((v) => v.id === id);
       setVerifications((prev) => prev.filter((v) => v.id !== id));
-      if (reviewed && status === "approved") {
+      if (reviewed) {
         const targetId = String(reviewed.userId ?? "");
-        if (reviewed.type === "tradesperson_license") {
+        if (reviewed.type === "tradesperson_license" && status === "approved") {
           setTradesmen((prev) =>
             prev.map((t) =>
               t.userId === targetId || t.id === targetId ? { ...t, status: "Verified" } : t
@@ -1279,18 +1701,17 @@ export default function DashboardPage() {
           );
         }
         if (reviewed.type === "homeowner_id") {
+          const nextStatus = status === "approved" ? "Approved" : "Rejected";
           setHomeowners((prev) =>
             prev.map((h) =>
               h.userId === targetId || h.id === targetId
-                ? { ...h, idStatus: "Approved", status: "Active" }
+                ? { ...h, idStatus: nextStatus, status: status === "approved" ? "Active" : h.status }
                 : h
             )
           );
         }
       }
-      if (status === "approved") {
-        loadUsers();
-      }
+      loadUsers();
       loadActivity();
       showToast(`Verification ${status}`, status === "approved" ? "success" : "error");
     } catch {
@@ -1388,6 +1809,15 @@ export default function DashboardPage() {
     }
   };
 
+  const openConfirm = (config: { title: string; message: string; confirmLabel: string; onConfirm: () => void }) => {
+    setConfirm({ open: true, ...config });
+  };
+  const closeConfirm = () => setConfirm((prev) => ({ ...prev, open: false }));
+  const handleConfirm = () => {
+    confirm.onConfirm();
+    closeConfirm();
+  };
+
   // Modal helpers
   const openHOModal = (h: Homeowner) => {
     setModal({
@@ -1403,6 +1833,15 @@ export default function DashboardPage() {
         { label: "ID Status", value: h.idStatus, highlight: h.idStatus === "Approved" },
         { label: "ID Image", value: h.idImageUrl ? "Uploaded" : "Not uploaded", highlight: Boolean(h.idImageUrl) },
       ],
+      actions: (
+        <Btn
+          variant="view"
+          onClick={() => openDocumentModal(`${h.name} · Homeowner ID`, h.idImageUrl)}
+          disabled={!h.idImageUrl}
+        >
+          {icons.license} View Uploaded ID
+        </Btn>
+      ),
     });
   };
   const openDocumentModal = async (title: string, url: string) => {
@@ -1519,7 +1958,7 @@ export default function DashboardPage() {
             right={
               <>
                 <Pill color="orange">{pendingCount} Pending</Pill>
-                <Btn variant="navy" onClick={() => setActivePage("verification")}>View All</Btn>
+                <Btn variant="neon" onClick={() => setActivePage("verification")}>View All</Btn>
               </>
             }
           />
@@ -1564,44 +2003,14 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Homeowners quick table */}
-      <Card>
-        <CardHead
-          title="Recent Homeowners"
-          subtitle="Latest registrations"
-          right={<Btn variant="navy" onClick={() => setActivePage("homeowners")}>View All</Btn>}
-        />
-        <Table>
-          <thead><tr><Th>User</Th><Th>Location</Th><Th>Joined</Th><Th>Jobs</Th><Th>Status</Th><Th>Actions</Th></tr></thead>
-          <tbody>
-            {recentDashboardHomeowners.slice(0, 4).map((h) => (
-              <tr key={h.id} style={{ transition: "background .15s" }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--row-hover)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-                <Td>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <Avatar initials={h.initials} color={h.color} size={38} />
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text)" }}>{h.name}</div>
-                      <div style={{ fontSize: 12, color: "var(--muted)" }}>{h.email}</div>
-                    </div>
-                  </div>
-                </Td>
-                <Td>{h.location}</Td>
-                <Td>{h.registered}</Td>
-                <Td>{h.jobs}</Td>
-                <Td><Badge status={h.status} /></Td>
-                <Td><Btn variant="view" onClick={() => openHOModal(h)}>Details</Btn></Td>
-              </tr>
-            ))}
-            {filteredDashboardHomeowners.length === 0 && (
-              <tr>
-                <Td style={{ textAlign: "center", color: "var(--muted)" }} colSpan={6}>No matching homeowners.</Td>
-              </tr>
-            )}
-          </tbody>
-        </Table>
-      </Card>
+      <UserGrowthChart
+        homeownerCount={homeowners.length}
+        tradesmanCount={tradesmen.length}
+        totalUsers={totalUsers}
+        activeUsers={activeUsers}
+        latestMonthUsers={latestMonthUsers}
+        averageMonthlyUsers={averageMonthlyUsers}
+      />
     </div>
   );
 
@@ -1701,7 +2110,7 @@ export default function DashboardPage() {
         <CardHead title="All Tradesmen" subtitle={`${tradesmen.length} registered tradesmen`} right={<Pill color="navy">{tradesmen.length} Total</Pill>} />
         <Toolbar
           placeholder="Search tradesmen…"
-          filters={[["All Categories","Electrician","Plumber","HVAC","Carpenter","Painter"],["All Status","Verified","Pending"]]}
+          filters={[["All Categories","Electrician","Plumbing","HVAC","Carpentry","Painter","Appliance Repair"],["All Status","Verified","Pending"]]}
           searchValue={searchTradesmen}
           onSearchChange={setSearchTradesmen}
           filterValues={tradesmenFilters}
@@ -1736,7 +2145,23 @@ export default function DashboardPage() {
                 <Td>
                   <div style={{ display: "flex", gap: 8 }}>
                     <Btn variant="view" onClick={() => openTMModal(t)}>View Details</Btn>
-                    {t.status === "Verified" && <Btn variant="reject" onClick={() => revokeTradesman(t.id, t.name)}>{icons.x} Revoke</Btn>}
+                    {t.status === "Verified" ? (
+                      <Btn
+                        variant="reject"
+                        onClick={() =>
+                          openConfirm({
+                            title: `Revoke ${t.name}?`,
+                            message: "This will reset their verification status to pending.",
+                            confirmLabel: "Revoke",
+                            onConfirm: () => revokeTradesman(t.id, t.name),
+                          })
+                        }
+                      >
+                        {icons.x} Revoke
+                      </Btn>
+                    ) : (
+                      <Btn variant="approve" onClick={() => restoreTradesman(t.id, t.name)}>{icons.check} Restore</Btn>
+                    )}
                   </div>
                 </Td>
               </tr>
@@ -1762,8 +2187,8 @@ export default function DashboardPage() {
         />
         <Toolbar
           placeholder="Search homeowners…"
-          filters={[["All Locations","San Miguel","Barangay II-A","San Bartolome","Santa Ana","San Pedro"],["All Status","Pending","Active","Inactive"]]}
-          searchValue={searchHomeowners}
+          filters={[["All Locations",'Balayhangin','Bangyas','Dayap','Hanggan','Imok','Kanluran (Poblacion)','Lamot 1','Lamot 2','Limao','Mabacan','Masiit','Paliparan','Perez','Prinza','San Isidro','Silangan (Poblacion)','Santo Tomas'],["All Status","Pending","Active","Inactive"]]}
+              searchValue={searchHomeowners}
           onSearchChange={setSearchHomeowners}
           filterValues={homeownerFilters}
           onFilterChange={(index, value) => setHomeownerFilters((prev) => {
@@ -1797,8 +2222,24 @@ export default function DashboardPage() {
                 <Td><Badge status={h.status} /></Td>
                 <Td>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <Btn variant="view" onClick={() => openDocumentModal(h.name, h.idImageUrl)}>{icons.license} View ID</Btn>
-                    <Btn variant="view" onClick={() => openHOModal(h)}>Details</Btn>
+                    <Btn variant="view" onClick={() => openHOModal(h)}>View Details</Btn>
+                    {h.status === "Active" ? (
+                      <Btn
+                        variant="reject"
+                        onClick={() =>
+                          openConfirm({
+                            title: `Revoke ${h.name}?`,
+                            message: "This will deactivate the homeowner account.",
+                            confirmLabel: "Revoke",
+                            onConfirm: () => revokeHomeowner(h.id, h.name),
+                          })
+                        }
+                      >
+                        {icons.x} Revoke
+                      </Btn>
+                    ) : (
+                      <Btn variant="approve" onClick={() => restoreHomeowner(h.id, h.name)}>{icons.check} Restore</Btn>
+                    )}
                   </div>
                 </Td>
               </tr>
@@ -1870,13 +2311,6 @@ export default function DashboardPage() {
             </div>
           ))}
         </Card>
-        {/* Sign out */}
-        <button onClick={handleLogout}
-          style={{ width: "100%", padding: 14, background: "var(--danger-bg)", border: "1.5px solid var(--danger-border)", borderRadius: 12, fontFamily: "inherit", fontSize: 14, fontWeight: 800, color: "var(--danger-text)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "all .2s" }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--danger-solid)"; e.currentTarget.style.color = "white"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = "var(--danger-bg)"; e.currentTarget.style.color = "var(--danger-text)"; }}>
-          {icons.logout} Sign Out
-        </button>
       </div>
 
       {/* Right: details + activity */}
@@ -1982,13 +2416,71 @@ export default function DashboardPage() {
               />
             </div>
             {/* Bell */}
-            <button onClick={() => showToast("3 pending verifications", "info")}
-              style={{ width: 38, height: 38, borderRadius: 9, border: "1.5px solid var(--border)", background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative", transition: "all .2s" }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--accent-soft)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--surface)"; }}>
-              <span style={{ color: "var(--muted)" }}>{icons.bell}</span>
-              <span style={{ position: "absolute", top: 7, right: 7, width: 7, height: 7, background: "var(--accent)", borderRadius: "50%", border: "1.5px solid white" }} />
-            </button>
+            <div style={{ position: "relative" }}>
+              <button
+                ref={bellButtonRef}
+                onClick={() => setBellOpen((prev) => !prev)}
+                aria-haspopup="true"
+                aria-expanded={bellOpen}
+                style={{ width: 38, height: 38, borderRadius: 9, border: "1.5px solid var(--border)", background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative", transition: "all .2s" }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--accent-soft)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--surface)"; }}>
+                <span style={{ color: "var(--muted)" }}>{icons.bell}</span>
+                {notificationCount > 0 && (
+                  <span style={{ position: "absolute", top: 6, right: 6, minWidth: 16, height: 16, padding: "0 4px", background: "var(--accent)", borderRadius: 100, border: "1.5px solid white", color: "white", fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {notificationCount > 9 ? "9+" : notificationCount}
+                  </span>
+                )}
+              </button>
+              {bellOpen && (
+                <div
+                  ref={bellPanelRef}
+                  style={{
+                    position: "absolute",
+                    top: 46,
+                    right: 0,
+                    width: 320,
+                    background: "var(--surface)",
+                    border: "1.5px solid var(--border)",
+                    borderRadius: 12,
+                    boxShadow: "var(--shadow)",
+                    zIndex: 60,
+                    overflow: "hidden",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)" }}>Notifications</div>
+                    {notificationCount > 0 && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>{notificationCount} new</span>
+                    )}
+                  </div>
+                  <div style={{ maxHeight: 280, overflowY: "auto" }}>
+                    {activity.length > 0 ? (
+                      activity.map((a, i) => (
+                        <NotificationItem
+                          key={a.id}
+                          dot={a.dot}
+                          title={a.title}
+                          sub={a.sub}
+                          time={a.time}
+                          isLast={i === activity.length - 1}
+                        />
+                      ))
+                    ) : (
+                      <div style={{ padding: "16px 14px", fontSize: 12, color: "var(--muted)" }}>No notifications yet.</div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => { setActivePage("dashboard"); setBellOpen(false); }}
+                    style={{ width: "100%", padding: "10px 14px", borderTop: "1px solid var(--border)", border: "none", background: "var(--surface-2)", fontSize: 12, fontWeight: 700, color: "var(--text)", cursor: "pointer" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--accent-soft)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
+                  >
+                    View activity
+                  </button>
+                </div>
+              )}
+            </div>
             {/* Avatar */}
             <div onClick={() => setActivePage("profile")}
               style={{ width: 38, height: 38, borderRadius: 9, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "white", cursor: "pointer" }}>
@@ -2013,6 +2505,14 @@ export default function DashboardPage() {
 
       {/* Modal */}
       <Modal open={modal.open} onClose={() => setModal((m) => ({ ...m, open: false }))} title={modal.title} rows={modal.rows} actions={modal.actions} />
+      <ConfirmModal
+        open={confirm.open}
+        title={confirm.title}
+        message={confirm.message}
+        confirmLabel={confirm.confirmLabel}
+        onConfirm={handleConfirm}
+        onClose={closeConfirm}
+      />
       <ImageModal open={idModal.open} onClose={closeIdModal} title={idModal.title} imageUrl={idModal.imageUrl} contentType={idModal.contentType} />
 
       <style suppressHydrationWarning>{`

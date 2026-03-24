@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"fixit-backend/models"
+	"fixit-backend/services"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -42,5 +43,9 @@ func ConnectDB() {
 		&models.ActivityLog{},
 	); err != nil {
 		log.Fatal("❌ Failed to migrate database:", err)
+	}
+
+	if err := services.BackfillHomeownerStatusID(db); err != nil {
+		log.Printf("⚠️ Failed to backfill homeowner status_id: %v", err)
 	}
 }
