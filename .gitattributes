@@ -1,12 +1,12 @@
 # Ignore Flutter/Platform generated files for language stats
-frontend_flutter/windows/flutter/* linguist-vendored
-frontend_flutter/linux/flutter/* linguist-vendored
-frontend_flutter/ios/Flutter/* linguist-vendored
-frontend_flutter/android/.gradle/* linguist-vendored
+frontend_flutter/windows/flutter/** linguist-vendored
+frontend_flutter/linux/flutter/** linguist-vendored
+frontend_flutter/ios/Flutter/** linguist-vendored
+frontend_flutter/android/.gradle/** linguist-vendored
 
 # Ignore Flutter build/tooling directories
-frontend_flutter/.dart_tool/* linguist-vendored
-frontend_flutter/build/* linguist-vendored
+frontend_flutter/.dart_tool/** linguist-vendored
+frontend_flutter/build/** linguist-vendored
 
 # Optional: ignore Go vendor folder if exists
-backend/vendor/* linguist-vendored
+backend/vendor/** linguist-vendored
