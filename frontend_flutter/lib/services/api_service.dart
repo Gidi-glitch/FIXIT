@@ -9,7 +9,6 @@ class ApiService {
   /*static const String baseUrl =
       "http://10.0.2.2:8080";*/ // Use 10.0.2.2 for Android emulator
 
-
   static const String _emulatorUrl = "http://10.0.2.2:8080";
   static const String _physicalUrl = "http://192.168.1.6:8080";
 
@@ -135,6 +134,22 @@ class ApiService {
     return _decodeResponse(response);
   }
 
+  static Future<Map<String, dynamic>> uploadProfileImage({
+    required String token,
+    required File image,
+  }) async {
+    final request =
+        http.MultipartRequest('POST', Uri.parse('$baseUrl/api/profile/photo'))
+          ..headers['Authorization'] = 'Bearer $token'
+          ..files.add(
+            await http.MultipartFile.fromPath('profile_image', image.path),
+          );
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    return _decodeResponse(response);
+  }
+
   static Map<String, dynamic> _decodeResponse(http.Response response) {
     final responseBody = response.body.isNotEmpty
         ? jsonDecode(response.body) as Map<String, dynamic>
@@ -186,5 +201,4 @@ class ApiService {
     );
     _decodeResponse(response);
   }
-
 }

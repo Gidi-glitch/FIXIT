@@ -2,13 +2,49 @@ package controllers
 
 import (
 	"net/http"
+	"path/filepath"
+	"strings"
 
 	"fixit-backend/config"
 	"fixit-backend/middleware"
 	"fixit-backend/models"
+	"fixit-backend/services"
 
 	"github.com/golang-jwt/jwt/v5"
 )
+
+func buildPublicFileURL(r *http.Request, filePath string) string {
+	trimmed := strings.TrimPrefix(filepath.ToSlash(filePath), "uploads/")
+	if trimmed == "" {
+		return ""
+	}
+
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); forwarded != "" {
+		scheme = forwarded
+	}
+
+	return scheme + "://" + r.Host + "/uploads/" + trimmed
+}
+
+func getUserProfileDetails(userID uint, role string) (string, string, string) {
+	if role == "homeowner" {
+		var profile models.HomeownerProfile
+		if err := config.DB.Where("user_id = ?", userID).First(&profile).Error; err == nil {
+			return profile.FirstName, profile.LastName, profile.Barangay
+		}
+	} else if role == "tradesperson" {
+		var profile models.TradespersonProfile
+		if err := config.DB.Where("user_id = ?", userID).First(&profile).Error; err == nil {
+			return profile.FirstName, profile.LastName, profile.ServiceBarangay
+		}
+	}
+
+	return "", "", ""
+}
 
 func GetMyProfile(w http.ResponseWriter, r *http.Request) {
 	claims, ok := r.Context().Value(middleware.UserContextKey).(jwt.MapClaims)
@@ -32,12 +68,24 @@ func GetMyProfile(w http.ResponseWriter, r *http.Request) {
 	var documents []models.VerificationDocument
 	config.DB.Where("user_id = ?", user.ID).Find(&documents)
 
+	firstName, lastName, barangay := getUserProfileDetails(user.ID, user.Role)
+
+	var photo models.UserProfilePhoto
+	profileImageURL := ""
+	if err := config.DB.Where("user_id = ?", user.ID).First(&photo).Error; err == nil {
+		profileImageURL = buildPublicFileURL(r, photo.FilePath)
+	}
+
 	response := map[string]any{
 		"user": map[string]any{
-			"id":        user.ID,
-			"email":     user.Email,
-			"role":      user.Role,
-			"is_active": user.IsActive,
+			"id":                user.ID,
+			"email":             user.Email,
+			"role":              user.Role,
+			"is_active":         user.IsActive,
+			"first_name":        firstName,
+			"last_name":         lastName,
+			"barangay":          barangay,
+			"profile_image_url": profileImageURL,
 		},
 		"documents": documents,
 	}
@@ -55,4 +103,87 @@ func GetMyProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, response)
+}
+
+func UploadProfilePhoto(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	claims, ok := r.Context().Value(middleware.UserContextKey).(jwt.MapClaims)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	userID, ok := claims["user_id"].(float64)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "invalid token claims")
+		return
+	}
+
+	if err := r.ParseMultipartForm(8 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid multipart form data")
+		return
+	}
+
+	file, header, err := r.FormFile("profile_image")
+	if err != nil {
+		file, header, err = r.FormFile("image")
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "profile image is required")
+		return
+	}
+	defer file.Close()
+
+	if err := services.ValidateUpload(header); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if ext == ".pdf" {
+		writeError(w, http.StatusBadRequest, "profile image must be jpg, jpeg, or png")
+		return
+	}
+
+	storedName, filePath, err := services.SaveUploadedFile(file, header, "profiles")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save profile image")
+		return
+	}
+
+	var photo models.UserProfilePhoto
+	err = config.DB.Where("user_id = ?", uint(userID)).First(&photo).Error
+	if err == nil {
+		photo.OriginalName = header.Filename
+		photo.StoredName = storedName
+		photo.FilePath = filePath
+		photo.MimeType = header.Header.Get("Content-Type")
+		photo.FileSize = header.Size
+		if err := config.DB.Save(&photo).Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to update profile image")
+			return
+		}
+	} else {
+		photo = models.UserProfilePhoto{
+			UserID:       uint(userID),
+			OriginalName: header.Filename,
+			StoredName:   storedName,
+			FilePath:     filePath,
+			MimeType:     header.Header.Get("Content-Type"),
+			FileSize:     header.Size,
+		}
+		if err := config.DB.Create(&photo).Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to save profile image")
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"message":           "profile image uploaded",
+		"profile_image_url": buildPublicFileURL(r, photo.FilePath),
+	})
 }

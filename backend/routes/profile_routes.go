@@ -9,4 +9,5 @@ import (
 
 func RegisterProfileRoutes() {
 	http.Handle("/api/profile/me", middleware.AuthMiddleware(http.HandlerFunc(controllers.GetMyProfile)))
+	http.Handle("/api/profile/photo", middleware.AuthMiddleware(http.HandlerFunc(controllers.UploadProfilePhoto)))
 }

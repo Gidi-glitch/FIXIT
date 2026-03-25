@@ -71,9 +71,71 @@ class _UserLoginScreenState extends State<UserLoginScreen>
         );
 
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('token', result['token'] as String);
+        final token = result['token'] as String;
+        await prefs.setString('token', token);
         final role = (result['user'] as Map)['role'] as String;
         await prefs.setString('role', role);
+        await prefs.remove('first_name');
+        await prefs.remove('last_name');
+        await prefs.remove('full_name');
+        await prefs.remove('barangay');
+        await prefs.remove('profile_image_url');
+
+        final user = (result['user'] as Map).cast<String, dynamic>();
+        final firstName = (user['first_name'] ?? user['firstName'] ?? '')
+            .toString()
+            .trim();
+        final lastName = (user['last_name'] ?? user['lastName'] ?? '')
+            .toString()
+            .trim();
+        final fullName = '$firstName $lastName'.trim();
+        if (firstName.isNotEmpty) {
+          await prefs.setString('first_name', firstName);
+        }
+        if (lastName.isNotEmpty) {
+          await prefs.setString('last_name', lastName);
+        }
+        if (fullName.isNotEmpty) {
+          await prefs.setString('full_name', fullName);
+        }
+
+        try {
+          final profileResult = await ApiService.getProfile(token);
+          final profileUser =
+              (profileResult['user'] as Map?)?.cast<String, dynamic>() ??
+              <String, dynamic>{};
+          final profileFirstName = (profileUser['first_name'] ?? '')
+              .toString()
+              .trim();
+          final profileLastName = (profileUser['last_name'] ?? '')
+              .toString()
+              .trim();
+          final profileFullName = '$profileFirstName $profileLastName'.trim();
+          final profileImageUrl = (profileUser['profile_image_url'] ?? '')
+              .toString()
+              .trim();
+          final profileBarangay = (profileUser['barangay'] ?? '')
+              .toString()
+              .trim();
+
+          if (profileFirstName.isNotEmpty) {
+            await prefs.setString('first_name', profileFirstName);
+          }
+          if (profileLastName.isNotEmpty) {
+            await prefs.setString('last_name', profileLastName);
+          }
+          if (profileFullName.isNotEmpty) {
+            await prefs.setString('full_name', profileFullName);
+          }
+          if (profileImageUrl.isNotEmpty) {
+            await prefs.setString('profile_image_url', profileImageUrl);
+          }
+          if (profileBarangay.isNotEmpty) {
+            await prefs.setString('barangay', profileBarangay);
+          }
+        } catch (_) {
+          // Keep login success even if profile refresh fails.
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -93,9 +155,9 @@ class _UserLoginScreenState extends State<UserLoginScreen>
               ? const TradesmanDashboard()
               : const HomeownerDashboardScreen();
 
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => destination),
-          );
+          Navigator.of(
+            context,
+          ).pushReplacement(MaterialPageRoute(builder: (_) => destination));
         }
       } on HttpException catch (e) {
         if (mounted) {
@@ -378,8 +440,6 @@ class _UserLoginScreenState extends State<UserLoginScreen>
     );
   }
 
-  
-
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -614,8 +674,8 @@ class _UserLoginScreenState extends State<UserLoginScreen>
               if (value == null || value.isEmpty) {
                 return 'Please enter your password';
               }
-              if (value.length < 6) {
-                return 'Password must be at least 6 characters';
+              if (value.length < 4) {
+                return 'Password must be at least 4 characters';
               }
               return null;
             },

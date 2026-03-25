@@ -22,6 +22,7 @@ func main() {
 	routes.RegisterAuthRoutes()
 	routes.RegisterProfileRoutes()
 	routes.RegisterAdminRoutes()
+	http.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 
 	http.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("FIXIT backend is running"))

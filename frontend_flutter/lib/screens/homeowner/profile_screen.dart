@@ -1,10 +1,22 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../login_screen.dart';
+import '../../services/api_service.dart';
 
 /// Profile Screen for the Fix It Marketplace Homeowner App.
 /// Displays user profile information and settings menu options.
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
   // ── Color Palette ──────────────────────────────────────────────
   static const Color _primaryBlue = Color(0xFF1E3A8A);
   static const Color _accentOrange = Color(0xFFF97316);
@@ -13,6 +25,282 @@ class ProfileScreen extends StatelessWidget {
   static const Color _textMuted = Color(0xFF6B7280);
   static const Color _cardWhite = Color(0xFFFFFFFF);
   static const Color _dangerRed = Color(0xFFEF4444);
+
+  final ImagePicker _imagePicker = ImagePicker();
+  String _displayName = 'Gideon Alcantara';
+  String _barangay = '';
+  String? _profileImagePath;
+  bool _isUploadingPhoto = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfileData();
+  }
+
+  Future<void> _loadProfileData() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final token = prefs.getString('token')?.trim();
+    if (token != null && token.isNotEmpty) {
+      try {
+        final result = await ApiService.getProfile(token);
+        final user =
+            (result['user'] as Map?)?.cast<String, dynamic>() ??
+            <String, dynamic>{};
+        final firstName = (user['first_name'] ?? '').toString().trim();
+        final lastName = (user['last_name'] ?? '').toString().trim();
+        final fullName = '$firstName $lastName'.trim();
+        final profileImageUrl = (user['profile_image_url'] ?? '')
+            .toString()
+            .trim();
+        final barangay = (user['barangay'] ?? '').toString().trim();
+
+        if (firstName.isNotEmpty) {
+          await prefs.setString('first_name', firstName);
+        }
+        if (lastName.isNotEmpty) {
+          await prefs.setString('last_name', lastName);
+        }
+        if (fullName.isNotEmpty) {
+          await prefs.setString('full_name', fullName);
+        }
+        if (profileImageUrl.isNotEmpty) {
+          await prefs.setString('profile_image_url', profileImageUrl);
+        } else {
+          await prefs.remove('profile_image_url');
+        }
+        if (barangay.isNotEmpty) {
+          await prefs.setString('barangay', barangay);
+        }
+      } catch (_) {
+        // Fallback to cached values if backend request fails.
+      }
+    }
+
+    final firstName = prefs.getString('first_name')?.trim();
+    final lastName = prefs.getString('last_name')?.trim();
+    final fullNameFromPrefs = prefs.getString('full_name')?.trim();
+    final fullName = fullNameFromPrefs?.isNotEmpty == true
+        ? fullNameFromPrefs!
+        : '${firstName ?? ''} ${lastName ?? ''}'.trim();
+
+    if (!mounted) return;
+
+    setState(() {
+      _displayName = fullName.isNotEmpty ? fullName : 'Gideon Alcantara';
+      _barangay = prefs.getString('barangay')?.trim() ?? '';
+      _profileImagePath = prefs.getString('profile_image_url');
+    });
+  }
+
+  String get _addressLabel {
+    if (_barangay.trim().isEmpty) {
+      return 'Calauan, Laguna';
+    }
+    return '${_barangay.trim()}, Calauan, Laguna';
+  }
+
+  String get _initials {
+    final parts = _displayName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return 'GA';
+    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
+        .toUpperCase();
+  }
+
+  Future<void> _pickProfileImage() async {
+    setState(() => _isUploadingPhoto = true);
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 88,
+        maxWidth: 1400,
+      );
+
+      if (picked == null) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token')?.trim();
+      if (token == null || token.isEmpty) {
+        throw Exception('Session expired. Please log in again.');
+      }
+
+      final uploadResult = await ApiService.uploadProfileImage(
+        token: token,
+        image: File(picked.path),
+      );
+      final imageUrl = (uploadResult['profile_image_url'] ?? '')
+          .toString()
+          .trim();
+      if (imageUrl.isNotEmpty) {
+        await prefs.setString('profile_image_url', imageUrl);
+      }
+
+      if (!mounted) return;
+      setState(() => _profileImagePath = imageUrl);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Profile picture updated.'),
+          backgroundColor: _primaryBlue,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingPhoto = false);
+      }
+    }
+  }
+
+  Future<void> _logout(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('token');
+    await prefs.remove('role');
+    await prefs.remove('first_name');
+    await prefs.remove('last_name');
+    await prefs.remove('full_name');
+    await prefs.remove('barangay');
+    await prefs.remove('profile_image_url');
+
+    if (!context.mounted) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const UserLoginScreen()),
+      (route) => false,
+    );
+  }
+
+  Future<void> _showLogoutPrompt(BuildContext context) async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+            decoration: BoxDecoration(
+              color: _cardWhite,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.14),
+                  blurRadius: 30,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [_dangerRed, Color(0xFFF97316)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: const Icon(
+                    Icons.logout_rounded,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Log out?',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: _textDark,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Are you sure you want to log out?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: _textMuted.withValues(alpha: 0.9),
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(false),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _textMuted,
+                          side: BorderSide(
+                            color: _textMuted.withValues(alpha: 0.35),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: const Text(
+                          'Cancel',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _dangerRed,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: const Text(
+                          'Log Out',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (shouldLogout == true) {
+      await _logout(context);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +324,7 @@ class ProfileScreen extends StatelessWidget {
               _buildMenuSection(),
 
               // ── Logout Button ─────────────────────────────────────
-              _buildLogoutButton(),
+              _buildLogoutButton(context),
 
               const SizedBox(height: 120),
             ],
@@ -124,23 +412,41 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ],
             ),
-            child: const Center(
-              child: Text(
-                'GA',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: _profileImagePath != null && _profileImagePath!.isNotEmpty
+                  ? Image.network(
+                      _profileImagePath!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Center(
+                        child: Text(
+                          _initials,
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    )
+                  : Center(
+                      child: Text(
+                        _initials,
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
             ),
           ),
           const SizedBox(height: 16),
 
           // ── Name ──────────────────────────────────────────────────
-          const Text(
-            'Gideon Alcantara',
-            style: TextStyle(
+          Text(
+            _displayName,
+            style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w800,
               color: _textDark,
@@ -162,7 +468,7 @@ class ProfileScreen extends StatelessWidget {
                 Icon(Icons.location_on_rounded, size: 16, color: _primaryBlue),
                 const SizedBox(width: 6),
                 Text(
-                  'Dayap, Calauan, Laguna',
+                  _addressLabel,
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -178,9 +484,20 @@ class ProfileScreen extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: () {},
-              icon: const Icon(Icons.edit_outlined, size: 18),
-              label: const Text('Edit Profile Picture'),
+              onPressed: _isUploadingPhoto ? null : _pickProfileImage,
+              icon: _isUploadingPhoto
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(_primaryBlue),
+                      ),
+                    )
+                  : const Icon(Icons.edit_outlined, size: 18),
+              label: Text(
+                _isUploadingPhoto ? 'Uploading...' : 'Edit Profile Picture',
+              ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: _primaryBlue,
                 side: BorderSide(color: _primaryBlue.withValues(alpha: 0.3)),
@@ -432,12 +749,12 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildLogoutButton() {
+  Widget _buildLogoutButton(BuildContext context) {
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       width: double.infinity,
       child: OutlinedButton.icon(
-        onPressed: () {},
+        onPressed: () => _showLogoutPrompt(context),
         icon: const Icon(Icons.logout_rounded, size: 20),
         label: const Text('Log Out'),
         style: OutlinedButton.styleFrom(
