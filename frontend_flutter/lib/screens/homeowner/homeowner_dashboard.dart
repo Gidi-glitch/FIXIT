@@ -449,7 +449,7 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                   ? Image.network(
                       _profileImagePath!,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Center(
+                      errorBuilder: (_, _, _) => Center(
                         child: Text(
                           _initials,
                           style: const TextStyle(

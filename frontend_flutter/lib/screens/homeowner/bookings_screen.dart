@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'booking_store.dart';
+import 'booking_details_screen.dart';
 
 /// Bookings Screen for the Fix It Marketplace Homeowner App.
 /// Reads live data from BookingStore so new bookings appear immediately.
@@ -34,6 +35,8 @@ class _BookingsScreenState extends State<BookingsScreen>
     'Accepted',
     'In Progress',
     'Completed',
+    'Under Review',
+    'Disputed',
   ];
 
   // ── Status → color mapping ─────────────────────────────────────
@@ -47,6 +50,10 @@ class _BookingsScreenState extends State<BookingsScreen>
         return _warningYellow;
       case 'Completed':
         return _successGreen;
+      case 'Under Review':
+        return _warningYellow;
+      case 'Disputed':
+        return _errorRed;
       case 'Cancelled':
         return _errorRed;
       default:
@@ -310,6 +317,7 @@ class _BookingsScreenState extends State<BookingsScreen>
 
   Widget _buildBookingCard(BookingModel booking) {
     final color = _statusColor(booking.status);
+    final isCompleted = booking.status == 'Completed';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -327,35 +335,46 @@ class _BookingsScreenState extends State<BookingsScreen>
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () {},
+          onTap: () =>
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => BookingDetailsScreen(booking: booking),
+                ),
+              ).then(
+                (_) => setState(() {}),
+              ), // Refresh on return to check for reviews
           borderRadius: BorderRadius.circular(18),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Header Row ────────────────────────────────────
+                // ── Header Row ────────────────────────────────
                 Row(
                   children: [
                     // Avatar
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [_primaryBlue, Color(0xFF3B82F6)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                    Opacity(
+                      opacity: isCompleted ? 0.5 : 1.0,
+                      child: Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [_primaryBlue, Color(0xFF3B82F6)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(14),
                         ),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Center(
-                        child: Text(
-                          booking.tradespersonAvatar,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                        child: Center(
+                          child: Text(
+                            booking.tradespersonAvatar,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),
@@ -368,48 +387,87 @@ class _BookingsScreenState extends State<BookingsScreen>
                         children: [
                           Text(
                             booking.specialization,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
-                              color: _textDark,
+                              color: isCompleted
+                                  ? _textMuted.withValues(alpha: 0.6)
+                                  : _textDark,
                             ),
                           ),
                           const SizedBox(height: 3),
                           Text(
                             '${booking.tradespersonName} · ${booking.trade}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
-                              color: _textMuted,
+                              color: isCompleted
+                                  ? _textMuted.withValues(alpha: 0.6)
+                                  : _textMuted,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    // Status Badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: color.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        booking.status,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: color,
+                    // Status Badge or Reviewed Checkmark
+                    if (isCompleted && booking.isReviewed)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _successGreen.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.check_rounded,
+                              size: 12,
+                              color: _successGreen,
+                            ),
+                            const SizedBox(width: 4),
+                            const Text(
+                              'Reviewed',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: _successGreen,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          booking.status,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: color,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
 
                 const SizedBox(height: 14),
-                Container(height: 1, color: Colors.grey.shade100),
+                Container(
+                  height: 1,
+                  color: isCompleted
+                      ? Colors.grey.shade100.withValues(alpha: 0.5)
+                      : Colors.grey.shade100,
+                ),
                 const SizedBox(height: 12),
 
                 // ── Problem Description ───────────────────────────
@@ -417,7 +475,9 @@ class _BookingsScreenState extends State<BookingsScreen>
                   booking.problemDescription,
                   style: TextStyle(
                     fontSize: 13,
-                    color: _textMuted.withValues(alpha: 0.85),
+                    color: isCompleted
+                        ? _textMuted.withValues(alpha: 0.5)
+                        : _textMuted.withValues(alpha: 0.85),
                     height: 1.4,
                   ),
                   maxLines: 2,
@@ -425,7 +485,12 @@ class _BookingsScreenState extends State<BookingsScreen>
                 ),
 
                 const SizedBox(height: 12),
-                Container(height: 1, color: Colors.grey.shade100),
+                Container(
+                  height: 1,
+                  color: isCompleted
+                      ? Colors.grey.shade100.withValues(alpha: 0.5)
+                      : Colors.grey.shade100,
+                ),
                 const SizedBox(height: 12),
 
                 // ── Details Row ───────────────────────────────────
@@ -434,25 +499,35 @@ class _BookingsScreenState extends State<BookingsScreen>
                     _buildDetailItem(
                       Icons.calendar_today_rounded,
                       booking.date,
+                      isCompleted: isCompleted,
                     ),
                     const SizedBox(width: 16),
-                    _buildDetailItem(Icons.access_time_rounded, booking.time),
+                    _buildDetailItem(
+                      Icons.access_time_rounded,
+                      booking.time,
+                      isCompleted: isCompleted,
+                    ),
                     const SizedBox(width: 16),
                     _buildDetailItem(
                       Icons.attach_money_rounded,
-                      '${booking.offeredBudget.toStringAsFixed(0)}',
+                      booking.offeredBudget.toStringAsFixed(0),
+                      isCompleted: isCompleted,
                     ),
                     const Spacer(),
                     Container(
                       width: 34,
                       height: 34,
                       decoration: BoxDecoration(
-                        color: _primaryBlue.withValues(alpha: 0.08),
+                        color: _primaryBlue.withValues(
+                          alpha: isCompleted ? 0.04 : 0.08,
+                        ),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.arrow_forward_ios_rounded,
-                        color: _primaryBlue,
+                        color: _primaryBlue.withValues(
+                          alpha: isCompleted ? 0.4 : 1.0,
+                        ),
                         size: 13,
                       ),
                     ),
@@ -466,7 +541,9 @@ class _BookingsScreenState extends State<BookingsScreen>
                     Icon(
                       Icons.location_on_outlined,
                       size: 14,
-                      color: _textMuted.withValues(alpha: 0.6),
+                      color: _textMuted.withValues(
+                        alpha: isCompleted ? 0.3 : 0.6,
+                      ),
                     ),
                     const SizedBox(width: 4),
                     Expanded(
@@ -474,7 +551,9 @@ class _BookingsScreenState extends State<BookingsScreen>
                         booking.address,
                         style: TextStyle(
                           fontSize: 12,
-                          color: _textMuted.withValues(alpha: 0.75),
+                          color: _textMuted.withValues(
+                            alpha: isCompleted ? 0.4 : 0.75,
+                          ),
                           fontWeight: FontWeight.w500,
                         ),
                         maxLines: 1,
@@ -491,18 +570,26 @@ class _BookingsScreenState extends State<BookingsScreen>
     );
   }
 
-  Widget _buildDetailItem(IconData icon, String text) {
+  Widget _buildDetailItem(
+    IconData icon,
+    String text, {
+    bool isCompleted = false,
+  }) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 15, color: _textMuted.withValues(alpha: 0.6)),
+        Icon(
+          icon,
+          size: 15,
+          color: _textMuted.withValues(alpha: isCompleted ? 0.3 : 0.6),
+        ),
         const SizedBox(width: 5),
         Text(
           text,
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: _textMuted.withValues(alpha: 0.9),
+            color: _textMuted.withValues(alpha: isCompleted ? 0.4 : 0.9),
           ),
         ),
       ],

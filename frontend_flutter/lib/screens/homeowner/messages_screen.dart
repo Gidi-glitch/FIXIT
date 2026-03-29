@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'chat_screen.dart';
 
 /// Messages Screen for the Fix It Marketplace Homeowner App.
 /// Displays a chat list UI similar to Messenger with conversations.
@@ -10,9 +11,6 @@ class MessagesScreen extends StatefulWidget {
 }
 
 class _MessagesScreenState extends State<MessagesScreen> {
-  final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
-
   // ── Color Palette ──────────────────────────────────────────────
   static const Color _primaryBlue = Color(0xFF1E3A8A);
   static const Color _accentOrange = Color(0xFFF97316);
@@ -22,8 +20,16 @@ class _MessagesScreenState extends State<MessagesScreen> {
   static const Color _cardWhite = Color(0xFFFFFFFF);
   static const Color _successGreen = Color(0xFF10B981);
 
+  late List<Map<String, dynamic>> _conversations;
+
+  @override
+  void initState() {
+    super.initState();
+    _conversations = _sampleConversations();
+  }
+
   // ── Sample Messages Data ───────────────────────────────────────
-  List<Map<String, dynamic>> get _conversations => [
+  List<Map<String, dynamic>> _sampleConversations() => [
     {
       'id': '1',
       'name': 'Juan Dela Cruz',
@@ -89,27 +95,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
     },
   ];
 
-  List<Map<String, dynamic>> get _filteredConversations {
-    final query = _searchQuery.trim().toLowerCase();
-    if (query.isEmpty) return _conversations;
-
-    return _conversations.where((conversation) {
-      final name = (conversation['name'] as String).toLowerCase();
-      final trade = (conversation['trade'] as String).toLowerCase();
-      final lastMessage = (conversation['lastMessage'] as String).toLowerCase();
-
-      return name.contains(query) ||
-          trade.contains(query) ||
-          lastMessage.contains(query);
-    }).toList();
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -129,9 +114,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
               child: ListView.builder(
                 physics: const BouncingScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(0, 8, 0, 100),
-                itemCount: _filteredConversations.length,
+                itemCount: _conversations.length,
                 itemBuilder: (context, index) {
-                  return _buildMessageTile(_filteredConversations[index]);
+                  return _buildMessageTile(context, _conversations[index]);
                 },
               ),
             ),
@@ -198,10 +183,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
         ],
       ),
       child: TextField(
-        controller: _searchController,
-        onChanged: (value) {
-          setState(() => _searchQuery = value);
-        },
         style: const TextStyle(
           fontSize: 15,
           color: _textDark,
@@ -229,7 +210,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
     );
   }
 
-  Widget _buildMessageTile(Map<String, dynamic> conversation) {
+  Widget _buildMessageTile(
+    BuildContext context,
+    Map<String, dynamic> conversation,
+  ) {
     final hasUnread = (conversation['unreadCount'] as int) > 0;
     final isOnline = conversation['isOnline'] as bool;
 
@@ -238,7 +222,27 @@ class _MessagesScreenState extends State<MessagesScreen> {
           ? _primaryBlue.withValues(alpha: 0.03)
           : Colors.transparent,
       child: InkWell(
-        onTap: () {},
+        onTap: () async {
+          final result = await Navigator.push<Map<String, dynamic>>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChatScreen(conversation: conversation),
+            ),
+          );
+
+          if (!mounted || result == null) return;
+
+          final deletedId = (result['deletedConversationId'] ?? '')
+              .toString()
+              .trim();
+          if (deletedId.isEmpty) return;
+
+          setState(() {
+            _conversations.removeWhere(
+              (item) => (item['id'] ?? '').toString() == deletedId,
+            );
+          });
+        },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           child: Row(
