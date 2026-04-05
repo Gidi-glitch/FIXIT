@@ -1440,12 +1440,12 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Opening messages...'),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
+                      Navigator.pop(context, {
+                        'openMessage': true,
+                        'tradespersonName': _currentBooking.tradespersonName,
+                        'trade': _currentBooking.trade,
+                        'avatar': _currentBooking.tradespersonAvatar,
+                      });
                     },
                     icon: const Icon(Icons.message_rounded, size: 18),
                     label: const Text('Message'),

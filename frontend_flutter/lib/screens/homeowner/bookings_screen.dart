@@ -5,7 +5,10 @@ import 'booking_details_screen.dart';
 /// Bookings Screen for the Fix It Marketplace Homeowner App.
 /// Reads live data from BookingStore so new bookings appear immediately.
 class BookingsScreen extends StatefulWidget {
-  const BookingsScreen({super.key});
+  final void Function(String tradespersonName, String trade, String avatar)
+  onMessageRequested;
+
+  const BookingsScreen({super.key, required this.onMessageRequested});
 
   @override
   State<BookingsScreen> createState() => _BookingsScreenState();
@@ -335,15 +338,30 @@ class _BookingsScreenState extends State<BookingsScreen>
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () =>
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => BookingDetailsScreen(booking: booking),
-                ),
-              ).then(
-                (_) => setState(() {}),
-              ), // Refresh on return to check for reviews
+          onTap: () async {
+            final result = await Navigator.push<Map<String, dynamic>>(
+              context,
+              MaterialPageRoute(
+                builder: (_) => BookingDetailsScreen(booking: booking),
+              ),
+            );
+
+            if (!mounted) return;
+
+            if (result?['openMessage'] == true) {
+              final name = (result?['tradespersonName'] ?? '')
+                  .toString()
+                  .trim();
+              final trade = (result?['trade'] ?? '').toString().trim();
+              final avatar = (result?['avatar'] ?? '').toString().trim();
+
+              if (name.isNotEmpty) {
+                widget.onMessageRequested(name, trade, avatar);
+              }
+            }
+
+            setState(() {});
+          }, // Refresh on return to check for reviews
           borderRadius: BorderRadius.circular(18),
           child: Padding(
             padding: const EdgeInsets.all(16),

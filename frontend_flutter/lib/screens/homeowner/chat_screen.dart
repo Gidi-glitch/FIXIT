@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../services/attachment_saver.dart';
+import 'chat_store.dart';
 
 class ChatScreen extends StatefulWidget {
   final Map<String, dynamic> conversation;
@@ -34,20 +35,86 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _hasText = false;
   Map<String, dynamic>? _pendingAttachment;
   final Map<String, double> _imageAspectRatios = {};
+  bool _hasConversationChanges = false;
 
   // ── Sample conversation data keyed by conversation id ──────────
   // In production this comes from your Go backend via API.
   late List<Map<String, dynamic>> _messages;
 
+  String get _conversationId {
+    final id = (widget.conversation['id'] ?? '').toString().trim();
+    if (id.isNotEmpty) return id;
+    return (widget.conversation['name'] ?? 'chat').toString().trim();
+  }
+
+  String _lastMessagePreview(Map<String, dynamic> message) {
+    final isAttachment = (message['isAttachment'] as bool?) ?? false;
+    if (!isAttachment) {
+      return (message['text'] ?? '').toString();
+    }
+
+    final type = (message['attachmentType'] ?? '').toString().toLowerCase();
+    final attachmentName = (message['attachmentName'] ?? 'attachment')
+        .toString()
+        .trim();
+
+    if (type == 'image') return 'Sent a photo';
+    if (attachmentName.toLowerCase().endsWith('.pdf')) return 'Sent a PDF';
+    return 'Sent an attachment';
+  }
+
+  Map<String, dynamic> _buildConversationUpdatePayload() {
+    final latest = _messages.isNotEmpty ? _messages.last : null;
+
+    return {
+      'id': _conversationId,
+      'name': (widget.conversation['name'] ?? '').toString(),
+      'avatar': (widget.conversation['avatar'] ?? '').toString(),
+      'trade': (widget.conversation['trade'] ?? '').toString(),
+      'isOnline': widget.conversation['isOnline'] ?? false,
+      'lastMessage': latest != null
+          ? _lastMessagePreview(latest)
+          : (widget.conversation['lastMessage'] ?? '').toString(),
+      'time': latest != null
+          ? (latest['time'] ?? '').toString()
+          : (widget.conversation['time'] ?? '').toString(),
+    };
+  }
+
+  void _closeChatWithResult() {
+    if (_hasConversationChanges) {
+      Navigator.of(
+        context,
+      ).pop({'conversationUpdate': _buildConversationUpdatePayload()});
+      return;
+    }
+
+    Navigator.of(context).pop();
+  }
+
   @override
   void initState() {
     super.initState();
-    _messages = _sampleMessages(widget.conversation['id'] as String);
+    _messages = <Map<String, dynamic>>[];
+    _loadMessages();
     _messageController.addListener(() {
       final hasText = _messageController.text.trim().isNotEmpty;
       if (hasText != _hasText) setState(() => _hasText = hasText);
     });
-    // Scroll to bottom after first frame
+  }
+
+  Future<void> _loadMessages() async {
+    final seeded = _sampleMessages(_conversationId);
+    final loaded = await ChatStore.loadMessages(
+      _conversationId,
+      seedMessages: seeded,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _messages = loaded;
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
   }
 
@@ -193,13 +260,132 @@ class _ChatScreenState extends State<ChatScreen> {
     String text,
     String time, {
     bool isAttachment = false,
+    String? sentAtIso,
   }) {
     return {
       'sender': sender,
       'text': text,
       'time': time,
       'isAttachment': isAttachment,
+      if (sentAtIso != null && sentAtIso.trim().isNotEmpty)
+        'sentAtIso': sentAtIso,
     };
+  }
+
+  bool get _showConversationStartDivider {
+    if (_messages.isEmpty) return false;
+    final firstMessageIso = (_messages.first['sentAtIso'] ?? '')
+        .toString()
+        .trim();
+    return firstMessageIso.isNotEmpty;
+  }
+
+  String _formatConversationStartLabel(String isoText) {
+    final parsed = DateTime.tryParse(isoText);
+    if (parsed == null) return '';
+    final local = parsed.toLocal();
+
+    const months = <String>[
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+
+    final month = months[local.month - 1];
+    final day = local.day;
+    final year = local.year;
+    final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
+    final minute = local.minute.toString().padLeft(2, '0');
+    final period = local.hour >= 12 ? 'PM' : 'AM';
+
+    return '$month $day, $year at $hour:$minute $period';
+  }
+
+  Widget _buildConversationStartDivider() {
+    if (!_showConversationStartDivider) return const SizedBox.shrink();
+
+    final label = _formatConversationStartLabel(
+      (_messages.first['sentAtIso'] ?? '').toString(),
+    );
+    if (label.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: _cardWhite,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _textMuted.withValues(alpha: 0.18)),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: _textMuted.withValues(alpha: 0.85),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyConversationPrompt() {
+    return Center(
+      key: const ValueKey('empty-conversation-state'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: _primaryBlue.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(
+                Icons.chat_bubble_outline_rounded,
+                color: _primaryBlue.withValues(alpha: 0.85),
+                size: 30,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Ask about your project details',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: _textDark,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Discuss pricing and schedule',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: _textMuted.withValues(alpha: 0.9),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _scrollToBottom({bool animated = false}) {
@@ -215,11 +401,34 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty && _pendingAttachment == null) return;
 
     final pending = _pendingAttachment;
+    String? persistedAttachmentPath;
+    final sentAtIso = DateTime.now().toIso8601String();
+
+    if (pending != null) {
+      final originalPath = (pending['attachmentPath'] ?? '').toString().trim();
+      final originalName = (pending['attachmentName'] ?? 'attachment')
+          .toString()
+          .trim();
+
+      if (originalPath.isNotEmpty && File(originalPath).existsSync()) {
+        try {
+          persistedAttachmentPath = await ChatStore.persistAttachment(
+            conversationId: _conversationId,
+            sourcePath: originalPath,
+            fileName: originalName,
+          );
+        } catch (_) {
+          persistedAttachmentPath = originalPath;
+        }
+      }
+    }
+
+    if (!mounted) return;
 
     setState(() {
       if (pending != null) {
@@ -227,18 +436,24 @@ class _ChatScreenState extends State<ChatScreen> {
           'sender': 'me',
           'text': pending['attachmentName'] as String,
           'time': _currentTime(),
+          'sentAtIso': sentAtIso,
           'isAttachment': true,
           'attachmentType': pending['attachmentType'],
           'attachmentName': pending['attachmentName'],
-          'attachmentPath': pending['attachmentPath'],
+          'attachmentPath':
+              persistedAttachmentPath ?? pending['attachmentPath'],
         });
         _pendingAttachment = null;
+        _hasConversationChanges = true;
       }
       if (text.isNotEmpty) {
-        _messages.add(_msg('me', text, _currentTime()));
+        _messages.add(_msg('me', text, _currentTime(), sentAtIso: sentAtIso));
+        _hasConversationChanges = true;
       }
       _messageController.clear();
     });
+
+    await ChatStore.saveMessages(_conversationId, _messages);
 
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _scrollToBottom(animated: true),
@@ -351,9 +566,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (shouldDelete != true || !mounted) return;
 
-    Navigator.of(
-      context,
-    ).pop({'deletedConversationId': widget.conversation['id'] as String});
+    await ChatStore.clearConversation(_conversationId);
+
+    Navigator.of(context).pop({'deletedConversationId': _conversationId});
   }
 
   Future<void> _openAttachmentSheet() async {
@@ -902,14 +1117,20 @@ class _ChatScreenState extends State<ChatScreen> {
       value: SystemUiOverlayStyle.light.copyWith(
         statusBarColor: Colors.transparent,
       ),
-      child: Scaffold(
-        backgroundColor: _backgroundGray,
-        body: Column(
-          children: [
-            _buildHeader(context, isOnline, isSupport),
-            Expanded(child: _buildMessageList()),
-            _buildInputBar(),
-          ],
+      child: WillPopScope(
+        onWillPop: () async {
+          _closeChatWithResult();
+          return false;
+        },
+        child: Scaffold(
+          backgroundColor: _backgroundGray,
+          body: Column(
+            children: [
+              _buildHeader(context, isOnline, isSupport),
+              Expanded(child: _buildMessageList()),
+              _buildInputBar(),
+            ],
+          ),
         ),
       ),
     );
@@ -940,7 +1161,7 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               // Back button
               IconButton(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: _closeChatWithResult,
                 icon: const Icon(
                   Icons.arrow_back_ios_new_rounded,
                   color: Colors.white,
@@ -1112,32 +1333,49 @@ class _ChatScreenState extends State<ChatScreen> {
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildMessageList() {
-    return ListView.builder(
-      controller: _scrollController,
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      itemCount: _messages.length,
-      itemBuilder: (context, index) {
-        final msg = _messages[index];
-        final isMe = msg['sender'] == 'me';
-        final prevMsg = index > 0 ? _messages[index - 1] : null;
-        final nextMsg = index < _messages.length - 1
-            ? _messages[index + 1]
-            : null;
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 280),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: _messages.isEmpty
+          ? _buildEmptyConversationPrompt()
+          : ListView.builder(
+              key: const ValueKey('conversation-message-list'),
+              controller: _scrollController,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              itemCount:
+                  _messages.length + (_showConversationStartDivider ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (_showConversationStartDivider && index == 0) {
+                  return _buildConversationStartDivider();
+                }
 
-        // Group messages: show time only when sender changes or last in group
-        final isFirstInGroup =
-            prevMsg == null || prevMsg['sender'] != msg['sender'];
-        final isLastInGroup =
-            nextMsg == null || nextMsg['sender'] != msg['sender'];
+                final messageIndex =
+                    index - (_showConversationStartDivider ? 1 : 0);
+                final msg = _messages[messageIndex];
+                final isMe = msg['sender'] == 'me';
+                final prevMsg = messageIndex > 0
+                    ? _messages[messageIndex - 1]
+                    : null;
+                final nextMsg = messageIndex < _messages.length - 1
+                    ? _messages[messageIndex + 1]
+                    : null;
 
-        return _buildMessageBubble(
-          msg,
-          isMe: isMe,
-          isFirstInGroup: isFirstInGroup,
-          isLastInGroup: isLastInGroup,
-        );
-      },
+                // Group messages: show time only when sender changes or last in group
+                final isFirstInGroup =
+                    prevMsg == null || prevMsg['sender'] != msg['sender'];
+                final isLastInGroup =
+                    nextMsg == null || nextMsg['sender'] != msg['sender'];
+
+                return _buildMessageBubble(
+                  msg,
+                  isMe: isMe,
+                  isFirstInGroup: isFirstInGroup,
+                  isLastInGroup: isLastInGroup,
+                );
+              },
+            ),
     );
   }
 

@@ -6,6 +6,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../login_screen.dart';
 import '../../services/api_service.dart';
+import 'settings/edit_profile_screen.dart';
+import 'settings/help_support_screen.dart';
+import 'settings/my_addresses_screen.dart';
+import 'settings/notifications_screen.dart';
+import 'settings/payment_methods.dart';
+import 'settings/privacy_security_screen.dart';
 
 /// Profile Screen for the Fix It Marketplace Homeowner App.
 /// Displays user profile information and settings menu options.
@@ -160,6 +166,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
         setState(() => _isUploadingPhoto = false);
       }
     }
+  }
+
+  // ── Navigate to Edit Profile ────────────────────────────────────
+  Future<void> _openEditProfile() async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+    );
+    // Refresh profile data when returning if changes were saved
+    if (result == true && mounted) {
+      await _loadProfileData();
+    }
+  }
+
+  Future<void> _openMyAddresses() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(builder: (_) => const MyAddressesScreen()),
+    );
+  }
+
+  Future<void> _openPaymentMethods() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(builder: (_) => const PaymentMethodsScreen()),
+    );
+  }
+
+  Future<void> _openNotifications() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+    );
+  }
+
+  Future<void> _openPrivacySecurity() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(builder: (_) => const PrivacySecurityScreen()),
+    );
+  }
+
+  Future<void> _openHelpSupport() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(builder: (_) => const HelpSupportScreen()),
+    );
   }
 
   Future<void> _logout(BuildContext context) async {
@@ -363,7 +416,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
             child: IconButton(
-              onPressed: () {},
+              onPressed: _openPrivacySecurity,
               icon: const Icon(
                 Icons.settings_outlined,
                 color: _textDark,
@@ -465,11 +518,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.location_on_rounded, size: 16, color: _primaryBlue),
+                const Icon(
+                  Icons.location_on_rounded,
+                  size: 16,
+                  color: _primaryBlue,
+                ),
                 const SizedBox(width: 6),
                 Text(
                   _addressLabel,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: _primaryBlue,
@@ -480,7 +537,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 20),
 
-          // ── Edit Profile Button ───────────────────────────────────
+          // ── Edit Profile Button ────────────────────────────────────
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
@@ -609,36 +666,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'title': 'Edit Profile',
         'subtitle': 'Update your personal information',
         'color': _primaryBlue,
+        'onTap': _openEditProfile, // ← wired up
       },
       {
         'icon': Icons.location_on_outlined,
         'title': 'My Addresses',
         'subtitle': 'Manage your saved addresses',
         'color': const Color(0xFF10B981),
+        'onTap': _openMyAddresses,
       },
       {
         'icon': Icons.payment_rounded,
         'title': 'Payment Methods',
         'subtitle': 'Add or manage payment options',
         'color': _accentOrange,
+        'onTap': _openPaymentMethods,
       },
       {
         'icon': Icons.notifications_outlined,
         'title': 'Notifications',
         'subtitle': 'Configure notification preferences',
         'color': const Color(0xFF8B5CF6),
+        'onTap': _openNotifications,
       },
       {
         'icon': Icons.security_outlined,
         'title': 'Privacy & Security',
         'subtitle': 'Manage your account security',
         'color': const Color(0xFF06B6D4),
+        'onTap': _openPrivacySecurity,
       },
       {
         'icon': Icons.help_outline_rounded,
         'title': 'Help & Support',
         'subtitle': 'Get help or contact support',
         'color': const Color(0xFFEC4899),
+        'onTap': _openHelpSupport,
       },
     ];
 
@@ -666,6 +729,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             title: item['title'] as String,
             subtitle: item['subtitle'] as String,
             color: item['color'] as Color,
+            onTap: item['onTap'] as VoidCallback,
             showDivider: !isLast,
           );
         }).toList(),
@@ -678,6 +742,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String title,
     required String subtitle,
     required Color color,
+    required VoidCallback onTap,
     required bool showDivider,
   }) {
     return Column(
@@ -685,7 +750,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: () {},
+            onTap: onTap,
             borderRadius: showDivider
                 ? null
                 : const BorderRadius.only(

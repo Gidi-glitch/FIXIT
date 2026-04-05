@@ -5,12 +5,17 @@ import 'booking_form_screen.dart';
 class TradespersonListScreen extends StatefulWidget {
   final String? serviceCategory;
   final bool onDutyOnly;
+  final String? initialTradespersonName;
   final VoidCallback onBookingConfirmed;
+  final void Function(String tradespersonName, String trade, String avatar)
+  onMessageRequested;
 
   const TradespersonListScreen({
     super.key,
     this.serviceCategory,
-    this.onDutyOnly = false, 
+    this.onDutyOnly = false,
+    this.initialTradespersonName,
+    required this.onMessageRequested,
     required this.onBookingConfirmed,
   });
 
@@ -262,6 +267,36 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
       vsync: this,
       duration: const Duration(milliseconds: 500),
     )..forward();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _openInitialTradespersonProfile();
+    });
+  }
+
+  void _openInitialTradespersonProfile() {
+    final requestedName = widget.initialTradespersonName?.trim();
+    if (requestedName == null || requestedName.isEmpty || !mounted) {
+      return;
+    }
+
+    final normalizedRequested = requestedName.toLowerCase();
+    final match = _allPros.where((pro) {
+      final name = (pro['name'] ?? '').toString().trim().toLowerCase();
+      return name == normalizedRequested;
+    });
+
+    if (match.isEmpty) {
+      return;
+    }
+
+    final pro = match.first;
+    setState(() {
+      _selectedCategory = (pro['trade'] ?? '').toString();
+      _searchQuery = '';
+      _searchController.clear();
+    });
+
+    _showTradespersonSheet(pro);
   }
 
   @override
@@ -1139,6 +1174,7 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
     final isOnDuty = pro['isOnDuty'] as bool;
     final skills = pro['skills'] as List<String>;
     final scrollController = DraggableScrollableController();
+    bool autoScrolledToBook = false;
 
     showModalBottomSheet(
       context: context,
@@ -1151,6 +1187,20 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
           maxChildSize: 0.95,
           controller: scrollController,
           builder: (context, sheetScrollController) {
+            if (scrollToBook && !autoScrolledToBook) {
+              autoScrolledToBook = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!sheetScrollController.hasClients) {
+                  return;
+                }
+                sheetScrollController.animateTo(
+                  sheetScrollController.position.maxScrollExtent,
+                  duration: const Duration(milliseconds: 380),
+                  curve: Curves.easeOutCubic,
+                );
+              });
+            }
+
             return Container(
               decoration: const BoxDecoration(
                 color: _cardWhite,
@@ -1466,7 +1516,8 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
                                         MaterialPageRoute(
                                           builder: (_) => BookingFormScreen(
                                             pro: pro,
-                                            onBookingConfirmed: widget.onBookingConfirmed,
+                                            onBookingConfirmed:
+                                                widget.onBookingConfirmed,
                                           ),
                                         ),
                                       );
@@ -1520,7 +1571,12 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
                               child: OutlinedButton(
                                 onPressed: () {
                                   Navigator.pop(context);
-                                  // TODO: Navigate to messaging screen
+                                  Navigator.of(this.context).pop();
+                                  widget.onMessageRequested(
+                                    (pro['name'] ?? '').toString(),
+                                    (pro['trade'] ?? '').toString(),
+                                    (pro['avatar'] ?? '').toString(),
+                                  );
                                 },
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: _primaryBlue,

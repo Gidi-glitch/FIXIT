@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'bookings_screen.dart';
+import 'booking_details_screen.dart';
+import 'booking_store.dart';
 import 'messages_screen.dart';
 import 'profile_screen.dart';
 import '../../services/api_service.dart';
@@ -27,6 +29,10 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
   String _firstName = 'Gideon';
   String _barangay = '';
   String? _profileImagePath;
+  String? _messageTradespersonName;
+  String? _messageTrade;
+  String? _messageAvatar;
+  int _messageChatRequestId = 0;
 
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
@@ -97,29 +103,7 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
     },
   ];
 
-  final List<Map<String, dynamic>> _myBookings = [
-    {
-      'service': 'Pipe Leak Repair',
-      'tradesperson': 'Juan Dela Cruz',
-      'date': 'Today, 2:00 PM',
-      'status': 'In Progress',
-      'statusColor': const Color(0xFF3B82F6),
-    },
-    {
-      'service': 'Electrical Wiring Check',
-      'tradesperson': 'Maria Santos',
-      'date': 'Tomorrow, 9:00 AM',
-      'status': 'Accepted',
-      'statusColor': const Color(0xFF10B981),
-    },
-    {
-      'service': 'AC Maintenance',
-      'tradesperson': 'Pedro Reyes',
-      'date': 'Mar 25, 10:00 AM',
-      'status': 'Pending',
-      'statusColor': const Color(0xFFF59E0B),
-    },
-  ];
+  List<BookingModel> get _myBookings => BookingStore.all.take(3).toList();
 
   @override
   void initState() {
@@ -251,20 +235,50 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
     }).toList();
   }
 
-  List<Map<String, dynamic>> get _filteredBookings {
+  List<BookingModel> get _filteredBookings {
     final query = _searchQuery.trim().toLowerCase();
     if (query.isEmpty) return _myBookings;
 
     return _myBookings.where((booking) {
-      final service = (booking['service'] as String).toLowerCase();
-      final tradesperson = (booking['tradesperson'] as String).toLowerCase();
-      final date = (booking['date'] as String).toLowerCase();
-      final status = (booking['status'] as String).toLowerCase();
+      final service = booking.specialization.toLowerCase();
+      final tradesperson = booking.tradespersonName.toLowerCase();
+      final date = booking.date.toLowerCase();
+      final time = booking.time.toLowerCase();
+      final status = booking.status.toLowerCase();
       return service.contains(query) ||
           tradesperson.contains(query) ||
           date.contains(query) ||
+          time.contains(query) ||
           status.contains(query);
     }).toList();
+  }
+
+  Color _bookingStatusColor(String status) {
+    switch (status) {
+      case 'In Progress':
+        return const Color(0xFF3B82F6);
+      case 'Accepted':
+      case 'Completed':
+        return const Color(0xFF10B981);
+      case 'Pending':
+      case 'Under Review':
+        return const Color(0xFFF59E0B);
+      case 'Disputed':
+      case 'Cancelled':
+        return const Color(0xFFEF4444);
+      default:
+        return _textMuted;
+    }
+  }
+
+  void _openMessagesForTradesperson(String name, String trade, String avatar) {
+    setState(() {
+      _messageTradespersonName = name.trim();
+      _messageTrade = trade.trim();
+      _messageAvatar = avatar.trim();
+      _messageChatRequestId++;
+      _currentNavIndex = 2;
+    });
   }
 
   @override
@@ -280,8 +294,14 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
           index: _currentNavIndex,
           children: [
             _buildHomeContent(),
-            const BookingsScreen(),
-            const MessagesScreen(),
+            BookingsScreen(onMessageRequested: _openMessagesForTradesperson),
+            MessagesScreen(
+              initialTradespersonName: _messageTradespersonName,
+              initialTrade: _messageTrade,
+              initialAvatar: _messageAvatar,
+              autoOpenChat: _messageChatRequestId > 0,
+              chatRequestId: _messageChatRequestId,
+            ),
             const ProfileScreen(),
           ],
         ),
@@ -554,6 +574,8 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                     context,
                     MaterialPageRoute(
                       builder: (_) => TradespersonListScreen(
+                        onDutyOnly: true,
+                        onMessageRequested: _openMessagesForTradesperson,
                         onBookingConfirmed: () =>
                             setState(() => _currentNavIndex = 1),
                       ),
@@ -591,6 +613,7 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                     context,
                     MaterialPageRoute(
                       builder: (_) => TradespersonListScreen(
+                        onMessageRequested: _openMessagesForTradesperson,
                         onBookingConfirmed: () =>
                             setState(() => _currentNavIndex = 1),
                       ),
@@ -750,6 +773,7 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                     MaterialPageRoute(
                       builder: (_) => TradespersonListScreen(
                         serviceCategory: category['name'] as String,
+                        onMessageRequested: _openMessagesForTradesperson,
                         onBookingConfirmed: () =>
                             setState(() => _currentNavIndex = 1),
                       ),
@@ -832,6 +856,7 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                   MaterialPageRoute(
                     builder: (_) => TradespersonListScreen(
                       onDutyOnly: true,
+                      onMessageRequested: _openMessagesForTradesperson,
                       onBookingConfirmed: () =>
                           setState(() => _currentNavIndex = 1),
                     ),
@@ -884,137 +909,151 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
               itemCount: visiblePros.length,
               itemBuilder: (context, index) {
                 final pro = visiblePros[index];
-                return Container(
-                  width: 160,
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: _cardWhite,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
+                return GestureDetector(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TradespersonListScreen(
+                        onDutyOnly: true,
+                        initialTradespersonName: (pro['name'] ?? '').toString(),
+                        onMessageRequested: _openMessagesForTradesperson,
+                        onBookingConfirmed: () =>
+                            setState(() => _currentNavIndex = 1),
                       ),
-                    ],
+                    ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [_primaryBlue, Color(0xFF3B82F6)],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Center(
-                              child: Text(
-                                pro['avatar'] as String,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
+                  child: Container(
+                    width: 160,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: _cardWhite,
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [_primaryBlue, Color(0xFF3B82F6)],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
                                 ),
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                            ),
-                          ),
-                          const Spacer(),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _successGreen.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(
-                                  Icons.circle,
-                                  color: _successGreen,
-                                  size: 6,
-                                ),
-                                SizedBox(width: 4),
-                                Text(
-                                  'On-duty',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                    color: _successGreen,
+                              child: Center(
+                                child: Text(
+                                  pro['avatar'] as String,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        pro['name'] as String,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: _textDark,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        pro['trade'] as String,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: _textMuted,
-                        ),
-                      ),
-                      const Spacer(),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.star_rounded,
-                            color: _warningYellow,
-                            size: 16,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${pro['rating']}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: _textDark,
-                            ),
-                          ),
-                          const Spacer(),
-                          Icon(
-                            Icons.location_on_outlined,
-                            color: _textMuted.withValues(alpha: 0.7),
-                            size: 14,
-                          ),
-                          const SizedBox(width: 2),
-                          Flexible(
-                            child: Text(
-                              pro['barangay'] as String,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w500,
-                                color: _textMuted.withValues(alpha: 0.8),
                               ),
-                              overflow: TextOverflow.ellipsis,
                             ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _successGreen.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(
+                                    Icons.circle,
+                                    color: _successGreen,
+                                    size: 6,
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'On-duty',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: _successGreen,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          pro['name'] as String,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: _textDark,
                           ),
-                        ],
-                      ),
-                    ],
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          pro['trade'] as String,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: _textMuted,
+                          ),
+                        ),
+                        const Spacer(),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.star_rounded,
+                              color: _warningYellow,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${pro['rating']}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: _textDark,
+                              ),
+                            ),
+                            const Spacer(),
+                            Icon(
+                              Icons.location_on_outlined,
+                              color: _textMuted.withValues(alpha: 0.7),
+                              size: 14,
+                            ),
+                            const SizedBox(width: 2),
+                            Flexible(
+                              child: Text(
+                                pro['barangay'] as String,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                  color: _textMuted.withValues(alpha: 0.8),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 );
               },
@@ -1095,102 +1134,128 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
             itemCount: visibleBookings.length,
             itemBuilder: (context, index) {
               final booking = visibleBookings[index];
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: _cardWhite,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
+              final statusColor = _bookingStatusColor(booking.status);
+              return InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () async {
+                  final result = await Navigator.push<Map<String, dynamic>>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => BookingDetailsScreen(booking: booking),
                     ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: (booking['statusColor'] as Color).withValues(
-                          alpha: 0.12,
+                  );
+
+                  if (!mounted) return;
+
+                  if (result?['openMessage'] == true) {
+                    final name = (result?['tradespersonName'] ?? '')
+                        .toString()
+                        .trim();
+                    final trade = (result?['trade'] ?? '').toString().trim();
+                    final avatar = (result?['avatar'] ?? '').toString().trim();
+                    if (name.isNotEmpty) {
+                      _openMessagesForTradesperson(name, trade, avatar);
+                      return;
+                    }
+                  }
+
+                  setState(() {
+                    _currentNavIndex = 1;
+                  });
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _cardWhite,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(14),
                         ),
-                        borderRadius: BorderRadius.circular(14),
+                        child: Icon(
+                          Icons.build_rounded,
+                          color: statusColor,
+                          size: 24,
+                        ),
                       ),
-                      child: Icon(
-                        Icons.build_rounded,
-                        color: booking['statusColor'] as Color,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            booking['service'] as String,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: _textDark,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            booking['tradesperson'] as String,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: _textMuted,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.access_time_rounded,
-                                size: 12,
-                                color: _textMuted.withValues(alpha: 0.7),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              booking.specialization,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: _textDark,
                               ),
-                              const SizedBox(width: 4),
-                              Text(
-                                booking['date'] as String,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                  color: _textMuted.withValues(alpha: 0.8),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              booking.tradespersonName,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: _textMuted,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.access_time_rounded,
+                                  size: 12,
+                                  color: _textMuted.withValues(alpha: 0.7),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${booking.date}, ${booking.time}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                    color: _textMuted.withValues(alpha: 0.8),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          booking.status,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: statusColor,
                           ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: (booking['statusColor'] as Color).withValues(
-                          alpha: 0.12,
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        booking['status'] as String,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: booking['statusColor'] as Color,
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },
