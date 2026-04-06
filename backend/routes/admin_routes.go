@@ -31,6 +31,7 @@ func RegisterAdminRoutes() {
 	http.Handle("/api/admin/homeowners", admin(http.HandlerFunc(controllers.ListHomeowners)))
 	// PATCH /api/admin/homeowners/{id}/revoke
 	// PATCH /api/admin/homeowners/{id}/restore
+	// PATCH /api/admin/homeowners/{id}/unreject
 	http.Handle("/api/admin/homeowners/", admin(http.HandlerFunc(controllers.HandleHomeowner)))
 
 	// GET  /api/admin/activity?limit=6

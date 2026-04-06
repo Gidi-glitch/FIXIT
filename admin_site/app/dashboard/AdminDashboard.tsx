@@ -6,8 +6,9 @@ import { useRouter } from "next/navigation";
 // ─────────────────────────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────────────────────────
-type Page = "dashboard" | "verification" | "tradesmen" | "homeowners" | "profile" | "settings";
+type Page = "dashboard" | "verification" | "tradesmen" | "homeowners" | "reports" | "profile" | "settings";
 type ToastType = "success" | "error" | "info";
+type ReportTab = "all" | "homeowner" | "tradesman";
 
 interface Tradesman {
   id: string;
@@ -23,7 +24,7 @@ interface Tradesman {
   joined: string;
   createdAt?: string;
   jobs: number;
-  status: "Pending" | "Verified" | "Suspended";
+  status: "Pending" | "Verified" | "Rejected" | "Suspended";
 }
 
 interface Homeowner {
@@ -53,6 +54,17 @@ interface Verification {
   createdAt?: string;
 }
 
+type ProfileEditorMode = "email" | "password" | "security";
+
+interface AdminProfile {
+  id: string;
+  email: string;
+  role: string;
+  isActive: boolean;
+  twoFactorEnabled: boolean;
+  updatedAt?: string;
+}
+
 interface ActivityEntry {
   id: string;
   dot: string;
@@ -67,6 +79,19 @@ interface UserGrowthPoint {
   homeowners: number;
   tradesmen: number;
   total: number;
+}
+
+interface ReportEntry {
+  id: string;
+  targetType: "Homeowner" | "Tradesman";
+  targetName: string;
+  targetEmail: string;
+  reporterName: string;
+  reporterRole: "Homeowner" | "Tradesman";
+  reason: string;
+  details: string;
+  status: "Open" | "Reviewing" | "Resolved";
+  submittedAt: string;
 }
 
 const toTitle = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
@@ -105,6 +130,40 @@ const formatDate = (value?: string) => {
   return d.toLocaleDateString();
 };
 
+const formatDateTime = (value?: string) => {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+const humanizeRole = (value?: string) => {
+  if (!value) return "—";
+  if (value.toLowerCase() === "admin") return "Administrator";
+  return value
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+};
+
+const adminDisplayNameFromEmail = (email?: string) => {
+  if (!email) return "Admin User";
+  const local = email.split("@")[0]?.trim();
+  if (!local) return "Admin User";
+  return local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
 const formatTimeAgo = (value?: string) => {
   if (!value) return "—";
   const d = new Date(value);
@@ -122,6 +181,23 @@ const formatTimeAgo = (value?: string) => {
   if (day < 7) return `${day}d ago`;
   return d.toLocaleDateString();
 };
+
+const verificationStatusPriority: Record<Verification["status"], number> = {
+  pending: 0,
+  approved: 1,
+  rejected: 2,
+  archived: 3,
+};
+
+const sortVerifications = (items: Verification[]) =>
+  [...items].sort((a, b) => {
+    const priorityDelta = verificationStatusPriority[a.status] - verificationStatusPriority[b.status];
+    if (priorityDelta !== 0) return priorityDelta;
+
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return bTime - aTime;
+  });
 
 const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short" });
 const getMonthKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}`;
@@ -168,6 +244,39 @@ const buildUserGrowthData = (homeowners: Homeowner[], tradesmen: Tradesman[], mo
   return buckets;
 };
 
+const formatPercent = (value: number) => {
+  const rounded = Math.abs(value) >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
+  return `${rounded > 0 ? "+" : rounded < 0 ? "" : ""}${rounded}%`;
+};
+
+const formatMonthlyTrend = (current: number, previous: number) => {
+  if (current === 0 && previous === 0) return "0%";
+  if (previous === 0) return current > 0 ? "No baseline last month" : "0%";
+  const percentChange = ((current - previous) / previous) * 100;
+  if (percentChange === 0) return "0%";
+  return `${formatPercent(percentChange)}`;
+};
+
+const trendDirectionFromDelta = (current: number, previous: number): "up" | "warn" | "down" => {
+  const delta = current - previous;
+  if (delta > 0) return "up";
+  if (delta < 0) return "down";
+  return "warn";
+};
+
+const formatPendingVerificationTrend = (homeownerPending: number, tradesmanPending: number) => {
+  if (homeownerPending === 0 && tradesmanPending === 0) return "Queue clear";
+  if (homeownerPending === 0) return `${tradesmanPending} tradesman pending`;
+  if (tradesmanPending === 0) return `${homeownerPending} homeowner pending`;
+  return `${homeownerPending} homeowner, ${tradesmanPending} tradesman`;
+};
+
+const formatVerifiedTradesmanTrend = (verifiedCount: number, totalTradesmen: number) => {
+  if (totalTradesmen === 0) return "No tradesmen yet";
+  if (verifiedCount === totalTradesmen) return "All verified";
+  return `${Math.round((verifiedCount / totalTradesmen) * 100)}% verified`;
+};
+
 const activityDot = (type: string) => {
   switch (type) {
     case "verification_approved":
@@ -203,6 +312,69 @@ const HOMEOWNERS_DATA: Homeowner[] = [
   { id: "h6", initials: "JR", color: "linear-gradient(135deg,#1B2B5E,#2D44A0)", name: "Jose Ramos",     email: "jose.r@gmail.com",         location: "Quezon City",  registered: "Oct 22, 2024", jobs: 3,  status: "Inactive",idNumber: "HO-2024-0X12", idStatus: "Rejected", idImageUrl: "/fixit_logo.png" },
 ];
 
+const REPORTS_DATA: ReportEntry[] = [
+  {
+    id: "r1",
+    targetType: "Tradesman",
+    targetName: "Marco Reyes",
+    targetEmail: "marco.r@gmail.com",
+    reporterName: "Sofia Mendoza",
+    reporterRole: "Homeowner",
+    reason: "No-show appointment",
+    details: "The booked repair schedule passed without any arrival or update from the tradesman.",
+    status: "Open",
+    submittedAt: "2026-03-29T09:30:00Z",
+  },
+  {
+    id: "r2",
+    targetType: "Homeowner",
+    targetName: "Ben Torres",
+    targetEmail: "bentorres@yahoo.com",
+    reporterName: "Jake Cruz",
+    reporterRole: "Tradesman",
+    reason: "Unpaid completed job",
+    details: "The service was completed but the payment marked in chat was not sent after follow-up.",
+    status: "Reviewing",
+    submittedAt: "2026-03-28T14:20:00Z",
+  },
+  {
+    id: "r3",
+    targetType: "Tradesman",
+    targetName: "Ana Lim",
+    targetEmail: "ana.lim@gmail.com",
+    reporterName: "Maria Garcia",
+    reporterRole: "Homeowner",
+    reason: "Unprofessional conduct",
+    details: "The homeowner reported rude behavior during an on-site visit and requested admin review.",
+    status: "Resolved",
+    submittedAt: "2026-03-26T07:15:00Z",
+  },
+  {
+    id: "r4",
+    targetType: "Homeowner",
+    targetName: "Karl Santos",
+    targetEmail: "karlsantos99@gmail.com",
+    reporterName: "Pedro Villarta",
+    reporterRole: "Tradesman",
+    reason: "Repeated cancellation",
+    details: "The project was cancelled multiple times after material preparation was already confirmed.",
+    status: "Open",
+    submittedAt: "2026-03-25T11:05:00Z",
+  },
+  {
+    id: "r5",
+    targetType: "Tradesman",
+    targetName: "Ramon Dela Cruz",
+    targetEmail: "ramon.dc@gmail.com",
+    reporterName: "Liza Villanueva",
+    reporterRole: "Homeowner",
+    reason: "Quoted price dispute",
+    details: "The final amount requested was higher than the estimate shown in the app conversation.",
+    status: "Reviewing",
+    submittedAt: "2026-03-24T17:40:00Z",
+  },
+];
+
 // ─────────────────────────────────────────────────────────────────
 // SHARED MINI-COMPONENTS
 // ─────────────────────────────────────────────────────────────────
@@ -212,7 +384,7 @@ const Avatar = ({ initials, color, size = 40 }: { initials: string; color: strin
   <div style={{
     width: size, height: size, borderRadius: size * 0.28,
     background: color, display: "flex", alignItems: "center", justifyContent: "center",
-    fontSize: size * 0.33, fontWeight: 800, color: "white", flexShrink: 0,
+    fontSize: size * 0.33, fontWeight: 800, color: "var(--on-solid)", flexShrink: 0,
   }}>
     {initials}
   </div>
@@ -222,13 +394,16 @@ const Avatar = ({ initials, color, size = 40 }: { initials: string; color: strin
 const Badge = ({ status }: { status: string }) => {
   const styles: Record<string, { bg: string; color: string; border: string }> = {
     Pending:  { bg: "var(--warning-bg)", color: "var(--warning-text)", border: "1px solid var(--warning-border)" },
-    Verified: { bg: "var(--success-bg)", color: "var(--success-text)", border: "1px solid var(--success-border)"  },
-    Approved: { bg: "var(--success-bg)", color: "var(--success-text)", border: "1px solid var(--success-border)"  },
+    Verified: { bg: "var(--info-bg)", color: "var(--info-text)", border: "1px solid var(--info-border)"  },
+    Approved: { bg: "var(--info-bg)", color: "var(--info-text)", border: "1px solid var(--info-border)"  },
     Active:   { bg: "var(--success-bg)", color: "var(--success-text)", border: "1px solid var(--success-border)"  },
     Inactive: { bg: "var(--danger-bg)", color: "var(--danger-text)", border: "1px solid var(--danger-border)"  },
     Rejected: { bg: "var(--danger-bg)", color: "var(--danger-text)", border: "1px solid var(--danger-border)"  },
     Suspended:{ bg: "var(--danger-bg)", color: "var(--danger-text)", border: "1px solid var(--danger-border)"  },
     Archived: { bg: "var(--neutral-bg)", color: "var(--neutral-text)", border: "1px solid var(--neutral-border)" },
+    Open:     { bg: "var(--warning-bg)", color: "var(--warning-text)", border: "1px solid var(--warning-border)" },
+    Reviewing:{ bg: "var(--info-bg)", color: "var(--info-text)", border: "1px solid var(--info-border)" },
+    Resolved: { bg: "var(--success-bg)", color: "var(--success-text)", border: "1px solid var(--success-border)" },
   };
   const s = styles[status] || styles.Pending;
   return (
@@ -245,16 +420,15 @@ const Badge = ({ status }: { status: string }) => {
 const Btn = ({
   children, variant = "default", onClick, disabled,
 }: {
-  children: ReactNode; variant?: "approve" | "reject" | "view" | "default" | "navy" | "neon";
+  children: ReactNode; variant?: "approve" | "reject" | "view" | "default" | "navy";
   onClick?: () => void; disabled?: boolean;
 }) => {
   const [hov, setHov] = useState(false);
   const base: Record<string, { bg: string; color: string; border: string; hovBg: string; hovColor: string }> = {
-    approve: { bg: "var(--success-bg)", color: "var(--success-text)", border: "1.5px solid var(--success-border)",  hovBg: "var(--success-solid)", hovColor: "white" },
-    reject:  { bg: "var(--danger-bg)", color: "var(--danger-text)", border: "1.5px solid var(--danger-border)", hovBg: "var(--danger-solid)", hovColor: "white" },
-    view:    { bg: "var(--info-bg)", color: "var(--info-text)", border: "1.5px solid var(--info-border)",  hovBg: "var(--info-solid)", hovColor: "white" },
-    navy:    { bg: "var(--info-bg)", color: "var(--info-text)", border: "1.5px solid var(--info-border)",  hovBg: "var(--info-solid)", hovColor: "white" },
-    neon:    { bg: "var(--neon-bg)", color: "var(--neon-text)", border: "1.5px solid var(--neon-border)",  hovBg: "var(--neon-bg-hover)", hovColor: "var(--neon-text)" },
+    approve: { bg: "var(--success-bg)", color: "var(--success-text)", border: "1.5px solid var(--success-border)",  hovBg: "var(--success-solid)", hovColor: "var(--on-solid)" },
+    reject:  { bg: "var(--danger-bg)", color: "var(--danger-text)", border: "1.5px solid var(--danger-border)", hovBg: "var(--danger-solid)", hovColor: "var(--on-solid)" },
+    view:    { bg: "var(--info-bg)", color: "var(--info-text-soft)", border: "1.5px solid var(--info-border)",  hovBg: "var(--info-solid)", hovColor: "var(--on-solid)" },
+    navy:    { bg: "var(--info-bg)", color: "var(--info-text)", border: "1.5px solid var(--info-border)",  hovBg: "var(--info-solid)", hovColor: "var(--on-solid)" },
     default: { bg: "var(--surface-2)", color: "var(--text)", border: "1.5px solid var(--border)",              hovBg: "var(--border)", hovColor: "var(--text)" },
   };
   const v = base[variant];
@@ -273,7 +447,7 @@ const Btn = ({
         color:      hov && !disabled ? v.hovColor : v.color,
         opacity: disabled ? 0.45 : 1, transition: "all .2s",
         whiteSpace: "nowrap",
-        boxShadow: variant === "neon" ? (hov && !disabled ? "var(--neon-glow-hover)" : "var(--neon-glow)") : "none",
+        boxShadow: "none",
       }}
     >
       {children}
@@ -354,7 +528,7 @@ const Toggle = ({
           width: 18,
           height: 18,
           borderRadius: 999,
-          background: "white",
+          background: "var(--surface)",
           transform: checked ? "translateX(20px)" : "translateX(0px)",
           transition: "transform .2s",
         }}
@@ -363,17 +537,16 @@ const Toggle = ({
   </div>
 );
 
-// Sidebar shield logo
+// Sidebar logo
 function SidebarShield() {
   return (
-    <svg width="38" height="42" viewBox="0 0 100 112" fill="none">
-      <path d="M50 5L9 22V54C9 77 27 97.5 50 105C73 97.5 91 77 91 54V22L50 5Z" fill="rgba(255,255,255,0.12)" />
-      <path d="M50 14L16 29V54C16 74 31.5 92 50 99C68.5 92 84 74 84 54V29L50 14Z" fill="rgba(255,255,255,0.07)" />
-      <polygon points="50,30 30,46 30,66 42,66 42,54 58,54 58,66 70,66 70,46" fill="white" opacity="0.9" />
-      <polygon points="22,49 50,26 78,49" fill="white" opacity="0.6" />
-      <circle cx="66" cy="70" r="12" fill="var(--accent)" />
-      <line x1="62" y1="66" x2="70" y2="74" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
-    </svg>
+    <img
+      src="/fixit_logo.png"
+      alt="Fix It logo"
+      width={44}
+      height={44}
+      style={{ objectFit: "contain", display: "block", flexShrink: 0 }}
+    />
   );
 }
 
@@ -384,10 +557,10 @@ const Toast = ({ msg, type, show }: { msg: string; type: ToastType; show: boolea
     <div style={{
       position: "fixed", top: 20, left: "50%",
       transform: `translateX(-50%) translateY(${show ? "0" : "-90px"})`,
-      background: colors[type], color: "white",
+      background: colors[type], color: "var(--on-solid)",
       padding: "11px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600,
       zIndex: 9999, display: "flex", alignItems: "center", gap: 8,
-      boxShadow: "0 12px 40px rgba(15,25,35,.2)",
+      boxShadow: "var(--elevated-shadow)",
       transition: "transform .3s cubic-bezier(.16,1,.3,1)",
       whiteSpace: "nowrap", pointerEvents: "none",
     }}>
@@ -414,7 +587,7 @@ const Modal = ({
     <div
       onClick={onClose}
       style={{
-        position: "fixed", inset: 0, background: "rgba(15,25,35,.5)",
+        position: "fixed", inset: 0, background: "var(--overlay)",
         backdropFilter: "blur(4px)", zIndex: 200,
         display: "flex", alignItems: "center", justifyContent: "center",
       }}
@@ -424,7 +597,7 @@ const Modal = ({
         style={{
           background: "var(--surface)", borderRadius: 16, padding: 28,
           width: "100%", maxWidth: 440,
-          boxShadow: "0 12px 40px rgba(15,25,35,.18)",
+          boxShadow: "var(--elevated-shadow)",
           animation: "mIn .3s cubic-bezier(.16,1,.3,1)",
         }}
       >
@@ -448,7 +621,7 @@ const Modal = ({
         <button onClick={onClose} style={{
           width: "100%", padding: 13, marginTop: 20,
           background: "var(--accent)", border: "none", borderRadius: 8,
-          fontFamily: "inherit", fontSize: 14, fontWeight: 800, color: "white",
+          fontFamily: "inherit", fontSize: 14, fontWeight: 800, color: "var(--on-solid)",
           cursor: "pointer", transition: "background .2s",
         }}
           onMouseEnter={(e) => (e.currentTarget.style.background = "var(--accent-hover)")}
@@ -486,7 +659,7 @@ const ConfirmModal = ({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(15,25,35,.5)",
+        background: "var(--overlay)",
         backdropFilter: "blur(4px)",
         zIndex: 210,
         display: "flex",
@@ -502,7 +675,7 @@ const ConfirmModal = ({
           padding: 24,
           width: "100%",
           maxWidth: 420,
-          boxShadow: "0 12px 40px rgba(15,25,35,.18)",
+          boxShadow: "var(--elevated-shadow)",
           animation: "mIn .3s cubic-bezier(.16,1,.3,1)",
         }}
       >
@@ -543,7 +716,7 @@ const ImageModal = ({
     <div
       onClick={onClose}
       style={{
-        position: "fixed", inset: 0, background: "rgba(15,25,35,.5)",
+        position: "fixed", inset: 0, background: "var(--overlay)",
         backdropFilter: "blur(4px)", zIndex: 220,
         display: "flex", alignItems: "center", justifyContent: "center",
       }}
@@ -553,7 +726,7 @@ const ImageModal = ({
         style={{
           background: "var(--surface)", borderRadius: 16, padding: 24,
           width: "100%", maxWidth: 640,
-          boxShadow: "0 12px 40px rgba(15,25,35,.18)",
+          boxShadow: "var(--elevated-shadow)",
           animation: "mIn .3s cubic-bezier(.16,1,.3,1)",
         }}
       >
@@ -571,7 +744,7 @@ const ImageModal = ({
             <iframe
               src={imageUrl}
               title={`${title} document`}
-              style={{ display: "block", width: "100%", height: 520, border: "none", borderRadius: 8, background: "white" }}
+              style={{ display: "block", width: "100%", height: 520, border: "none", borderRadius: 8, background: "var(--surface)" }}
             />
           ) : (
             <img
@@ -584,7 +757,7 @@ const ImageModal = ({
         <button onClick={onClose} style={{
           width: "100%", padding: 12, marginTop: 18,
           background: "var(--primary-bg)", border: "none", borderRadius: 8,
-          fontFamily: "inherit", fontSize: 14, fontWeight: 800, color: "white",
+          fontFamily: "inherit", fontSize: 14, fontWeight: 800, color: "var(--on-solid)",
           cursor: "pointer", transition: "background .2s",
         }}
           onMouseEnter={(e) => (e.currentTarget.style.background = "var(--primary-bg-hover)")}
@@ -592,6 +765,216 @@ const ImageModal = ({
         >
           Close
         </button>
+      </div>
+    </div>
+  );
+};
+
+const ProfileEditorModal = ({
+  open,
+  mode,
+  saving,
+  currentEmail,
+  email,
+  currentPassword,
+  newPassword,
+  confirmPassword,
+  twoFactorEnabled,
+  onClose,
+  onChange,
+  onSubmit,
+}: {
+  open: boolean;
+  mode: ProfileEditorMode | null;
+  saving: boolean;
+  currentEmail: string;
+  email: string;
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+  twoFactorEnabled: boolean;
+  onClose: () => void;
+  onChange: (patch: Partial<{
+    email: string;
+    currentPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+    twoFactorEnabled: boolean;
+  }>) => void;
+  onSubmit: () => void;
+}) => {
+  if (!open || !mode) return null;
+
+  const config = {
+    email: {
+      title: "Update Email",
+      subtitle: "Change the admin login email used for this account.",
+      action: "Save Email",
+    },
+    password: {
+      title: "Update Password",
+      subtitle: "Set a new password for the active admin account.",
+      action: "Save Password",
+    },
+    security: {
+      title: "Security Settings",
+      subtitle: "Enable or disable an extra 2FA security step for admin sign-in.",
+      action: "Save Security",
+    },
+  }[mode];
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "12px 14px",
+    background: "var(--surface-2)",
+    border: "1.5px solid var(--border)",
+    borderRadius: 10,
+    fontFamily: "inherit",
+    fontSize: 14,
+    color: "var(--text)",
+    outline: "none",
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "var(--overlay)",
+        backdropFilter: "blur(4px)",
+        zIndex: 230,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface)",
+          borderRadius: 18,
+          width: "100%",
+          maxWidth: 480,
+          boxShadow: "var(--elevated-shadow)",
+          border: "1px solid var(--border)",
+          animation: "mIn .3s cubic-bezier(.16,1,.3,1)",
+        }}
+      >
+        <div style={{ padding: "22px 24px 16px", borderBottom: "1px solid var(--border)" }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text)", marginBottom: 6 }}>{config.title}</div>
+          <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.55 }}>{config.subtitle}</div>
+        </div>
+
+        <div style={{ padding: 24, display: "grid", gap: 16 }}>
+          {mode === "email" && (
+            <>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Current Email</div>
+                <div style={{ ...inputStyle, cursor: "default" }}>{currentEmail}</div>
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>New Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => onChange({ email: e.target.value })}
+                  placeholder="Enter a new admin email"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Current Password</label>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => onChange({ currentPassword: e.target.value })}
+                  placeholder="Confirm your current password"
+                  style={inputStyle}
+                />
+              </div>
+            </>
+          )}
+
+          {mode === "password" && (
+            <>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Current Password</label>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => onChange({ currentPassword: e.target.value })}
+                  placeholder="Enter your current password"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>New Password</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => onChange({ newPassword: e.target.value })}
+                  placeholder="Use at least 8 characters"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Confirm New Password</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => onChange({ confirmPassword: e.target.value })}
+                  placeholder="Re-enter the new password"
+                  style={inputStyle}
+                />
+              </div>
+            </>
+          )}
+
+          {mode === "security" && (
+            <div style={{ border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface-2)", padding: 18 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", marginBottom: 6 }}>Two-factor authentication</div>
+                  <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
+                    Require an extra security step for admin login sessions.
+                  </div>
+                </div>
+                <Toggle
+                  checked={twoFactorEnabled}
+                  onChange={(checked) => onChange({ twoFactorEnabled: checked })}
+                  label="Two-factor authentication"
+                  description="Require an extra security verification for admin sign-in."
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "0 24px 24px" }}>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            style={{
+              padding: "10px 14px",
+              background: "var(--surface-2)",
+              border: "1.5px solid var(--border)",
+              borderRadius: 8,
+              fontFamily: "inherit",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "var(--text)",
+              cursor: saving ? "not-allowed" : "pointer",
+              opacity: saving ? 0.65 : 1,
+            }}
+          >
+            Cancel
+          </button>
+          <Btn variant="navy" onClick={onSubmit} disabled={saving}>
+            {saving ? "Saving..." : config.action}
+          </Btn>
+        </div>
       </div>
     </div>
   );
@@ -698,9 +1081,23 @@ const NotificationItem = ({
 // ─────────────────────────────────────────────────────────────────
 const StatCard = ({ icon, iconBg, iconColor, num, label, trend, trendType }: {
   icon: ReactNode; iconBg: string; iconColor: string;
-  num: number; label: string; trend: string; trendType: "up" | "warn";
+  num: number; label: string; trend: string; trendType: "up" | "warn" | "down";
 }) => {
   const [hov, setHov] = useState(false);
+  const trendStyles = {
+    up: {
+      background: "var(--success-bg)",
+      color: "var(--success-text)",
+    },
+    warn: {
+      background: "var(--warning-bg)",
+      color: "var(--warning-text)",
+    },
+    down: {
+      background: "var(--danger-bg)",
+      color: "var(--danger-text)",
+    },
+  }[trendType];
   return (
     <div
       onMouseEnter={() => setHov(true)}
@@ -718,8 +1115,8 @@ const StatCard = ({ icon, iconBg, iconColor, num, label, trend, trendType }: {
         </div>
         <span style={{
           display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 100, fontSize: 11, fontWeight: 700,
-          background: trendType === "up" ? "var(--success-bg)" : "var(--warning-bg)",
-          color:      trendType === "up" ? "var(--success-text)"  : "var(--warning-text)",
+          background: trendStyles.background,
+          color: trendStyles.color,
         }}>
           {trend}
         </span>
@@ -737,6 +1134,7 @@ const UserGrowthChart = ({
   activeUsers,
   latestMonthUsers,
   averageMonthlyUsers,
+  style = {},
 }: {
   homeownerCount: number;
   tradesmanCount: number;
@@ -744,6 +1142,7 @@ const UserGrowthChart = ({
   activeUsers: number;
   latestMonthUsers: number;
   averageMonthlyUsers: number;
+  style?: React.CSSProperties;
 }) => {
   const hasData = totalUsers > 0;
   const homeownerRatio = hasData ? homeownerCount / totalUsers : 0;
@@ -754,16 +1153,16 @@ const UserGrowthChart = ({
   const tradesmanStroke = tradesmanRatio * circumference;
 
   return (
-    <Card style={{ marginBottom: 28 }}>
+    <Card style={{ marginBottom: 28, ...style }}>
       <CardHead
         title="User Distribution"
         subtitle="Current breakdown of homeowners and tradesmen on the platform"
         right={<Pill color="navy">Live User Mix</Pill>}
       />
-      <div style={{ padding: "24px", display: "grid", gridTemplateColumns: "minmax(0,2fr) minmax(220px,1fr)", gap: 24, alignItems: "stretch" }}>
+      <div style={{ padding: "24px", display: "grid", gridTemplateColumns: "minmax(0,1.35fr) minmax(260px,0.95fr)", gap: 24, alignItems: "stretch" }}>
         <div>
           {hasData ? (
-            <div style={{ minHeight: 260, display: "grid", gridTemplateColumns: "minmax(240px,320px) minmax(0,1fr)", gap: 24, alignItems: "center" }}>
+            <div style={{ minHeight: 260, display: "grid", gap: 20, alignContent: "start" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <div style={{ position: "relative", width: 220, height: 220 }}>
                   <svg viewBox="0 0 220 220" style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }} aria-label="User distribution pie chart">
@@ -803,7 +1202,7 @@ const UserGrowthChart = ({
                   </div>
                 </div>
               </div>
-              <div style={{ display: "grid", gap: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 14 }}>
                 {[
                   {
                     label: "Homeowners",
@@ -820,11 +1219,11 @@ const UserGrowthChart = ({
                     bg: "var(--accent-soft)",
                   },
                 ].map((item) => (
-                  <div key={item.label} style={{ border: "1px solid var(--border)", borderRadius: 16, background: "var(--surface-2)", padding: "16px 18px" }}>
+                  <div key={item.label} style={{ border: "1px solid var(--border)", borderRadius: 16, background: "var(--surface-2)", padding: "16px 18px", minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 12 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                         <span style={{ width: 12, height: 12, borderRadius: "50%", background: item.color, flexShrink: 0 }} />
-                        <span style={{ fontSize: 14, fontWeight: 800, color: "var(--text)" }}>{item.label}</span>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>
                       </div>
                       <span style={{ fontSize: 14, fontWeight: 800, color: item.color }}>{Math.round(item.ratio * 100)}%</span>
                     </div>
@@ -846,14 +1245,14 @@ const UserGrowthChart = ({
           )}
         </div>
 
-        <div style={{ display: "grid", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12, alignContent: "start" }}>
           {[
-            { label: "Total Users", value: totalUsers, tone: "var(--info-text)", bg: "var(--info-bg)" },
-            { label: "Active Accounts", value: activeUsers, tone: "var(--success-text)", bg: "var(--success-bg)" },
-            { label: "New This Month", value: latestMonthUsers, tone: "var(--accent)", bg: "var(--accent-soft)" },
-            { label: "Monthly Average", value: averageMonthlyUsers, tone: "var(--warning-text)", bg: "var(--warning-bg)" },
+            { label: "Total Users", value: totalUsers, tone: "var(--text)", bg: "var(--info-bg)" },
+            { label: "Active Accounts", value: activeUsers, tone: "var(--text)", bg: "var(--info-bg)" },
+            { label: "New This Month", value: latestMonthUsers, tone: "var(--text)", bg: "var(--info-bg)" },
+            { label: "Monthly Average", value: averageMonthlyUsers, tone: "var(--text)", bg: "var(--info-bg)" },
           ].map((item) => (
-            <div key={item.label} style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "16px 18px", background: "var(--surface-2)" }}>
+            <div key={item.label} style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "16px 18px", background: "var(--surface-2)", minWidth: 0 }}>
               <div style={{ display: "inline-flex", padding: "5px 10px", borderRadius: 999, background: item.bg, color: item.tone, fontSize: 11, fontWeight: 800, marginBottom: 12 }}>
                 {item.label}
               </div>
@@ -924,7 +1323,6 @@ const VerificationCard = ({
 }) => {
   const [hov, setHov] = useState(false);
   const statusLabel = toTitle(v.status);
-  const viewLabel = v.type === "homeowner_id" ? "View ID" : "View License/Cert";
   return (
     <div
       onMouseEnter={() => setHov(true)}
@@ -961,7 +1359,7 @@ const VerificationCard = ({
         ) : (
           <Btn disabled>{icons.check} {statusLabel}</Btn>
         )}
-        <Btn variant="view" onClick={onView} disabled={!v.documentUrl}>{icons.license} {viewLabel}</Btn>
+        <Btn variant="view" onClick={onView}>{icons.license} View Details</Btn>
         <Btn variant="reject" onClick={onArchive}>{icons.x} Archive</Btn>
       </div>
     </div>
@@ -987,19 +1385,19 @@ const NavItem = ({
         padding: "11px 12px", borderRadius: 10, width: "100%",
         fontFamily: "inherit", border: "none", textAlign: "left", cursor: "pointer",
         marginBottom: 2,
-        background: active ? "var(--neon-bg)" : hov ? "var(--sidebar-hover)" : "transparent",
-        boxShadow: active ? "var(--neon-glow)" : "none",
+        background: active ? "var(--info-bg)" : hov ? "var(--sidebar-hover)" : "transparent",
+        boxShadow: active ? "inset 0 0 0 1px var(--info-border)" : "none",
         transition: "all .2s",
       }}
     >
-      <span style={{ color: active ? "var(--neon-text)" : "rgba(255,255,255,0.45)", flexShrink: 0, display: "flex" }}>
+      <span style={{ color: active ? "var(--info-text)" : "var(--sidebar-muted)", flexShrink: 0, display: "flex" }}>
         {icon}
       </span>
-      <span style={{ fontSize: 13, fontWeight: 600, color: active ? "var(--neon-text)" : "rgba(255,255,255,0.5)", flex: 1 }}>
+      <span style={{ fontSize: 13, fontWeight: 600, color: active ? "var(--info-text)" : "var(--sidebar-text)", flex: 1 }}>
         {label}
       </span>
       {badge !== undefined && badge > 0 && (
-        <span style={{ background: active ? "rgba(255,255,255,0.3)" : "var(--accent)", color: "white", fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 100 }}>
+        <span style={{ background: active ? "var(--sidebar-badge-active-bg)" : "var(--accent)", color: active ? "var(--info-text)" : "var(--on-solid)", fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 100 }}>
           {badge}
         </span>
       )}
@@ -1017,6 +1415,7 @@ const icons = {
   home:    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
   user:    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
   chart:   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
+  flag:    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22V4"/><path d="M4 4h11l-1.5 4L15 12H4"/></svg>,
   settings:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
   logout:  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
   bell:    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
@@ -1036,6 +1435,27 @@ export default function DashboardPage() {
   const [tradesmen, setTradesmen]   = useState<Tradesman[]>([]);
   const [homeowners, setHomeowners] = useState<Homeowner[]>([]);
   const [verifications, setVerifications] = useState<Verification[]>([]);
+  const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileEditor, setProfileEditor] = useState<{
+    open: boolean;
+    mode: ProfileEditorMode | null;
+    email: string;
+    currentPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+    twoFactorEnabled: boolean;
+    saving: boolean;
+  }>({
+    open: false,
+    mode: null,
+    email: "",
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+    twoFactorEnabled: false,
+    saving: false,
+  });
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -1052,15 +1472,21 @@ export default function DashboardPage() {
   const [searchVerification, setSearchVerification] = useState("");
   const [searchTradesmen, setSearchTradesmen] = useState("");
   const [searchHomeowners, setSearchHomeowners] = useState("");
+  const [searchReports, setSearchReports] = useState("");
   const [searchDashboard, setSearchDashboard] = useState("");
   const [showArchivedOnly, setShowArchivedOnly] = useState(false);
   const [verificationFilters, setVerificationFilters] = useState<string[]>(["", ""]);
   const [tradesmenFilters, setTradesmenFilters] = useState<string[]>(["", ""]);
   const [homeownerFilters, setHomeownerFilters] = useState<string[]>(["", ""]);
+  const [showRejectedTradesmenOnly, setShowRejectedTradesmenOnly] = useState(false);
+  const [showRejectedHomeownersOnly, setShowRejectedHomeownersOnly] = useState(false);
+  const [reportStatusFilter, setReportStatusFilter] = useState("");
+  const [reportTab, setReportTab] = useState<ReportTab>("all");
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
   const bellButtonRef = useRef<HTMLButtonElement | null>(null);
   const bellPanelRef = useRef<HTMLDivElement | null>(null);
+  const reports = REPORTS_DATA;
 
   useEffect(() => {
     const stored = localStorage.getItem("admin_theme");
@@ -1121,8 +1547,19 @@ export default function DashboardPage() {
         "--text": "#E5E7EB",
         "--muted": "#94A3B8",
         "--shadow": "0 1px 3px rgba(0,0,0,.35)",
+        "--elevated-shadow": "0 12px 40px rgba(15,25,35,.2)",
+        "--overlay": "rgba(15,25,35,.5)",
         "--sidebar": "#0B1220",
         "--sidebar-accent": "#111E35",
+        "--sidebar-text": "rgba(255,255,255,0.7)",
+        "--sidebar-muted": "rgba(255,255,255,0.45)",
+        "--sidebar-section": "rgba(255,255,255,.3)",
+        "--sidebar-divider": "rgba(255,255,255,.08)",
+        "--sidebar-brand": "#FFFFFF",
+        "--sidebar-brand-muted": "rgba(255,255,255,.4)",
+        "--sidebar-brand-soft": "rgba(255,255,255,0.12)",
+        "--sidebar-brand-soft-2": "rgba(255,255,255,0.07)",
+        "--sidebar-badge-active-bg": "rgba(147,197,253,0.18)",
         "--table-head": "#0F172A",
         "--accent": "#F59E0B",
         "--accent-hover": "#FBBF24",
@@ -1151,12 +1588,7 @@ export default function DashboardPage() {
         "--primary-bg": "#1D4ED8",
         "--primary-bg-hover": "#2563EB",
         "--sidebar-hover": "rgba(255,255,255,0.08)",
-        "--neon-bg": "linear-gradient(135deg,#00E5FF,#A78BFA)",
-        "--neon-bg-hover": "linear-gradient(135deg,#00CFFF,#8B5CF6)",
-        "--neon-text": "#0B1220",
-        "--neon-border": "rgba(0,229,255,0.45)",
-        "--neon-glow": "0 0 14px rgba(0,229,255,0.35)",
-        "--neon-glow-hover": "0 0 20px rgba(0,229,255,0.55)",
+        "--on-solid": "#FFFFFF",
         "--scrollbar": "#475569",
         "--scrollbar-hover": "#64748B",
       }
@@ -1168,8 +1600,19 @@ export default function DashboardPage() {
         "--text": "#0F1923",
         "--muted": "#9AA3B8",
         "--shadow": "0 1px 3px rgba(15,25,35,.06)",
-        "--sidebar": "#1B2B5E",
-        "--sidebar-accent": "#1B2B5E",
+        "--elevated-shadow": "0 12px 40px rgba(15,25,35,.14)",
+        "--overlay": "rgba(15,25,35,.38)",
+        "--sidebar": "#FFFFFF",
+        "--sidebar-accent": "#FFFFFF",
+        "--sidebar-text": "#42536C",
+        "--sidebar-muted": "#94A3B8",
+        "--sidebar-section": "#94A3B8",
+        "--sidebar-divider": "#E3E8F0",
+        "--sidebar-brand": "#1B2B5E",
+        "--sidebar-brand-muted": "#7C8799",
+        "--sidebar-brand-soft": "#E9EEF8",
+        "--sidebar-brand-soft-2": "#F3F6FB",
+        "--sidebar-badge-active-bg": "#DCE7FB",
         "--table-head": "#F7F8FA",
         "--accent": "#E87722",
         "--accent-hover": "#F09040",
@@ -1197,13 +1640,8 @@ export default function DashboardPage() {
         "--row-hover": "#FAFBFD",
         "--primary-bg": "#1B2B5E",
         "--primary-bg-hover": "#243673",
-        "--sidebar-hover": "rgba(255,255,255,0.06)",
-        "--neon-bg": "linear-gradient(135deg,#00E5FF,#00FFB2)",
-        "--neon-bg-hover": "linear-gradient(135deg,#00CFFF,#00FF89)",
-        "--neon-text": "#0F1923",
-        "--neon-border": "rgba(0,229,255,0.6)",
-        "--neon-glow": "0 0 12px rgba(0,229,255,0.35)",
-        "--neon-glow-hover": "0 0 18px rgba(0,229,255,0.5)",
+        "--sidebar-hover": "#F3F6FB",
+        "--on-solid": "#FFFFFF",
         "--scrollbar": "#64748B",
         "--scrollbar-hover": "#94A3B8",
       };
@@ -1211,15 +1649,28 @@ export default function DashboardPage() {
   const pendingCount  = verifications.filter((v) => v.status === "pending").length;
   const archivedCount = verifications.filter((v) => v.status === "archived").length;
   const verifiedCount = tradesmen.filter((t) => t.status === "Verified").length;
+  const rejectedTradesmenCount = tradesmen.filter((t) => t.status === "Rejected").length;
+  const rejectedHomeownersCount = homeowners.filter((h) => h.idStatus === "Rejected").length;
   const pendingHomeownerIds = homeowners.filter((h) => h.idStatus === "Pending").length;
   const notificationCount = activity.length;
+  const openReportsCount = reports.filter((report) => report.status !== "Resolved").length;
   const totalUsers = homeowners.length + tradesmen.length;
   const activeUsers = homeowners.filter((h) => h.status === "Active").length + verifiedCount;
   const userGrowthData = buildUserGrowthData(homeowners, tradesmen);
+  const latestGrowthPoint = userGrowthData[userGrowthData.length - 1];
+  const previousGrowthPoint = userGrowthData[userGrowthData.length - 2];
   const latestMonthUsers = userGrowthData[userGrowthData.length - 1]?.total ?? 0;
   const averageMonthlyUsers = Math.round(
     userGrowthData.reduce((sum, point) => sum + point.total, 0) / Math.max(userGrowthData.length, 1)
   );
+  const pendingHomeownerVerifications = verifications.filter((v) => v.status === "pending" && v.type === "homeowner_id").length;
+  const pendingTradesmanVerifications = verifications.filter((v) => v.status === "pending" && v.type === "tradesperson_license").length;
+  const homeownerTrend = formatMonthlyTrend(latestGrowthPoint?.homeowners ?? 0, previousGrowthPoint?.homeowners ?? 0);
+  const tradesmanTrend = formatMonthlyTrend(latestGrowthPoint?.tradesmen ?? 0, previousGrowthPoint?.tradesmen ?? 0);
+  const pendingTrend = formatPendingVerificationTrend(pendingHomeownerVerifications, pendingTradesmanVerifications);
+  const verifiedTradesmanTrend = formatVerifiedTradesmanTrend(verifiedCount, tradesmen.length);
+  const homeownerTrendType = trendDirectionFromDelta(latestGrowthPoint?.homeowners ?? 0, previousGrowthPoint?.homeowners ?? 0);
+  const tradesmanTrendType = trendDirectionFromDelta(latestGrowthPoint?.tradesmen ?? 0, previousGrowthPoint?.tradesmen ?? 0);
 
   const normalize = (value: string) => value.trim().toLowerCase();
   const matchesQuery = (query: string, fields: Array<string | number | undefined>) => {
@@ -1252,15 +1703,17 @@ export default function DashboardPage() {
     ? verifications.filter((v) => v.status === "archived")
     : verifications.filter((v) => v.status !== "archived");
 
-  const filteredVerifications = baseVerifications.filter((v) => {
-    const statusLabel = toTitle(v.status);
-    const typeLabel = verificationTypeLabel(v.type);
-    return (
-      matchesQuery(searchVerification, [v.userId, v.id, statusLabel, typeLabel, getVerificationUserName(v)]) &&
-      matchesExactFilter(statusFilter, statusLabel) &&
-      matchesExactFilter(verificationFilters[1] ?? "", typeLabel)
-    );
-  });
+  const filteredVerifications = sortVerifications(
+    baseVerifications.filter((v) => {
+      const statusLabel = toTitle(v.status);
+      const typeLabel = verificationTypeLabel(v.type);
+      return (
+        matchesQuery(searchVerification, [v.userId, v.id, statusLabel, typeLabel, getVerificationUserName(v)]) &&
+        matchesExactFilter(statusFilter, statusLabel) &&
+        matchesExactFilter(verificationFilters[1] ?? "", typeLabel)
+      );
+    })
+  );
 
   const filteredTradesmen = tradesmen.filter((t) => (
     matchesQuery(searchTradesmen, [t.name, t.email, t.license, t.category, t.status, t.id]) &&
@@ -1273,6 +1726,28 @@ export default function DashboardPage() {
     matchesLooseFilter(homeownerFilters[0] ?? "", h.location) &&
     matchesExactFilter(homeownerFilters[1] ?? "", h.status)
   ));
+
+  const filteredReports = reports.filter((report) => {
+    const matchesTab =
+      reportTab === "all" ||
+      (reportTab === "homeowner" && report.targetType === "Homeowner") ||
+      (reportTab === "tradesman" && report.targetType === "Tradesman");
+
+    return (
+      matchesTab &&
+      matchesQuery(searchReports, [
+        report.targetName,
+        report.targetEmail,
+        report.reporterName,
+        report.reporterRole,
+        report.reason,
+        report.details,
+        report.status,
+        report.id,
+      ]) &&
+      matchesExactFilter(reportStatusFilter, report.status)
+    );
+  });
 
   const filteredDashboardVerifications = verifications.filter((v) => {
     const statusLabel = toTitle(v.status);
@@ -1292,7 +1767,8 @@ export default function DashboardPage() {
     activePage === "dashboard" ||
     activePage === "verification" ||
     activePage === "tradesmen" ||
-    activePage === "homeowners";
+    activePage === "homeowners" ||
+    activePage === "reports";
   const topbarSearchValue = activePage === "dashboard"
     ? searchDashboard
     : activePage === "verification"
@@ -1301,12 +1777,15 @@ export default function DashboardPage() {
       ? searchTradesmen
       : activePage === "homeowners"
         ? searchHomeowners
+        : activePage === "reports"
+          ? searchReports
         : "";
   const setTopbarSearchValue = (value: string) => {
     if (activePage === "dashboard") setSearchDashboard(value);
     if (activePage === "verification") setSearchVerification(value);
     if (activePage === "tradesmen") setSearchTradesmen(value);
     if (activePage === "homeowners") setSearchHomeowners(value);
+    if (activePage === "reports") setSearchReports(value);
   };
 
   // Toast helper
@@ -1320,6 +1799,66 @@ export default function DashboardPage() {
     if (!url) return "";
     if (url.startsWith("http://") || url.startsWith("https://")) return url;
     return `${apiBase}${url.startsWith("/") ? "" : "/"}${url}`;
+  };
+
+  const loadAdminProfile = async () => {
+    if (!authToken) return;
+    setProfileLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/api/profile/me`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          localStorage.removeItem("admin_token");
+          router.push("/login");
+          return;
+        }
+        showToast("Failed to load admin profile.", "error");
+        return;
+      }
+
+      const data = await res.json();
+      const user = data?.user ?? {};
+      setAdminProfile({
+        id: String(user.id ?? user.ID ?? "—"),
+        email: String(user.email ?? user.Email ?? "admin@fixit.com"),
+        role: String(user.role ?? user.Role ?? "admin"),
+        isActive: Boolean(user.is_active ?? user.IsActive ?? true),
+        twoFactorEnabled: Boolean(user.two_factor_enabled ?? user.TwoFactorEnabled ?? false),
+        updatedAt: user.updated_at ?? user.UpdatedAt,
+      });
+    } catch {
+      showToast("Failed to load admin profile.", "error");
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  const openProfileEditor = (mode: ProfileEditorMode) => {
+    setProfileEditor({
+      open: true,
+      mode,
+      email: mode === "email" ? adminProfile?.email ?? "" : "",
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+      twoFactorEnabled: adminProfile?.twoFactorEnabled ?? false,
+      saving: false,
+    });
+  };
+
+  const closeProfileEditor = (force = false) => {
+    setProfileEditor((prev) => (!force && prev.saving ? prev : {
+      open: false,
+      mode: null,
+      email: "",
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+      twoFactorEnabled: adminProfile?.twoFactorEnabled ?? false,
+      saving: false,
+    }));
   };
 
   useEffect(() => {
@@ -1549,6 +2088,7 @@ export default function DashboardPage() {
   useEffect(() => {
     loadUsers();
     loadActivity();
+    loadAdminProfile();
   }, [authToken, apiBase, router]);
 
   useEffect(() => {
@@ -1912,6 +2452,139 @@ export default function DashboardPage() {
       ),
     });
   };
+  const openVerificationDetails = (v: Verification) => {
+    const userId = String(v.userId ?? "");
+    if (v.type === "homeowner_id") {
+      const homeowner = homeowners.find((h) => h.userId === userId || h.id === userId);
+      if (homeowner) {
+        openHOModal(homeowner);
+        return;
+      }
+    }
+    if (v.type === "tradesperson_license") {
+      const tradesman = tradesmen.find((t) => t.userId === userId || t.id === userId);
+      if (tradesman) {
+        openTMModal(tradesman);
+        return;
+      }
+    }
+
+    setModal({
+      open: true,
+      title: getVerificationUserName(v) || `User #${v.userId}`,
+      rows: [
+        { label: "User ID", value: String(v.userId) },
+        { label: "Verification Type", value: verificationTypeLabel(v.type) },
+        { label: "Submitted", value: v.createdAt ? new Date(v.createdAt).toLocaleDateString() : "—" },
+        { label: "Status", value: toTitle(v.status), highlight: v.status === "approved" },
+        { label: "Document", value: v.documentUrl ? "Uploaded" : "Missing", highlight: Boolean(v.documentUrl) },
+      ],
+      actions: (
+        <Btn
+          variant="view"
+          onClick={() => openDocumentModal(`User #${v.userId}`, v.documentUrl || `${apiBase}/api/admin/documents/${v.id}/file`)}
+        >
+          {icons.license} View Uploaded Document
+        </Btn>
+      ),
+    });
+  };
+
+  const saveProfileEditor = async () => {
+    if (!authToken || !profileEditor.mode) {
+      showToast("Please sign in again.", "error");
+      return;
+    }
+
+    let endpoint = "";
+    let payload: Record<string, string | boolean> = {};
+
+    if (profileEditor.mode === "email") {
+      if (!profileEditor.email.trim()) {
+        showToast("Please enter a new email.", "error");
+        return;
+      }
+      if (!profileEditor.currentPassword) {
+        showToast("Please enter your current password.", "error");
+        return;
+      }
+      endpoint = "/api/profile/me/email";
+      payload = {
+        email: profileEditor.email.trim(),
+        current_password: profileEditor.currentPassword,
+      };
+    }
+
+    if (profileEditor.mode === "password") {
+      if (!profileEditor.currentPassword || !profileEditor.newPassword || !profileEditor.confirmPassword) {
+        showToast("Please complete the password form.", "error");
+        return;
+      }
+      if (profileEditor.newPassword.length < 8) {
+        showToast("New password must be at least 8 characters.", "error");
+        return;
+      }
+      if (profileEditor.newPassword !== profileEditor.confirmPassword) {
+        showToast("New passwords do not match.", "error");
+        return;
+      }
+      endpoint = "/api/profile/me/password";
+      payload = {
+        current_password: profileEditor.currentPassword,
+        new_password: profileEditor.newPassword,
+      };
+    }
+
+    if (profileEditor.mode === "security") {
+      endpoint = "/api/profile/me/security";
+      payload = {
+        two_factor_enabled: profileEditor.twoFactorEnabled,
+      };
+    }
+
+    setProfileEditor((prev) => ({ ...prev, saving: true }));
+    try {
+      const res = await fetch(`${apiBase}${endpoint}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          localStorage.removeItem("admin_token");
+          router.push("/login");
+          return;
+        }
+
+        let message = "Unable to update profile.";
+        try {
+          const data = await res.json();
+          message = String(data?.message ?? message);
+        } catch {}
+        showToast(message, "error");
+        return;
+      }
+
+      const successMessage =
+        profileEditor.mode === "email"
+          ? "Email updated successfully."
+          : profileEditor.mode === "password"
+            ? "Password updated successfully."
+            : "Security settings updated successfully.";
+
+      closeProfileEditor(true);
+      await loadAdminProfile();
+      showToast(successMessage, "success");
+    } catch {
+      showToast("Unable to update profile.", "error");
+    } finally {
+      setProfileEditor((prev) => ({ ...prev, saving: false }));
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("admin_token");
@@ -1924,6 +2597,7 @@ export default function DashboardPage() {
     verification: "Verifications",
     tradesmen:    "Tradesmen",
     homeowners:   "Homeowners",
+    reports:      "Reports",
     profile:      "Profile",
     settings:     "Settings",
   };
@@ -1934,58 +2608,31 @@ export default function DashboardPage() {
     <div style={{ animation: "fadeUp .35s ease both" }}>
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 28 }}>
-        <StatCard iconBg="var(--info-bg)" iconColor="var(--info-text)" num={homeowners.length} label="Total Homeowners" trend="+12%" trendType="up"
+        <StatCard iconBg="var(--info-bg)" iconColor="var(--info-text)" num={homeowners.length} label="Total Homeowners" trend={homeownerTrend} trendType={homeownerTrendType}
           icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>}
         />
-        <StatCard iconBg="var(--accent-soft)" iconColor="var(--accent)" num={tradesmen.length} label="Total Tradesmen" trend="+8%" trendType="up"
+        <StatCard iconBg="var(--info-bg)" iconColor="var(--info-text)" num={tradesmen.length} label="Total Tradesmen" trend={tradesmanTrend} trendType={tradesmanTrendType}
           icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>}
         />
-        <StatCard iconBg="var(--warning-bg)" iconColor="var(--warning-text)" num={pendingCount} label="Pending Verifications" trend="Needs review" trendType="warn"
+        <StatCard iconBg="var(--warning-bg)" iconColor="var(--warning-text)" num={pendingCount} label="Pending Verifications" trend={pendingTrend} trendType="warn"
           icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>}
         />
-        <StatCard iconBg="var(--success-bg)" iconColor="var(--success-text)" num={verifiedCount} label="Verified Tradesmen" trend={`${Math.round((verifiedCount/Math.max(tradesmen.length,1))*100)}% rate`} trendType="up"
+        <StatCard iconBg="var(--success-bg)" iconColor="var(--success-text)" num={verifiedCount} label="Verified Tradesmen" trend={verifiedTradesmanTrend} trendType="up"
           icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>}
         />
       </div>
 
-      {/* Two-column: verification queue + activity */}
+      {/* Two-column: analytics + activity */}
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 20, marginBottom: 28 }}>
-        {/* Verification queue */}
-        <Card>
-          <CardHead
-            title="Verification Queue"
-            subtitle="Latest ID/license submissions"
-            right={
-              <>
-                <Pill color="orange">{pendingCount} Pending</Pill>
-                <Btn variant="neon" onClick={() => setActivePage("verification")}>View All</Btn>
-              </>
-            }
-          />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 16, padding: "20px 24px" }}>
-            {filteredDashboardVerifications.slice(0, 4).map((v) => (
-              <VerificationCard
-                key={v.id}
-                v={v}
-                name={getVerificationUserName(v)}
-                onApprove={() => reviewVerification(v.id, "approved")}
-                onReject={() => reviewVerification(v.id, "rejected")}
-                onView={() => openDocumentModal(`User #${v.userId}`, v.documentUrl)}
-                onArchive={() => archiveVerification(v.id)}
-              />
-            ))}
-            {pendingCount === 0 && (
-              <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "40px 20px", color: "var(--muted)" }}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>All caught up! No pending verifications.</div>
-              </div>
-            )}
-            {pendingCount > 0 && filteredDashboardVerifications.length === 0 && (
-              <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "40px 20px", color: "var(--muted)" }}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>No matching verifications.</div>
-              </div>
-            )}
-          </div>
-        </Card>
+        <UserGrowthChart
+          homeownerCount={homeowners.length}
+          tradesmanCount={tradesmen.length}
+          totalUsers={totalUsers}
+          activeUsers={activeUsers}
+          latestMonthUsers={latestMonthUsers}
+          averageMonthlyUsers={averageMonthlyUsers}
+          style={{ marginBottom: 0 }}
+        />
 
         {/* Recent activity */}
         <Card>
@@ -2003,14 +2650,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <UserGrowthChart
-        homeownerCount={homeowners.length}
-        tradesmanCount={tradesmen.length}
-        totalUsers={totalUsers}
-        activeUsers={activeUsers}
-        latestMonthUsers={latestMonthUsers}
-        averageMonthlyUsers={averageMonthlyUsers}
-      />
     </div>
   );
 
@@ -2030,7 +2669,7 @@ export default function DashboardPage() {
                   fontWeight: 700,
                   border: "1px solid var(--border)",
                   background: showArchivedOnly ? "var(--info-solid)" : "var(--info-bg)",
-                  color: showArchivedOnly ? "white" : "var(--info-text)",
+                  color: showArchivedOnly ? "var(--on-solid)" : "var(--info-text)",
                   cursor: "pointer",
                   transition: "all .2s",
                   fontFamily: "inherit",
@@ -2076,17 +2715,13 @@ export default function DashboardPage() {
                         <>
                           <Btn variant="approve" onClick={() => reviewVerification(v.id, "approved")}>{icons.check} Approve</Btn>
                           <Btn variant="reject"  onClick={() => reviewVerification(v.id, "rejected")}>{icons.x} Reject</Btn>
+                          <Btn variant="view" onClick={() => openVerificationDetails(v)}>{icons.license} View Details</Btn>
                         </>
                       ) : (
                         <>
                           <Btn disabled>{icons.check} {toTitle(v.status)}</Btn>
-                          {v.type === "tradesperson_license" && (
-                            <Btn variant="view" onClick={() => openDocumentModal(`User #${v.userId}`, v.documentUrl)}>{icons.license} View ID/Cert</Btn>
-                          )}
+                          <Btn variant="view" onClick={() => openVerificationDetails(v)}>{icons.license} View Details</Btn>
                         </>
-                      )}
-                      {v.status === "pending" && v.type === "tradesperson_license" && (
-                        <Btn variant="view" onClick={() => openDocumentModal(`User #${v.userId}`, v.documentUrl)}>{icons.license} View ID/Cert</Btn>
                       )}
                       {v.status === "archived" ? (
                         <Btn variant="approve" onClick={() => restoreVerification(v.id)}>{icons.check} Restore</Btn>
@@ -2250,6 +2885,173 @@ export default function DashboardPage() {
     </div>
   );
 
+  const PageReports = () => {
+    const tabs: Array<{ id: ReportTab; label: string; count: number }> = [
+      { id: "all", label: "All Reports", count: reports.length },
+      { id: "homeowner", label: "Homeowner Reports", count: reports.filter((report) => report.targetType === "Homeowner").length },
+      { id: "tradesman", label: "Tradesman Reports", count: reports.filter((report) => report.targetType === "Tradesman").length },
+    ];
+
+    return (
+      <div style={{ animation: "fadeUp .35s ease both" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16, marginBottom: 20 }}>
+          <StatCard
+            iconBg="var(--warning-bg)"
+            iconColor="var(--warning-text)"
+            num={openReportsCount}
+            label="Open Reports"
+            trend="Needs review"
+            trendType="warn"
+            icon={icons.flag}
+          />
+          <StatCard
+            iconBg="var(--info-bg)"
+            iconColor="var(--info-text)"
+            num={reports.filter((report) => report.targetType === "Homeowner").length}
+            label="Homeowner Reports"
+            trend="User side"
+            trendType="up"
+            icon={icons.home}
+          />
+          <StatCard
+            iconBg="var(--accent-soft)"
+            iconColor="var(--accent)"
+            num={reports.filter((report) => report.targetType === "Tradesman").length}
+            label="Tradesman Reports"
+            trend="Provider side"
+            trendType="up"
+            icon={icons.wrench}
+          />
+        </div>
+
+        <Card>
+          <CardHead
+            title="User Reports"
+            subtitle="Review reports submitted against homeowners and tradesmen"
+            right={<Pill color="orange">{openReportsCount} Open</Pill>}
+          />
+          <div style={{ padding: "18px 24px 0", display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {tabs.map((tab) => {
+              const active = reportTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setReportTab(tab.id)}
+                  style={{
+                    padding: "9px 14px",
+                    borderRadius: 999,
+                    border: `1.5px solid ${active ? "var(--info-border)" : "var(--border)"}`,
+                    background: active ? "var(--info-bg)" : "var(--surface-2)",
+                    color: active ? "var(--info-text)" : "var(--text)",
+                    fontFamily: "inherit",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    boxShadow: "none",
+                    transition: "all .2s",
+                  }}
+                >
+                  {tab.label} ({tab.count})
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ padding: "14px 24px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 16 }}>
+            <div style={{ flex: 1, minWidth: 220, display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 8 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+              <input
+                type="text"
+                placeholder="Search reports…"
+                value={searchReports}
+                onChange={(e) => setSearchReports(e.target.value)}
+                style={{ border: "none", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 13, color: "var(--text)", width: "100%" }}
+              />
+            </div>
+            <select
+              value={reportStatusFilter}
+              onChange={(e) => setReportStatusFilter(e.target.value)}
+              style={{ padding: "9px 14px", background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, fontWeight: 600, color: "var(--text)", outline: "none", cursor: "pointer", minWidth: 160 }}
+            >
+              <option value="">All Status</option>
+              <option value="Open">Open</option>
+              <option value="Reviewing">Reviewing</option>
+              <option value="Resolved">Resolved</option>
+            </select>
+          </div>
+          <Table>
+            <thead><tr><Th>Reported User</Th><Th>Type</Th><Th>Reporter</Th><Th>Reason</Th><Th>Submitted</Th><Th>Status</Th><Th>Actions</Th></tr></thead>
+            <tbody>
+              {filteredReports.map((report) => (
+                <tr
+                  key={report.id}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--row-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  style={{ transition: "background .15s" }}
+                >
+                  <Td>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{report.targetName}</div>
+                      <div style={{ fontSize: 12, color: "var(--muted)" }}>{report.targetEmail}</div>
+                    </div>
+                  </Td>
+                  <Td>
+                    <span style={{
+                      display: "inline-flex",
+                      padding: "5px 10px",
+                      borderRadius: 999,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      background: report.targetType === "Homeowner" ? "var(--info-bg)" : "var(--accent-soft)",
+                      color: report.targetType === "Homeowner" ? "var(--info-text)" : "var(--accent)",
+                    }}>
+                      {report.targetType}
+                    </span>
+                  </Td>
+                  <Td>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{report.reporterName}</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>{report.reporterRole}</div>
+                  </Td>
+                  <Td>{report.reason}</Td>
+                  <Td>{formatDate(report.submittedAt)}</Td>
+                  <Td><Badge status={report.status} /></Td>
+                  <Td>
+                    <Btn
+                      variant="view"
+                      onClick={() =>
+                        setModal({
+                          open: true,
+                          title: `${report.targetName} · ${report.targetType} Report`,
+                          rows: [
+                            { label: "Report ID", value: report.id },
+                            { label: "Reported User", value: report.targetName },
+                            { label: "Reported Email", value: report.targetEmail },
+                            { label: "Reporter", value: `${report.reporterName} (${report.reporterRole})` },
+                            { label: "Reason", value: report.reason },
+                            { label: "Details", value: report.details },
+                            { label: "Submitted", value: formatDate(report.submittedAt) },
+                            { label: "Status", value: report.status, highlight: report.status === "Resolved" },
+                          ],
+                        })
+                      }
+                    >
+                      View Report
+                    </Btn>
+                  </Td>
+                </tr>
+              ))}
+              {filteredReports.length === 0 && (
+                <tr>
+                  <Td style={{ textAlign: "center", color: "var(--muted)" }} colSpan={7}>No reports match the current filters.</Td>
+                </tr>
+              )}
+            </tbody>
+          </Table>
+        </Card>
+      </div>
+    );
+  };
+
   const PageSettings = () => (
     <div style={{ animation: "fadeUp .35s ease both" }}>
       <Card>
@@ -2278,57 +3080,68 @@ export default function DashboardPage() {
     </div>
   );
 
-  const PageProfile = () => (
-    <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 24, animation: "fadeUp .35s ease both" }}>
-      {/* Left: profile card */}
-      <div>
-        <Card style={{ marginBottom: 16 }}>
-          {/* Hero */}
-          <div style={{ background: "var(--sidebar-accent)", padding: "32px 24px", display: "flex", flexDirection: "column", alignItems: "center", position: "relative", overflow: "hidden" }}>
-            <div style={{ position: "absolute", width: 200, height: 200, borderRadius: "50%", background: "rgba(255,255,255,0.04)", top: -70, right: -60 }} />
-            <div style={{ position: "absolute", width: 120, height: 120, borderRadius: "50%", background: "rgba(232,119,34,0.12)", bottom: -40, left: 10 }} />
-            <div style={{ width: 76, height: 76, background: "var(--accent)", borderRadius: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 800, color: "white", marginBottom: 14, border: "3px solid rgba(255,255,255,0.2)", position: "relative", zIndex: 1 }}>AD</div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: "white", position: "relative", zIndex: 1 }}>Admin User</div>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginTop: 4, position: "relative", zIndex: 1 }}>Super Administrator</div>
-          </div>
-          {/* Items */}
-          {[
-            { icon: icons.bell, label: "Email", sub: "admin@fixit.com" },
-            { icon: icons.shield, label: "Password", sub: "Last changed 30 days ago" },
-            { icon: icons.shield, label: "Security", sub: "2FA enabled" },
-          ].map((item, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 20px", borderBottom: i < 2 ? "1px solid var(--border)" : "none", cursor: "pointer", transition: "background .15s" }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 9, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent)" }}>{item.icon}</div>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{item.label}</div>
-                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 1 }}>{item.sub}</div>
-                </div>
-              </div>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-            </div>
-          ))}
-        </Card>
-      </div>
+  const PageProfile = () => {
+    const adminEmail = adminProfile?.email ?? "admin@fixit.com";
+    const adminName = adminDisplayNameFromEmail(adminEmail);
+    const adminRole = humanizeRole(adminProfile?.role);
+    const securityLabel = adminProfile?.twoFactorEnabled ? "2FA enabled" : "2FA disabled";
 
-      {/* Right: details + activity */}
-      <div>
-        <Card style={{ marginBottom: 20 }}>
-          <CardHead title="Account Details" />
-          <div style={{ padding: 24, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-            {[["Full Name","Admin User"],["Role","Super Administrator"],["Email","admin@fixit.com"],["Last Login","Today, 5:29 AM"]].map(([l,v]) => (
-              <div key={l}>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>{l}</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{v}</div>
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 24, animation: "fadeUp .35s ease both" }}>
+        <div>
+          <Card style={{ marginBottom: 16 }}>
+            {[
+              { icon: icons.bell, label: "Email", sub: adminEmail, mode: "email" as ProfileEditorMode },
+              { icon: icons.shield, label: "Password", sub: "Update your admin password", mode: "password" as ProfileEditorMode },
+              { icon: icons.shield, label: "Security", sub: securityLabel, mode: "security" as ProfileEditorMode },
+            ].map((item, i) => (
+              <div
+                key={item.label}
+                onClick={() => openProfileEditor(item.mode)}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 20px", borderBottom: i < 2 ? "1px solid var(--border)" : "none", cursor: "pointer", transition: "background .15s" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 9, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent)" }}>{item.icon}</div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{item.label}</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 1 }}>{item.sub}</div>
+                  </div>
+                </div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
               </div>
             ))}
-          </div>
-        </Card>
+          </Card>
+        </div>
+
+        <div>
+          <Card style={{ marginBottom: 20 }}>
+            <CardHead
+              title="Account Details"
+              subtitle="Manage the active admin account"
+              right={<Btn variant="view" onClick={loadAdminProfile} disabled={profileLoading}>{profileLoading ? "Refreshing..." : "Refresh"}</Btn>}
+            />
+            <div style={{ padding: 24, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+              {[
+                ["Full Name", adminName],
+                ["Role", adminRole],
+                ["Email", adminEmail],
+                ["Security", securityLabel],
+                ["Account Status", adminProfile?.isActive ? "Active" : "Inactive"],
+                ["Last Updated", formatDateTime(adminProfile?.updatedAt)],
+              ].map(([l, v]) => (
+                <div key={l}>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>{l}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", overflowWrap: "anywhere" }}>{v}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // ── RENDER ─────────────────────────────────────────────────────
   return (
@@ -2337,25 +3150,16 @@ export default function DashboardPage() {
       {/* SIDEBAR */}
       <nav style={{ width: 260, flexShrink: 0, background: "var(--sidebar)", display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 50, boxShadow: "2px 0 20px rgba(15,25,35,.15)", overflowY: "auto" }}>
         {/* Logo */}
-        <div style={{ padding: "22px 20px 18px", borderBottom: "1px solid rgba(255,255,255,.08)", display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ padding: "20px 25px 18px", borderBottom: "1px solid var(--sidebar-divider)", display: "flex", alignItems: "center", gap: 12 }}>
           <SidebarShield />
           <div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: "white", letterSpacing: -0.3 }}>Fix It</div>
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)", fontWeight: 500, letterSpacing: 0.5 }}>Admin Portal</div>
-          </div>
-        </div>
-
-        {/* Admin tag */}
-        <div style={{ margin: "14px 14px 4px", padding: "10px 14px", background: "var(--accent-soft)", border: "1px solid rgba(232,119,34,.25)", borderRadius: 10, display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 9, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "white", flexShrink: 0 }}>AD</div>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "white" }}>Admin User</div>
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,.45)", marginTop: 1 }}>Super Administrator</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "var(--sidebar-brand)", letterSpacing: -0.3 }}>Fix It</div>
+            <div style={{ fontSize: 11, color: "var(--sidebar-brand-muted)", fontWeight: 500, letterSpacing: 0.5 }}>Admin Portal</div>
           </div>
         </div>
 
         {/* Nav */}
-        <div style={{ flex: 1, padding: "4px 12px" }}>
+        <div style={{ flex: 1, padding: "14px 12px 4px" }}>
           {[
             { label: "Main" },
             { icon: icons.grid,     label: "Dashboard",     page: "dashboard" as Page },
@@ -2363,12 +3167,13 @@ export default function DashboardPage() {
             { label: "Users" },
             { icon: icons.wrench,   label: "Tradesmen",     page: "tradesmen" as Page },
             { icon: icons.home,     label: "Homeowners",    page: "homeowners" as Page },
+            { icon: icons.flag,     label: "Reports",       page: "reports" as Page, badge: openReportsCount },
             { label: "System" },
             { icon: icons.user,     label: "Profile",       page: "profile" as Page },
             { icon: icons.settings, label: "Settings",      page: "settings" as Page },
           ].map((item, i) =>
             !item.icon ? (
-              <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1.5px", textTransform: "uppercase", color: "rgba(255,255,255,.3)", padding: "14px 8px 8px" }}>{item.label}</div>
+              <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--sidebar-section)", padding: "14px 8px 8px" }}>{item.label}</div>
             ) : (
               <NavItem
                 key={i}
@@ -2383,10 +3188,10 @@ export default function DashboardPage() {
         </div>
 
         {/* Sign out */}
-        <div style={{ padding: "12px 16px 24px", borderTop: "1px solid rgba(255,255,255,.08)" }}>
+        <div style={{ padding: "12px 16px 24px", borderTop: "1px solid var(--sidebar-divider)" }}>
           <button onClick={handleLogout}
             style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", borderRadius: 10, background: "var(--danger-bg)", border: "1px solid var(--danger-border)", cursor: "pointer", width: "100%", fontFamily: "inherit", transition: "background .2s", color: "var(--danger-text)" }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--danger-solid)"; e.currentTarget.style.color = "white"; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--danger-solid)"; e.currentTarget.style.color = "var(--on-solid)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "var(--danger-bg)"; e.currentTarget.style.color = "var(--danger-text)"; }}>
             <span style={{ display: "flex" }}>{icons.logout}</span>
             <span style={{ fontSize: 13, fontWeight: 700 }}>Sign Out</span>
@@ -2397,7 +3202,7 @@ export default function DashboardPage() {
       {/* MAIN */}
       <div style={{ marginLeft: 260, flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }}>
         {/* Topbar */}
-        <div style={{ background: "var(--surface)", height: 64, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 32px", position: "sticky", top: 0, zIndex: 40, boxShadow: "var(--shadow)" }}>
+        <div style={{ background: "var(--surface)", height: 83, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 32px", position: "sticky", top: 0, zIndex: 40, boxShadow: "var(--shadow)" }}>
           <div>
             <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text)", letterSpacing: -0.3 }}>{pageTitles[activePage]}</div>
             <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, marginTop: 1 }}>Fix It Marketplace › Admin Portal › {pageTitles[activePage]}</div>
@@ -2427,7 +3232,7 @@ export default function DashboardPage() {
                 onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--surface)"; }}>
                 <span style={{ color: "var(--muted)" }}>{icons.bell}</span>
                 {notificationCount > 0 && (
-                  <span style={{ position: "absolute", top: 6, right: 6, minWidth: 16, height: 16, padding: "0 4px", background: "var(--accent)", borderRadius: 100, border: "1.5px solid white", color: "white", fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ position: "absolute", top: 6, right: 6, minWidth: 16, height: 16, padding: "0 4px", background: "var(--accent)", borderRadius: 100, border: "1.5px solid var(--surface)", color: "var(--on-solid)", fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>
                     {notificationCount > 9 ? "9+" : notificationCount}
                   </span>
                 )}
@@ -2483,7 +3288,7 @@ export default function DashboardPage() {
             </div>
             {/* Avatar */}
             <div onClick={() => setActivePage("profile")}
-              style={{ width: 38, height: 38, borderRadius: 9, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "white", cursor: "pointer" }}>
+              style={{ width: 38, height: 38, borderRadius: 9, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "var(--on-solid)", cursor: "pointer" }}>
               AD
             </div>
           </div>
@@ -2495,6 +3300,7 @@ export default function DashboardPage() {
           {activePage === "verification" && <PageVerification />}
           {activePage === "tradesmen"    && <PageTradesmen />}
           {activePage === "homeowners"   && <PageHomeowners />}
+          {activePage === "reports"      && <PageReports />}
           {activePage === "profile"      && <PageProfile />}
           {activePage === "settings"     && <PageSettings />}
         </div>
@@ -2505,6 +3311,20 @@ export default function DashboardPage() {
 
       {/* Modal */}
       <Modal open={modal.open} onClose={() => setModal((m) => ({ ...m, open: false }))} title={modal.title} rows={modal.rows} actions={modal.actions} />
+      <ProfileEditorModal
+        open={profileEditor.open}
+        mode={profileEditor.mode}
+        saving={profileEditor.saving}
+        currentEmail={adminProfile?.email ?? "admin@fixit.com"}
+        email={profileEditor.email}
+        currentPassword={profileEditor.currentPassword}
+        newPassword={profileEditor.newPassword}
+        confirmPassword={profileEditor.confirmPassword}
+        twoFactorEnabled={profileEditor.twoFactorEnabled}
+        onClose={closeProfileEditor}
+        onChange={(patch) => setProfileEditor((prev) => ({ ...prev, ...patch }))}
+        onSubmit={saveProfileEditor}
+      />
       <ConfirmModal
         open={confirm.open}
         title={confirm.title}

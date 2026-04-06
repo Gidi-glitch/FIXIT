@@ -5,24 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 
 	"fixit-backend/config"
 	"fixit-backend/models"
+	"fixit-backend/services"
 
 	"gorm.io/gorm"
 )
 
-func documentFileExists(path string) bool {
-	if strings.TrimSpace(path) == "" {
-		return false
+func documentPublicURL(doc models.VerificationDocument) string {
+	if services.ResolveDocumentFilePath(doc) == "" {
+		return ""
 	}
-	if _, err := os.Stat(path); err != nil {
-		return false
-	}
-	return true
+	return fmt.Sprintf("/api/admin/documents/%d/file", doc.ID)
 }
 
 // ListDocuments handles GET /api/admin/documents
@@ -98,12 +95,13 @@ func HandleDocument(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "document not found")
 			return
 		}
-		if !documentFileExists(doc.FilePath) {
+		resolvedPath := services.ResolveDocumentFilePath(doc)
+		if resolvedPath == "" {
 			writeError(w, http.StatusNotFound, "document file missing")
 			return
 		}
 
-		http.ServeFile(w, r, doc.FilePath)
+		http.ServeFile(w, r, resolvedPath)
 		return
 
 	case "approve", "reject":
@@ -254,6 +252,7 @@ func HandleTradesperson(w http.ResponseWriter, r *http.Request) {
 // HandleHomeowner routes:
 // PATCH /api/admin/homeowners/{id}/revoke
 // PATCH /api/admin/homeowners/{id}/restore
+// PATCH /api/admin/homeowners/{id}/unreject
 func HandleHomeowner(w http.ResponseWriter, r *http.Request) {
 	// Split path into segments: ["api","admin","homeowners","{id}","revoke"]
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
@@ -269,7 +268,7 @@ func HandleHomeowner(w http.ResponseWriter, r *http.Request) {
 	}
 
 	action := parts[4]
-	if action != "revoke" && action != "restore" {
+	if action != "revoke" && action != "restore" && action != "unreject" {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -333,6 +332,40 @@ func HandleHomeowner(w http.ResponseWriter, r *http.Request) {
 			"user_id":        profile.UserID,
 			"account_status": "active",
 		})
+	case "unreject":
+		if err := config.DB.Model(&models.User{}).
+			Where("id = ?", profile.UserID).
+			Update("is_active", true).Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to reactivate homeowner")
+			return
+		}
+
+		if err := config.DB.Model(&profile).Update("status_id", "approved").Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to update homeowner id status")
+			return
+		}
+
+		if err := config.DB.Model(&models.VerificationDocument{}).
+			Where("user_id = ? AND document_group IN ?", profile.UserID, []string{"government_id", "homeowner_id"}).
+			Where("status != ?", "archived").
+			Update("status", "approved").Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to restore homeowner verification documents")
+			return
+		}
+
+		_ = logActivity(
+			"Homeowner unrejected",
+			fmt.Sprintf("%s · ID status restored to approved", fullName),
+			"homeowner_restored",
+		)
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"message":        "homeowner unrejected",
+			"homeowner_id":   profile.ID,
+			"user_id":        profile.UserID,
+			"account_status": "active",
+			"id_status":      "approved",
+		})
 	}
 }
 
@@ -371,7 +404,7 @@ func ListTradespeople(w http.ResponseWriter, r *http.Request) {
 			Order("created_at desc").
 			Find(&docs).Error; err == nil {
 			for _, d := range docs {
-				if !documentFileExists(d.FilePath) {
+				if services.ResolveDocumentFilePath(d) == "" {
 					continue
 				}
 				switch strings.ToLower(d.DocumentGroup) {
@@ -449,7 +482,7 @@ func ListHomeowners(w http.ResponseWriter, r *http.Request) {
 			Order("created_at desc").
 			Find(&docs).Error; err == nil {
 			for _, d := range docs {
-				if !documentFileExists(d.FilePath) {
+				if services.ResolveDocumentFilePath(d) == "" {
 					continue
 				}
 				if _, exists := docMap[d.UserID]; !exists {
@@ -538,12 +571,7 @@ func ListVerifications(w http.ResponseWriter, r *http.Request) {
 			"user_id":      d.UserID,
 			"type":         vType,
 			"status":       d.Status,
-			"document_url": func() string {
-				if !documentFileExists(d.FilePath) {
-					return ""
-				}
-				return fmt.Sprintf("/api/admin/documents/%d/file", d.ID)
-			}(),
+			"document_url": documentPublicURL(d),
 			"created_at":   d.CreatedAt,
 		})
 	}
