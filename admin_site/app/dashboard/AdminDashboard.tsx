@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 // ─────────────────────────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────────────────────────
-type Page = "dashboard" | "verification" | "tradesmen" | "homeowners" | "reports" | "profile" | "settings";
+type Page = "dashboard" | "verification" | "tradesmen" | "homeowners" | "ratings" | "reports" | "profile" | "settings";
 type ToastType = "success" | "error" | "info";
 type ReportTab = "all" | "homeowner" | "tradesman";
 
@@ -24,7 +24,7 @@ interface Tradesman {
   joined: string;
   createdAt?: string;
   jobs: number;
-  status: "Pending" | "Verified" | "Rejected" | "Suspended";
+  status: "Pending" | "Verified" | "Suspended";
 }
 
 interface Homeowner {
@@ -54,14 +54,14 @@ interface Verification {
   createdAt?: string;
 }
 
-type ProfileEditorMode = "email" | "password" | "security";
+type ProfileEditorMode = "name" | "email" | "password";
 
 interface AdminProfile {
   id: string;
+  fullName: string;
   email: string;
   role: string;
   isActive: boolean;
-  twoFactorEnabled: boolean;
   updatedAt?: string;
 }
 
@@ -81,6 +81,8 @@ interface UserGrowthPoint {
   total: number;
 }
 
+type AnalyticsRange = "today" | "week" | "month";
+
 interface ReportEntry {
   id: string;
   targetType: "Homeowner" | "Tradesman";
@@ -92,6 +94,20 @@ interface ReportEntry {
   details: string;
   status: "Open" | "Reviewing" | "Resolved";
   submittedAt: string;
+}
+
+interface TradesmanReview {
+  id: string;
+  tradesmanId: string;
+  tradesmanEmail: string;
+  tradesmanName: string;
+  reviewerName: string;
+  reviewerRole: "Homeowner" | "Tradesman";
+  rating: number;
+  jobType: string;
+  comment: string;
+  submittedAt: string;
+  verifiedBooking: boolean;
 }
 
 const toTitle = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
@@ -201,6 +217,16 @@ const sortVerifications = (items: Verification[]) =>
 
 const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short" });
 const getMonthKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}`;
+const getDateKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+const addDays = (date: Date, days: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+const isSameDay = (left: Date, right: Date) =>
+  left.getFullYear() === right.getFullYear() &&
+  left.getMonth() === right.getMonth() &&
+  left.getDate() === right.getDate();
+
+const formatHourLabel = (hour: number) =>
+  new Intl.DateTimeFormat("en-US", { hour: "numeric" }).format(new Date(2025, 0, 1, hour));
 
 const parseDashboardDate = (value?: string) => {
   if (!value) return null;
@@ -244,6 +270,88 @@ const buildUserGrowthData = (homeowners: Homeowner[], tradesmen: Tradesman[], mo
   return buckets;
 };
 
+const buildRangeAnalyticsData = (
+  homeowners: Homeowner[],
+  tradesmen: Tradesman[],
+  range: AnalyticsRange,
+) => {
+  const now = new Date();
+  const today = startOfDay(now);
+  let buckets: UserGrowthPoint[] = [];
+  let resolveKey: (date: Date) => string | null = () => null;
+
+  if (range === "today") {
+    buckets = Array.from({ length: 24 }, (_, hour) => ({
+      key: String(hour),
+      label: formatHourLabel(hour),
+      homeowners: 0,
+      tradesmen: 0,
+      total: 0,
+    }));
+    resolveKey = (date) => (isSameDay(date, now) ? String(date.getHours()) : null);
+  } else if (range === "week") {
+    const start = addDays(today, -6);
+    buckets = Array.from({ length: 7 }, (_, index) => {
+      const date = addDays(start, index);
+      return {
+        key: getDateKey(date),
+        label: date.toLocaleDateString("en-US", { weekday: "short" }),
+        homeowners: 0,
+        tradesmen: 0,
+        total: 0,
+      };
+    });
+    resolveKey = (date) => {
+      const value = startOfDay(date);
+      if (value < start || value > today) return null;
+      return getDateKey(value);
+    };
+  } else {
+    const start = addDays(today, -29);
+    buckets = Array.from({ length: 30 }, (_, index) => {
+      const date = addDays(start, index);
+      return {
+        key: getDateKey(date),
+        label: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        homeowners: 0,
+        tradesmen: 0,
+        total: 0,
+      };
+    });
+    resolveKey = (date) => {
+      const value = startOfDay(date);
+      if (value < start || value > today) return null;
+      return getDateKey(value);
+    };
+  }
+
+  const bucketMap = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+
+  homeowners.forEach((homeowner) => {
+    const parsed = parseDashboardDate(homeowner.createdAt);
+    if (!parsed) return;
+    const key = resolveKey(parsed);
+    if (!key) return;
+    const bucket = bucketMap.get(key);
+    if (!bucket) return;
+    bucket.homeowners += 1;
+    bucket.total += 1;
+  });
+
+  tradesmen.forEach((tradesman) => {
+    const parsed = parseDashboardDate(tradesman.createdAt);
+    if (!parsed) return;
+    const key = resolveKey(parsed);
+    if (!key) return;
+    const bucket = bucketMap.get(key);
+    if (!bucket) return;
+    bucket.tradesmen += 1;
+    bucket.total += 1;
+  });
+
+  return buckets;
+};
+
 const formatPercent = (value: number) => {
   const rounded = Math.abs(value) >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
   return `${rounded > 0 ? "+" : rounded < 0 ? "" : ""}${rounded}%`;
@@ -276,6 +384,14 @@ const formatVerifiedTradesmanTrend = (verifiedCount: number, totalTradesmen: num
   if (verifiedCount === totalTradesmen) return "All verified";
   return `${Math.round((verifiedCount / totalTradesmen) * 100)}% verified`;
 };
+
+const averageRating = (reviews: TradesmanReview[]) => {
+  if (reviews.length === 0) return 0;
+  const total = reviews.reduce((sum, review) => sum + review.rating, 0);
+  return Math.round((total / reviews.length) * 10) / 10;
+};
+
+const formatRatingValue = (value: number) => value.toFixed(1);
 
 const activityDot = (type: string) => {
   switch (type) {
@@ -375,6 +491,57 @@ const REPORTS_DATA: ReportEntry[] = [
   },
 ];
 
+const SAMPLE_TRADESMAN_REVIEW_TEMPLATES = [
+  {
+    reviewerName: "Sofia Mendoza",
+    reviewerRole: "Homeowner" as const,
+    rating: 5,
+    jobType: "Electrical outlet repair",
+    comment: "Arrived on time, explained the work clearly, and left the area clean after finishing the repair.",
+    verifiedBooking: true,
+  },
+  {
+    reviewerName: "Ben Torres",
+    reviewerRole: "Homeowner" as const,
+    rating: 4,
+    jobType: "Leak inspection",
+    comment: "The repair quality was solid and communication was smooth, though the visit started a little later than expected.",
+    verifiedBooking: true,
+  },
+  {
+    reviewerName: "Karl Santos",
+    reviewerRole: "Homeowner" as const,
+    rating: 5,
+    jobType: "Aircon maintenance",
+    comment: "Professional from start to finish and gave helpful maintenance tips after the service.",
+    verifiedBooking: true,
+  },
+  {
+    reviewerName: "Maria Garcia",
+    reviewerRole: "Homeowner" as const,
+    rating: 3,
+    jobType: "Interior repainting",
+    comment: "Work was completed well, but there were some delays in updates while materials were being sourced.",
+    verifiedBooking: true,
+  },
+  {
+    reviewerName: "Liza Villanueva",
+    reviewerRole: "Homeowner" as const,
+    rating: 4,
+    jobType: "Appliance diagnosis",
+    comment: "Very courteous and easy to talk to. I would book again for follow-up work.",
+    verifiedBooking: true,
+  },
+  {
+    reviewerName: "Jose Ramos",
+    reviewerRole: "Homeowner" as const,
+    rating: 5,
+    jobType: "Bathroom fixture replacement",
+    comment: "Fast turnaround and the finished installation looked neat and secure.",
+    verifiedBooking: true,
+  },
+];
+
 // ─────────────────────────────────────────────────────────────────
 // SHARED MINI-COMPONENTS
 // ─────────────────────────────────────────────────────────────────
@@ -396,7 +563,7 @@ const Badge = ({ status }: { status: string }) => {
     Pending:  { bg: "var(--warning-bg)", color: "var(--warning-text)", border: "1px solid var(--warning-border)" },
     Verified: { bg: "var(--info-bg)", color: "var(--info-text)", border: "1px solid var(--info-border)"  },
     Approved: { bg: "var(--info-bg)", color: "var(--info-text)", border: "1px solid var(--info-border)"  },
-    Active:   { bg: "var(--success-bg)", color: "var(--success-text)", border: "1px solid var(--success-border)"  },
+    Active:   { bg: "var(--info-bg)", color: "var(--info-text)", border: "1px solid var(--success-border)"  },
     Inactive: { bg: "var(--danger-bg)", color: "var(--danger-text)", border: "1px solid var(--danger-border)"  },
     Rejected: { bg: "var(--danger-bg)", color: "var(--danger-text)", border: "1px solid var(--danger-border)"  },
     Suspended:{ bg: "var(--danger-bg)", color: "var(--danger-text)", border: "1px solid var(--danger-border)"  },
@@ -415,6 +582,30 @@ const Badge = ({ status }: { status: string }) => {
     </span>
   );
 };
+
+const StarRating = ({ value, size = 14 }: { value: number; size?: number }) => (
+  <div style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+    {Array.from({ length: 5 }, (_, index) => {
+      const filled = value >= index + 1;
+      return (
+        <svg
+          key={index}
+          width={size}
+          height={size}
+          viewBox="0 0 24 24"
+          fill={filled ? "var(--accent)" : "none"}
+          stroke={filled ? "var(--accent)" : "var(--border)"}
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <polygon points="12 2 15.1 8.6 22 9.3 17 14.1 18.3 21 12 17.4 5.7 21 7 14.1 2 9.3 8.9 8.6 12 2" />
+        </svg>
+      );
+    })}
+  </div>
+);
 
 // Small button
 const Btn = ({
@@ -543,9 +734,14 @@ function SidebarShield() {
     <img
       src="/fixit_logo.png"
       alt="Fix It logo"
-      width={44}
-      height={44}
-      style={{ objectFit: "contain", display: "block", flexShrink: 0 }}
+      width={58}
+      height={58}
+      style={{
+        objectFit: "contain",
+        display: "block",
+        flexShrink: 0,
+        filter: "brightness(0) invert(1) drop-shadow(0 4px 10px rgba(255,255,255,0.16))",
+      }}
     />
   );
 }
@@ -576,9 +772,10 @@ const Toast = ({ msg, type, show }: { msg: string; type: ToastType; show: boolea
 // MODAL
 // ─────────────────────────────────────────────────────────────────
 const Modal = ({
-  open, onClose, title, rows, actions,
+  open, onClose, title, hero, rows, actions,
 }: {
   open: boolean; onClose: () => void; title: string;
+  hero?: ReactNode;
   rows: { label: string; value: string; highlight?: boolean }[];
   actions?: ReactNode;
 }) => {
@@ -607,6 +804,11 @@ const Modal = ({
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
         </div>
+        {hero && (
+          <div style={{ marginBottom: 18 }}>
+            {hero}
+          </div>
+        )}
         {rows.map((r, i) => (
           <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "11px 0", borderBottom: i < rows.length - 1 ? "1px solid var(--border)" : "none" }}>
             <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>{r.label}</span>
@@ -774,12 +976,13 @@ const ProfileEditorModal = ({
   open,
   mode,
   saving,
+  currentName,
+  fullName,
   currentEmail,
   email,
   currentPassword,
   newPassword,
   confirmPassword,
-  twoFactorEnabled,
   onClose,
   onChange,
   onSubmit,
@@ -787,25 +990,31 @@ const ProfileEditorModal = ({
   open: boolean;
   mode: ProfileEditorMode | null;
   saving: boolean;
+  currentName: string;
+  fullName: string;
   currentEmail: string;
   email: string;
   currentPassword: string;
   newPassword: string;
   confirmPassword: string;
-  twoFactorEnabled: boolean;
   onClose: () => void;
   onChange: (patch: Partial<{
+    fullName: string;
     email: string;
     currentPassword: string;
     newPassword: string;
     confirmPassword: string;
-    twoFactorEnabled: boolean;
   }>) => void;
   onSubmit: () => void;
 }) => {
   if (!open || !mode) return null;
 
   const config = {
+    name: {
+      title: "Update Name",
+      subtitle: "Change the admin display name shown across the dashboard.",
+      action: "Save Name",
+    },
     email: {
       title: "Update Email",
       subtitle: "Change the admin login email used for this account.",
@@ -815,11 +1024,6 @@ const ProfileEditorModal = ({
       title: "Update Password",
       subtitle: "Set a new password for the active admin account.",
       action: "Save Password",
-    },
-    security: {
-      title: "Security Settings",
-      subtitle: "Enable or disable an extra 2FA security step for admin sign-in.",
-      action: "Save Security",
     },
   }[mode];
 
@@ -868,6 +1072,25 @@ const ProfileEditorModal = ({
         </div>
 
         <div style={{ padding: 24, display: "grid", gap: 16 }}>
+          {mode === "name" && (
+            <>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Current Name</div>
+                <div style={{ ...inputStyle, cursor: "default" }}>{currentName}</div>
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>New Name</label>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => onChange({ fullName: e.target.value })}
+                  placeholder="Enter the admin name"
+                  style={inputStyle}
+                />
+              </div>
+            </>
+          )}
+
           {mode === "email" && (
             <>
               <div>
@@ -932,24 +1155,6 @@ const ProfileEditorModal = ({
             </>
           )}
 
-          {mode === "security" && (
-            <div style={{ border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface-2)", padding: 18 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", marginBottom: 6 }}>Two-factor authentication</div>
-                  <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
-                    Require an extra security step for admin login sessions.
-                  </div>
-                </div>
-                <Toggle
-                  checked={twoFactorEnabled}
-                  onChange={(checked) => onChange({ twoFactorEnabled: checked })}
-                  label="Two-factor authentication"
-                  description="Require an extra security verification for admin sign-in."
-                />
-              </div>
-            </div>
-          )}
         </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "0 24px 24px" }}>
@@ -1016,30 +1221,154 @@ const Toolbar = ({
   onSearchChange: (value: string) => void;
   filterValues: string[];
   onFilterChange: (index: number, value: string) => void;
-}) => (
-  <div style={{ padding: "14px 24px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-    <div style={{ flex: 1, minWidth: 200, display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 8 }}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-      <input
-        type="text"
-        placeholder={placeholder}
-        value={searchValue}
-        onChange={(e) => onSearchChange(e.target.value)}
-        style={{ border: "none", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 13, color: "var(--text)", width: "100%" }}
-      />
+}) => {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filterMenuRef = useRef<HTMLDivElement | null>(null);
+  const activeFilterCount = filterValues.filter(Boolean).length;
+
+  useEffect(() => {
+    if (!filtersOpen) return;
+
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (filterMenuRef.current?.contains(target)) return;
+      setFiltersOpen(false);
+    };
+
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFiltersOpen(false);
+    };
+
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [filtersOpen]);
+
+  return (
+    <div style={{ padding: "14px 24px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)", position: "relative", zIndex: 5 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "nowrap" }}>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 8 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+          <input
+            type="text"
+            placeholder={placeholder}
+            value={searchValue}
+            onChange={(e) => onSearchChange(e.target.value)}
+            style={{ border: "none", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 13, color: "var(--text)", width: "100%" }}
+          />
+        </div>
+
+        <div ref={filterMenuRef} style={{ position: "relative", flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={() => setFiltersOpen((prev) => !prev)}
+            aria-label="Open filters"
+            aria-expanded={filtersOpen}
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 10,
+              border: `1.5px solid ${filtersOpen ? "var(--accent)" : "var(--border)"}`,
+              background: filtersOpen || activeFilterCount > 0 ? "var(--accent-soft)" : "var(--surface)",
+              color: filtersOpen || activeFilterCount > 0 ? "var(--accent)" : "var(--muted)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              position: "relative",
+              transition: "all .2s",
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+              <line x1="5" y1="7" x2="19" y2="7" />
+              <line x1="8" y1="12" x2="19" y2="12" />
+              <line x1="11" y1="17" x2="19" y2="17" />
+            </svg>
+            {activeFilterCount > 0 && (
+              <span style={{
+                position: "absolute",
+                top: -5,
+                right: -5,
+                minWidth: 18,
+                height: 18,
+                padding: "0 5px",
+                borderRadius: 999,
+                background: "var(--accent)",
+                color: "var(--on-solid)",
+                fontSize: 10,
+                fontWeight: 800,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: "2px solid var(--surface-2)",
+              }}>
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+
+          {filtersOpen && (
+            <div style={{
+              position: "absolute",
+              top: "calc(100% + 10px)",
+              right: 0,
+              zIndex: 30,
+              width: 260,
+              padding: 14,
+              borderRadius: 14,
+              background: "var(--surface)",
+              border: "1.5px solid var(--border)",
+              boxShadow: "var(--elevated-shadow)",
+              display: "grid",
+              gap: 10,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 2 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)" }}>Filters</div>
+                {activeFilterCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      filterValues.forEach((_, index) => onFilterChange(index, ""));
+                    }}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      color: "var(--accent)",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      fontFamily: "inherit",
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                  >
+                    Clear all
+                  </button>
+                )}
+              </div>
+              {filters.map((opts, i) => (
+                <div key={i} style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+                    {opts[0]}
+                  </div>
+                  <select
+                    value={filterValues[i] ?? ""}
+                    onChange={(e) => onFilterChange(i, e.target.value)}
+                    style={{ padding: "10px 12px", background: "var(--surface-2)", border: "1.5px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, fontWeight: 600, color: "var(--text)", outline: "none", cursor: "pointer", width: "100%" }}
+                  >
+                    {opts.map((o) => <option key={o} value={o === opts[0] ? "" : o}>{o}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
-    {filters.map((opts, i) => (
-      <select
-        key={i}
-        value={filterValues[i] ?? ""}
-        onChange={(e) => onFilterChange(i, e.target.value)}
-        style={{ padding: "9px 14px", background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, fontWeight: 600, color: "var(--text)", outline: "none", cursor: "pointer", minWidth: 140 }}
-      >
-        {opts.map((o) => <option key={o} value={o === opts[0] ? "" : o}>{o}</option>)}
-      </select>
-    ))}
-  </div>
-);
+  );
+};
 
 // ─────────────────────────────────────────────────────────────────
 // ACTIVITY FEED ITEM
@@ -1081,7 +1410,7 @@ const NotificationItem = ({
 // ─────────────────────────────────────────────────────────────────
 const StatCard = ({ icon, iconBg, iconColor, num, label, trend, trendType }: {
   icon: ReactNode; iconBg: string; iconColor: string;
-  num: number; label: string; trend: string; trendType: "up" | "warn" | "down";
+  num: number | string; label: string; trend: string; trendType: "up" | "warn" | "down";
 }) => {
   const [hov, setHov] = useState(false);
   const trendStyles = {
@@ -1128,118 +1457,152 @@ const StatCard = ({ icon, iconBg, iconColor, num, label, trend, trendType }: {
 };
 
 const UserGrowthChart = ({
-  homeownerCount,
-  tradesmanCount,
-  totalUsers,
-  activeUsers,
-  latestMonthUsers,
-  averageMonthlyUsers,
+  homeowners,
+  tradesmen,
   style = {},
 }: {
-  homeownerCount: number;
-  tradesmanCount: number;
-  totalUsers: number;
-  activeUsers: number;
-  latestMonthUsers: number;
-  averageMonthlyUsers: number;
+  homeowners: Homeowner[];
+  tradesmen: Tradesman[];
   style?: React.CSSProperties;
 }) => {
-  const hasData = totalUsers > 0;
-  const homeownerRatio = hasData ? homeownerCount / totalUsers : 0;
-  const tradesmanRatio = hasData ? tradesmanCount / totalUsers : 0;
-  const radius = 76;
-  const circumference = 2 * Math.PI * radius;
-  const homeownerStroke = homeownerRatio * circumference;
-  const tradesmanStroke = tradesmanRatio * circumference;
+  const [range, setRange] = useState<AnalyticsRange>("month");
+  const points = buildRangeAnalyticsData(homeowners, tradesmen, range);
+  const hasData = points.some((point) => point.total > 0);
+  const totalInRange = points.reduce((sum, point) => sum + point.total, 0);
+  const homeownerCount = points.reduce((sum, point) => sum + point.homeowners, 0);
+  const tradesmanCount = points.reduce((sum, point) => sum + point.tradesmen, 0);
+  const averagePerBucket = (totalInRange / Math.max(points.length, 1)).toFixed(range === "today" ? 1 : 0);
+  const peakPoint = points.reduce((best, point) => (point.total > best.total ? point : best), points[0]);
+  const maxValue = Math.max(...points.map((point) => Math.max(point.total, point.homeowners, point.tradesmen)), 1);
+  const chartWidth = 640;
+  const chartHeight = 260;
+  const padding = { top: 16, right: 16, bottom: 30, left: 32 };
+  const innerWidth = chartWidth - padding.left - padding.right;
+  const innerHeight = chartHeight - padding.top - padding.bottom;
+  const denominator = Math.max(points.length - 1, 1);
+  const yTicks = 4;
+  const rangeLabel = range === "today" ? "Today" : range === "week" ? "This Week" : "This Month";
+  const averageLabel = range === "today" ? "Avg / Hour" : "Avg / Day";
+  const peakLabel = range === "today" ? "Peak Hour" : "Peak Day";
+  const shouldShowTick = (index: number) => {
+    if (range === "today") return index % 3 === 0 || index === points.length - 1;
+    if (range === "week") return true;
+    return index % 5 === 0 || index === points.length - 1;
+  };
+  const pointCoords = points.map((point, index) => ({
+    ...point,
+    x: padding.left + (index / denominator) * innerWidth,
+    totalY: padding.top + innerHeight - (point.total / maxValue) * innerHeight,
+    homeownerY: padding.top + innerHeight - (point.homeowners / maxValue) * innerHeight,
+    tradesmanY: padding.top + innerHeight - (point.tradesmen / maxValue) * innerHeight,
+  }));
+  const linePath = (selector: (point: typeof pointCoords[number]) => number) =>
+    pointCoords
+      .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${selector(point).toFixed(2)}`)
+      .join(" ");
+  const areaPath = hasData
+    ? `${linePath((point) => point.totalY)} L ${pointCoords[pointCoords.length - 1]?.x ?? padding.left} ${padding.top + innerHeight} L ${pointCoords[0]?.x ?? padding.left} ${padding.top + innerHeight} Z`
+    : "";
 
   return (
     <Card style={{ marginBottom: 28, ...style }}>
       <CardHead
-        title="User Distribution"
-        subtitle="Current breakdown of homeowners and tradesmen on the platform"
-        right={<Pill color="navy">Live User Mix</Pill>}
+        title="Signup Analytics"
+        subtitle="Track homeowner and tradesman account creation across different time ranges"
+        right={
+          <div style={{ display: "inline-flex", padding: 4, borderRadius: 999, background: "var(--surface-2)", border: "1px solid var(--border)", gap: 4 }}>
+            {[
+              { key: "today", label: "Today" },
+              { key: "week", label: "This Week" },
+              { key: "month", label: "This Month" },
+            ].map((option) => {
+              const active = range === option.key;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setRange(option.key as AnalyticsRange)}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 999,
+                    border: "none",
+                    background: active ? "var(--info-solid)" : "transparent",
+                    color: active ? "var(--on-solid)" : "var(--muted)",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    transition: "all .2s",
+                  }}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        }
       />
       <div style={{ padding: "24px", display: "grid", gridTemplateColumns: "minmax(0,1.35fr) minmax(260px,0.95fr)", gap: 24, alignItems: "stretch" }}>
         <div>
           {hasData ? (
-            <div style={{ minHeight: 260, display: "grid", gap: 20, alignContent: "start" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <div style={{ position: "relative", width: 220, height: 220 }}>
-                  <svg viewBox="0 0 220 220" style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }} aria-label="User distribution pie chart">
-                    <circle
-                      cx="110"
-                      cy="110"
-                      r={radius}
-                      fill="none"
-                      stroke="var(--surface-2)"
-                      strokeWidth="34"
-                    />
-                    <circle
-                      cx="110"
-                      cy="110"
-                      r={radius}
-                      fill="none"
-                      stroke="var(--info-solid)"
-                      strokeWidth="34"
-                      strokeDasharray={`${homeownerStroke} ${circumference - homeownerStroke}`}
-                      strokeLinecap="butt"
-                    />
-                    <circle
-                      cx="110"
-                      cy="110"
-                      r={radius}
-                      fill="none"
-                      stroke="var(--accent)"
-                      strokeWidth="34"
-                      strokeDasharray={`${tradesmanStroke} ${circumference - tradesmanStroke}`}
-                      strokeDashoffset={-homeownerStroke}
-                      strokeLinecap="butt"
-                    />
-                  </svg>
-                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", letterSpacing: 0.4, textTransform: "uppercase" }}>Total Users</div>
-                    <div style={{ fontSize: 38, lineHeight: 1, fontWeight: 800, color: "var(--text)", marginTop: 6 }}>{totalUsers}</div>
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 14 }}>
+            <div style={{ minHeight: 260, display: "grid", gap: 18, alignContent: "start" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
                 {[
-                  {
-                    label: "Homeowners",
-                    count: homeownerCount,
-                    ratio: homeownerRatio,
-                    color: "var(--info-solid)",
-                    bg: "var(--info-bg)",
-                  },
-                  {
-                    label: "Tradesmen",
-                    count: tradesmanCount,
-                    ratio: tradesmanRatio,
-                    color: "var(--accent)",
-                    bg: "var(--accent-soft)",
-                  },
+                  { label: "Total", color: "var(--info-solid)" },
+                  { label: "Homeowners", color: "#3B82F6" },
+                  { label: "Tradesmen", color: "var(--accent)" },
                 ].map((item) => (
-                  <div key={item.label} style={{ border: "1px solid var(--border)", borderRadius: 16, background: "var(--surface-2)", padding: "16px 18px", minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 12 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                        <span style={{ width: 12, height: 12, borderRadius: "50%", background: item.color, flexShrink: 0 }} />
-                        <span style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>
-                      </div>
-                      <span style={{ fontSize: 14, fontWeight: 800, color: item.color }}>{Math.round(item.ratio * 100)}%</span>
-                    </div>
-                    <div style={{ fontSize: 28, lineHeight: 1, fontWeight: 800, color: "var(--text)", marginBottom: 12 }}>{item.count}</div>
-                    <div style={{ width: "100%", height: 10, borderRadius: 999, background: item.bg, overflow: "hidden" }}>
-                      <div style={{ width: `${item.ratio * 100}%`, height: "100%", background: item.color, borderRadius: 999 }} />
-                    </div>
+                  <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>
+                    <span style={{ width: 10, height: 10, borderRadius: "50%", background: item.color }} />
+                    {item.label}
                   </div>
                 ))}
+              </div>
+              <div style={{ border: "1px solid var(--border)", borderRadius: 16, background: "var(--surface-2)", padding: "16px 18px" }}>
+                <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ width: "100%", height: 280 }} aria-label={`${rangeLabel} signup analytics line chart`}>
+                  {Array.from({ length: yTicks + 1 }, (_, index) => {
+                    const value = (maxValue / yTicks) * index;
+                    const y = padding.top + innerHeight - (value / maxValue) * innerHeight;
+                    return (
+                      <g key={index}>
+                        <line
+                          x1={padding.left}
+                          x2={chartWidth - padding.right}
+                          y1={y}
+                          y2={y}
+                          stroke="var(--border)"
+                          strokeDasharray="4 6"
+                        />
+                        <text x={padding.left - 10} y={y + 4} textAnchor="end" fill="var(--muted)" fontSize="11" fontWeight="700">
+                          {Math.round(value)}
+                        </text>
+                      </g>
+                    );
+                  })}
+                  {areaPath && <path d={areaPath} fill="rgba(27,43,94,0.08)" />}
+                  <path d={linePath((point) => point.totalY)} fill="none" stroke="var(--info-solid)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d={linePath((point) => point.homeownerY)} fill="none" stroke="#3B82F6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d={linePath((point) => point.tradesmanY)} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  {pointCoords.map((point, index) => (
+                    <g key={point.key}>
+                      <circle cx={point.x} cy={point.totalY} r="3.5" fill="var(--info-solid)" />
+                      <circle cx={point.x} cy={point.homeownerY} r="2.75" fill="#3B82F6" />
+                      <circle cx={point.x} cy={point.tradesmanY} r="2.75" fill="var(--accent)" />
+                      {shouldShowTick(index) && (
+                        <text x={point.x} y={chartHeight - 6} textAnchor="middle" fill="var(--muted)" fontSize="11" fontWeight="700">
+                          {point.label}
+                        </text>
+                      )}
+                    </g>
+                  ))}
+                </svg>
               </div>
             </div>
           ) : (
             <div style={{ minHeight: 260, borderRadius: 16, border: "1.5px dashed var(--border)", background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "24px" }}>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)", marginBottom: 6 }}>No users yet</div>
-                <div style={{ fontSize: 12, color: "var(--muted)" }}>The pie chart will populate once homeowner or tradesman accounts are available.</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)", marginBottom: 6 }}>No signup data yet</div>
+                <div style={{ fontSize: 12, color: "var(--muted)" }}>This chart will populate once users have created accounts during the selected period.</div>
               </div>
             </div>
           )}
@@ -1247,16 +1610,18 @@ const UserGrowthChart = ({
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12, alignContent: "start" }}>
           {[
-            { label: "Total Users", value: totalUsers, tone: "var(--text)", bg: "var(--info-bg)" },
-            { label: "Active Accounts", value: activeUsers, tone: "var(--text)", bg: "var(--info-bg)" },
-            { label: "New This Month", value: latestMonthUsers, tone: "var(--text)", bg: "var(--info-bg)" },
-            { label: "Monthly Average", value: averageMonthlyUsers, tone: "var(--text)", bg: "var(--info-bg)" },
+            { label: `${rangeLabel} Total`, value: totalInRange, caption: "All signups", tone: "var(--text)", bg: "var(--info-bg)" },
+            { label: "Homeowners", value: homeownerCount, caption: `Within ${rangeLabel.toLowerCase()}`, tone: "var(--text)", bg: "var(--info-bg)" },
+            { label: "Tradesmen", value: tradesmanCount, caption: `Within ${rangeLabel.toLowerCase()}`, tone: "var(--text)", bg: "var(--info-bg)" },
+            { label: peakLabel, value: peakPoint?.total ?? 0, caption: peakPoint?.total ? peakPoint.label : "No signups", tone: "var(--text)", bg: "var(--info-bg)" },
+            { label: averageLabel, value: averagePerBucket, caption: "Smoothed period average", tone: "var(--text)", bg: "var(--info-bg)" },
           ].map((item) => (
             <div key={item.label} style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "16px 18px", background: "var(--surface-2)", minWidth: 0 }}>
               <div style={{ display: "inline-flex", padding: "5px 10px", borderRadius: 999, background: item.bg, color: item.tone, fontSize: 11, fontWeight: 800, marginBottom: 12 }}>
                 {item.label}
               </div>
               <div style={{ fontSize: 28, lineHeight: 1, fontWeight: 800, color: "var(--text)", letterSpacing: -1 }}>{item.value}</div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 10 }}>{item.caption}</div>
             </div>
           ))}
         </div>
@@ -1370,35 +1735,55 @@ const VerificationCard = ({
 // SIDEBAR NAV ITEM
 // ─────────────────────────────────────────────────────────────────
 const NavItem = ({
-  icon, label, active, badge, onClick,
+  icon, label, active, badge, onClick, collapsed = false,
 }: {
-  icon: ReactNode; label: string; active?: boolean; badge?: number; onClick: () => void;
+  icon: ReactNode; label: string; active?: boolean; badge?: number; onClick: () => void; collapsed?: boolean;
 }) => {
   const [hov, setHov] = useState(false);
   return (
     <button
+      title={label}
       onClick={onClick}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        display: "flex", alignItems: "center", gap: 12,
-        padding: "11px 12px", borderRadius: 10, width: "100%",
+        display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: collapsed ? 0 : 14,
+        padding: collapsed ? "12px 0" : "12px 14px", borderRadius: 14, width: "100%",
         fontFamily: "inherit", border: "none", textAlign: "left", cursor: "pointer",
-        marginBottom: 2,
-        background: active ? "var(--info-bg)" : hov ? "var(--sidebar-hover)" : "transparent",
-        boxShadow: active ? "inset 0 0 0 1px var(--info-border)" : "none",
-        transition: "all .2s",
+        marginBottom: 6,
+        background: active ? "var(--sidebar-accent)" : hov ? "var(--sidebar-hover)" : "transparent",
+        boxShadow: active ? "inset 0 0 0 1px var(--sidebar-divider), 0 10px 22px rgba(12,24,54,.18)" : "none",
+        transition: "all .2s ease",
+        position: "relative",
       }}
     >
-      <span style={{ color: active ? "var(--info-text)" : "var(--sidebar-muted)", flexShrink: 0, display: "flex" }}>
+      <span style={{ color: active ? "var(--sidebar-active-text)" : "var(--sidebar-muted)", flexShrink: 0, display: "flex" }}>
         {icon}
       </span>
-      <span style={{ fontSize: 13, fontWeight: 600, color: active ? "var(--info-text)" : "var(--sidebar-text)", flex: 1 }}>
-        {label}
-      </span>
+      {!collapsed && (
+        <span style={{ fontSize: 14, fontWeight: 700, color: active ? "var(--sidebar-active-text)" : "var(--sidebar-text)", flex: 1 }}>
+          {label}
+        </span>
+      )}
       {badge !== undefined && badge > 0 && (
-        <span style={{ background: active ? "var(--sidebar-badge-active-bg)" : "var(--accent)", color: active ? "var(--info-text)" : "var(--on-solid)", fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 100 }}>
-          {badge}
+        <span style={{
+          background: active ? "var(--sidebar-badge-active-bg)" : "var(--accent)",
+          color: active ? "var(--sidebar-active-text)" : "var(--on-solid)",
+          fontSize: collapsed ? 9 : 11,
+          fontWeight: 800,
+          padding: collapsed ? "0 4px" : "4px 8px",
+          borderRadius: 999,
+          minWidth: collapsed ? 16 : 24,
+          height: collapsed ? 16 : "auto",
+          textAlign: "center",
+          position: collapsed ? "absolute" : "static",
+          top: collapsed ? 6 : undefined,
+          right: collapsed ? 8 : undefined,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+          {collapsed && badge > 9 ? "9+" : badge}
         </span>
       )}
     </button>
@@ -1417,6 +1802,8 @@ const icons = {
   chart:   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
   flag:    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22V4"/><path d="M4 4h11l-1.5 4L15 12H4"/></svg>,
   settings:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+  star:    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.1 8.6 22 9.3 17 14.1 18.3 21 12 17.4 5.7 21 7 14.1 2 9.3 8.9 8.6 12 2"/></svg>,
+  menu:    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>,
   logout:  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
   bell:    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
   check:   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
@@ -1440,27 +1827,26 @@ export default function DashboardPage() {
   const [profileEditor, setProfileEditor] = useState<{
     open: boolean;
     mode: ProfileEditorMode | null;
+    fullName: string;
     email: string;
     currentPassword: string;
     newPassword: string;
     confirmPassword: string;
-    twoFactorEnabled: boolean;
     saving: boolean;
   }>({
     open: false,
     mode: null,
+    fullName: "",
     email: "",
     currentPassword: "",
     newPassword: "",
     confirmPassword: "",
-    twoFactorEnabled: false,
     saving: false,
   });
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const [toast, setToast]           = useState({ show: false, msg: "", type: "success" as ToastType });
-  const [modal, setModal]           = useState<{ open: boolean; title: string; rows: { label: string; value: string; highlight?: boolean }[]; actions?: ReactNode }>({ open: false, title: "", rows: [] });
+  const [modal, setModal]           = useState<{ open: boolean; title: string; hero?: ReactNode; rows: { label: string; value: string; highlight?: boolean }[]; actions?: ReactNode }>({ open: false, title: "", rows: [] });
   const [idModal, setIdModal]       = useState<{ open: boolean; title: string; imageUrl: string; contentType: string }>({ open: false, title: "", imageUrl: "", contentType: "" });
   const [confirm, setConfirm]       = useState<{ open: boolean; title: string; message: string; confirmLabel: string; onConfirm: () => void }>({
     open: false,
@@ -1473,13 +1859,15 @@ export default function DashboardPage() {
   const [searchTradesmen, setSearchTradesmen] = useState("");
   const [searchHomeowners, setSearchHomeowners] = useState("");
   const [searchReports, setSearchReports] = useState("");
+  const [searchRatings, setSearchRatings] = useState("");
   const [searchDashboard, setSearchDashboard] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [selectedRatingsTradesmanId, setSelectedRatingsTradesmanId] = useState("");
   const [showArchivedOnly, setShowArchivedOnly] = useState(false);
   const [verificationFilters, setVerificationFilters] = useState<string[]>(["", ""]);
   const [tradesmenFilters, setTradesmenFilters] = useState<string[]>(["", ""]);
   const [homeownerFilters, setHomeownerFilters] = useState<string[]>(["", ""]);
-  const [showRejectedTradesmenOnly, setShowRejectedTradesmenOnly] = useState(false);
-  const [showRejectedHomeownersOnly, setShowRejectedHomeownersOnly] = useState(false);
+  const [ratingsFilters, setRatingsFilters] = useState<string[]>(["", ""]);
   const [reportStatusFilter, setReportStatusFilter] = useState("");
   const [reportTab, setReportTab] = useState<ReportTab>("all");
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
@@ -1503,17 +1891,6 @@ export default function DashboardPage() {
     document.body.style.background = isDark ? "#0B1220" : "#F1F3F7";
     document.body.style.color = isDark ? "#E5E7EB" : "#0F1923";
   }, [isDark]);
-
-  useEffect(() => {
-    const stored = localStorage.getItem("admin_autorefresh");
-    if (stored === "off") {
-      setAutoRefresh(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem("admin_autorefresh", autoRefresh ? "on" : "off");
-  }, [autoRefresh]);
 
   useEffect(() => {
     if (!bellOpen) return;
@@ -1540,107 +1917,123 @@ export default function DashboardPage() {
 
   const themeVars: CSSProperties & Record<string, string> = isDark
     ? {
-        "--bg": "#0B1220",
-        "--surface": "#0F172A",
-        "--surface-2": "#111827",
-        "--border": "#1F2A3B",
-        "--text": "#E5E7EB",
-        "--muted": "#94A3B8",
+        "--bg": "#071225",
+        "--surface": "#0D1730",
+        "--surface-2": "#101E3F",
+        "--border": "#20335B",
+        "--text": "#EEF4FF",
+        "--muted": "#9BACCC",
         "--shadow": "0 1px 3px rgba(0,0,0,.35)",
         "--elevated-shadow": "0 12px 40px rgba(15,25,35,.2)",
         "--overlay": "rgba(15,25,35,.5)",
-        "--sidebar": "#0B1220",
-        "--sidebar-accent": "#111E35",
-        "--sidebar-text": "rgba(255,255,255,0.7)",
-        "--sidebar-muted": "rgba(255,255,255,0.45)",
-        "--sidebar-section": "rgba(255,255,255,.3)",
-        "--sidebar-divider": "rgba(255,255,255,.08)",
+        "--sidebar": "#102A72",
+        "--sidebar-accent": "#FF7A1A",
+        "--sidebar-text": "#F7FAFF",
+        "--sidebar-muted": "rgba(228,237,255,0.78)",
+        "--sidebar-section": "rgba(228,237,255,0.58)",
+        "--sidebar-divider": "rgba(255,153,82,0.38)",
         "--sidebar-brand": "#FFFFFF",
-        "--sidebar-brand-muted": "rgba(255,255,255,.4)",
-        "--sidebar-brand-soft": "rgba(255,255,255,0.12)",
-        "--sidebar-brand-soft-2": "rgba(255,255,255,0.07)",
-        "--sidebar-badge-active-bg": "rgba(147,197,253,0.18)",
+        "--sidebar-active-text": "#FFFFFF",
+        "--sidebar-brand-muted": "rgba(228,237,255,0.84)",
+        "--sidebar-brand-soft": "rgba(255,255,255,0.16)",
+        "--sidebar-brand-soft-2": "rgba(255,255,255,0.12)",
+        "--sidebar-badge-active-bg": "rgba(255,255,255,0.18)",
+        "--sidebar-edge": "rgba(3,8,22,0.52)",
+        "--sidebar-panel-shadow": "14px 0 36px rgba(2,8,24,0.45)",
+        "--sidebar-signout-bg": "rgba(255,255,255,0.08)",
+        "--sidebar-signout-border": "rgba(255,255,255,0.14)",
+        "--sidebar-signout-text": "#FFE3D5",
+        "--sidebar-signout-hover-bg": "#FF7A1A",
+        "--sidebar-signout-hover-text": "#FFFFFF",
         "--table-head": "#0F172A",
-        "--accent": "#F59E0B",
-        "--accent-hover": "#FBBF24",
-        "--accent-soft": "rgba(245,158,11,0.18)",
+        "--accent": "#FF7A1A",
+        "--accent-hover": "#FF9443",
+        "--accent-soft": "rgba(255,122,26,0.18)",
         "--success-bg": "rgba(34,197,94,0.16)",
         "--success-text": "#6EE7B7",
         "--success-border": "rgba(34,197,94,0.35)",
         "--success-solid": "#22C55E",
-        "--warning-bg": "rgba(245,158,11,0.16)",
-        "--warning-text": "#FACC15",
-        "--warning-border": "rgba(245,158,11,0.35)",
-        "--warning-solid": "#F59E0B",
+        "--warning-bg": "rgba(255,122,26,0.18)",
+        "--warning-text": "#FFB37A",
+        "--warning-border": "rgba(255,122,26,0.35)",
+        "--warning-solid": "#FF7A1A",
         "--danger-bg": "rgba(239,68,68,0.16)",
         "--danger-text": "#FCA5A5",
         "--danger-border": "rgba(239,68,68,0.35)",
         "--danger-solid": "#EF4444",
-        "--info-bg": "rgba(59,130,246,0.16)",
-        "--info-text": "#93C5FD",
-        "--info-border": "rgba(59,130,246,0.35)",
-        "--info-solid": "#60A5FA",
+        "--info-bg": "rgba(96,165,250,0.18)",
+        "--info-text": "#C7DBFF",
+        "--info-border": "rgba(96,165,250,0.32)",
+        "--info-solid": "#4A7CFF",
         "--neutral-bg": "rgba(148,163,184,0.18)",
         "--neutral-text": "#CBD5E1",
         "--neutral-border": "rgba(148,163,184,0.35)",
         "--neutral-solid": "#94A3B8",
         "--row-hover": "rgba(148,163,184,0.12)",
-        "--primary-bg": "#1D4ED8",
-        "--primary-bg-hover": "#2563EB",
+        "--primary-bg": "#2348B8",
+        "--primary-bg-hover": "#2D56CF",
         "--sidebar-hover": "rgba(255,255,255,0.08)",
         "--on-solid": "#FFFFFF",
         "--scrollbar": "#475569",
         "--scrollbar-hover": "#64748B",
       }
     : {
-        "--bg": "#F1F3F7",
+        "--bg": "#F3F7FF",
         "--surface": "#FFFFFF",
-        "--surface-2": "#F7F8FA",
-        "--border": "#E3E8F0",
+        "--surface-2": "#EEF4FF",
+        "--border": "#D6E2FF",
         "--text": "#0F1923",
-        "--muted": "#9AA3B8",
+        "--muted": "#8B97AE",
         "--shadow": "0 1px 3px rgba(15,25,35,.06)",
         "--elevated-shadow": "0 12px 40px rgba(15,25,35,.14)",
         "--overlay": "rgba(15,25,35,.38)",
-        "--sidebar": "#FFFFFF",
-        "--sidebar-accent": "#FFFFFF",
-        "--sidebar-text": "#42536C",
-        "--sidebar-muted": "#94A3B8",
-        "--sidebar-section": "#94A3B8",
-        "--sidebar-divider": "#E3E8F0",
-        "--sidebar-brand": "#1B2B5E",
-        "--sidebar-brand-muted": "#7C8799",
-        "--sidebar-brand-soft": "#E9EEF8",
-        "--sidebar-brand-soft-2": "#F3F6FB",
-        "--sidebar-badge-active-bg": "#DCE7FB",
-        "--table-head": "#F7F8FA",
-        "--accent": "#E87722",
-        "--accent-hover": "#F09040",
-        "--accent-soft": "#FEF0E4",
+        "--sidebar": "#2348B8",
+        "--sidebar-accent": "#FF7A1A",
+        "--sidebar-text": "#F7FAFF",
+        "--sidebar-muted": "rgba(228,237,255,0.78)",
+        "--sidebar-section": "rgba(228,237,255,0.58)",
+        "--sidebar-divider": "rgba(255,153,82,0.36)",
+        "--sidebar-brand": "#FFFFFF",
+        "--sidebar-active-text": "#FFFFFF",
+        "--sidebar-brand-muted": "rgba(228,237,255,0.84)",
+        "--sidebar-brand-soft": "rgba(255,255,255,0.16)",
+        "--sidebar-brand-soft-2": "rgba(255,255,255,0.12)",
+        "--sidebar-badge-active-bg": "rgba(255,255,255,0.18)",
+        "--sidebar-edge": "rgba(13,25,58,0.22)",
+        "--sidebar-panel-shadow": "14px 0 32px rgba(16,32,86,0.16)",
+        "--sidebar-signout-bg": "rgba(255,255,255,0.96)",
+        "--sidebar-signout-border": "rgba(255,255,255,0.45)",
+        "--sidebar-signout-text": "#E25937",
+        "--sidebar-signout-hover-bg": "#FFF1EA",
+        "--sidebar-signout-hover-text": "#E25937",
+        "--table-head": "#F6F9FF",
+        "--accent": "#FF7A1A",
+        "--accent-hover": "#FF9443",
+        "--accent-soft": "#FFF0E3",
         "--success-bg": "#E6F5EE",
         "--success-text": "#1A7A4A",
         "--success-border": "rgba(26,122,74,0.2)",
         "--success-solid": "#1A7A4A",
-        "--warning-bg": "#FEF3E0",
-        "--warning-text": "#B86A00",
-        "--warning-border": "rgba(184,106,0,0.2)",
-        "--warning-solid": "#B86A00",
+        "--warning-bg": "#FFF1E4",
+        "--warning-text": "#D96A0D",
+        "--warning-border": "rgba(255,122,26,0.24)",
+        "--warning-solid": "#FF7A1A",
         "--danger-bg": "#FFF0F1",
         "--danger-text": "#DC3545",
         "--danger-border": "rgba(220,53,69,0.2)",
         "--danger-solid": "#DC3545",
-        "--info-bg": "#EEF1FA",
-        "--info-text": "#1B2B5E",
-        "--info-border": "rgba(27,43,94,0.15)",
-        "--info-solid": "#1B2B5E",
-        "--neutral-bg": "#EEF1FA",
+        "--info-bg": "#E8F0FF",
+        "--info-text": "#2348B8",
+        "--info-border": "rgba(35,72,184,0.18)",
+        "--info-solid": "#2348B8",
+        "--neutral-bg": "#EEF4FF",
         "--neutral-text": "#4A5568",
         "--neutral-border": "rgba(74,85,104,0.25)",
         "--neutral-solid": "#4A5568",
-        "--row-hover": "#FAFBFD",
-        "--primary-bg": "#1B2B5E",
-        "--primary-bg-hover": "#243673",
-        "--sidebar-hover": "#F3F6FB",
+        "--row-hover": "#F7FAFF",
+        "--primary-bg": "#2348B8",
+        "--primary-bg-hover": "#2E56CF",
+        "--sidebar-hover": "rgba(255,255,255,0.1)",
         "--on-solid": "#FFFFFF",
         "--scrollbar": "#64748B",
         "--scrollbar-hover": "#94A3B8",
@@ -1649,20 +2042,12 @@ export default function DashboardPage() {
   const pendingCount  = verifications.filter((v) => v.status === "pending").length;
   const archivedCount = verifications.filter((v) => v.status === "archived").length;
   const verifiedCount = tradesmen.filter((t) => t.status === "Verified").length;
-  const rejectedTradesmenCount = tradesmen.filter((t) => t.status === "Rejected").length;
-  const rejectedHomeownersCount = homeowners.filter((h) => h.idStatus === "Rejected").length;
   const pendingHomeownerIds = homeowners.filter((h) => h.idStatus === "Pending").length;
   const notificationCount = activity.length;
   const openReportsCount = reports.filter((report) => report.status !== "Resolved").length;
-  const totalUsers = homeowners.length + tradesmen.length;
-  const activeUsers = homeowners.filter((h) => h.status === "Active").length + verifiedCount;
   const userGrowthData = buildUserGrowthData(homeowners, tradesmen);
   const latestGrowthPoint = userGrowthData[userGrowthData.length - 1];
   const previousGrowthPoint = userGrowthData[userGrowthData.length - 2];
-  const latestMonthUsers = userGrowthData[userGrowthData.length - 1]?.total ?? 0;
-  const averageMonthlyUsers = Math.round(
-    userGrowthData.reduce((sum, point) => sum + point.total, 0) / Math.max(userGrowthData.length, 1)
-  );
   const pendingHomeownerVerifications = verifications.filter((v) => v.status === "pending" && v.type === "homeowner_id").length;
   const pendingTradesmanVerifications = verifications.filter((v) => v.status === "pending" && v.type === "tradesperson_license").length;
   const homeownerTrend = formatMonthlyTrend(latestGrowthPoint?.homeowners ?? 0, previousGrowthPoint?.homeowners ?? 0);
@@ -1749,6 +2134,91 @@ export default function DashboardPage() {
     );
   });
 
+  const ratingsSourceTradesmen = tradesmen.length > 0 ? tradesmen : TRADESMEN_DATA;
+  const ratingsReviews: TradesmanReview[] = ratingsSourceTradesmen.flatMap((tradesman, tradesmanIndex) =>
+    Array.from({ length: 3 }, (_, reviewIndex) => {
+      const template = SAMPLE_TRADESMAN_REVIEW_TEMPLATES[
+        (tradesmanIndex * 3 + reviewIndex) % SAMPLE_TRADESMAN_REVIEW_TEMPLATES.length
+      ];
+      const submittedAt = new Date(
+        Date.now() - (tradesmanIndex * 3 + reviewIndex + 1) * 24 * 60 * 60 * 1000
+      ).toISOString();
+      return {
+        id: `rating-${tradesman.id || tradesmanIndex}-${reviewIndex}`,
+        tradesmanId: tradesman.id,
+        tradesmanEmail: tradesman.email,
+        tradesmanName: tradesman.name,
+        reviewerName: template.reviewerName,
+        reviewerRole: template.reviewerRole,
+        rating: template.rating,
+        jobType: template.jobType,
+        comment: template.comment,
+        submittedAt,
+        verifiedBooking: template.verifiedBooking,
+      };
+    })
+  );
+  const totalRatingsCount = ratingsReviews.length;
+
+  const tradesmanRatings = ratingsSourceTradesmen.map((tradesman) => {
+    const reviews = ratingsReviews.filter(
+      (review) =>
+        review.tradesmanId === tradesman.id ||
+        review.tradesmanEmail.toLowerCase() === tradesman.email.toLowerCase()
+    );
+    const average = averageRating(reviews);
+    const fiveStarCount = reviews.filter((review) => review.rating === 5).length;
+    const recommendationRate = reviews.length > 0 ? Math.round((reviews.filter((review) => review.rating >= 4).length / reviews.length) * 100) : 0;
+    return {
+      tradesman,
+      reviews,
+      average,
+      fiveStarCount,
+      recommendationRate,
+    };
+  });
+
+  const filteredTradesmanRatings = tradesmanRatings.filter(({ tradesman, reviews, average }) => {
+    const matchesSearch =
+      !searchRatings.trim() ||
+      matchesQuery(searchRatings, [tradesman.name, tradesman.email, tradesman.category, tradesman.license, tradesman.status]) ||
+      reviews.some((review) =>
+        matchesQuery(searchRatings, [review.reviewerName, review.reviewerRole, review.jobType, review.comment, review.rating])
+      );
+
+    const matchesCategory = matchesLooseFilter(ratingsFilters[0] ?? "", tradesman.category);
+    const minimumRating =
+      ratingsFilters[1] === "4+ Stars"
+        ? 4
+        : ratingsFilters[1] === "4.5+ Stars"
+          ? 4.5
+          : ratingsFilters[1] === "5 Stars"
+            ? 5
+            : 0;
+    const matchesMinimumRating = !minimumRating || average >= minimumRating;
+
+    return matchesSearch && matchesCategory && matchesMinimumRating;
+  });
+
+  const selectedTradesmanRating =
+    filteredTradesmanRatings.find(({ tradesman }) => tradesman.id === selectedRatingsTradesmanId) ??
+    filteredTradesmanRatings[0];
+
+  useEffect(() => {
+    if (filteredTradesmanRatings.length === 0) {
+      if (selectedRatingsTradesmanId) setSelectedRatingsTradesmanId("");
+      return;
+    }
+
+    const stillSelected = filteredTradesmanRatings.some(
+      ({ tradesman }) => tradesman.id === selectedRatingsTradesmanId
+    );
+
+    if (!stillSelected) {
+      setSelectedRatingsTradesmanId(filteredTradesmanRatings[0].tradesman.id);
+    }
+  }, [filteredTradesmanRatings, selectedRatingsTradesmanId]);
+
   const filteredDashboardVerifications = verifications.filter((v) => {
     const statusLabel = toTitle(v.status);
     const typeLabel = verificationTypeLabel(v.type);
@@ -1762,31 +2232,6 @@ export default function DashboardPage() {
     const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
     return bTime - aTime;
   });
-
-  const canSearchTopbar =
-    activePage === "dashboard" ||
-    activePage === "verification" ||
-    activePage === "tradesmen" ||
-    activePage === "homeowners" ||
-    activePage === "reports";
-  const topbarSearchValue = activePage === "dashboard"
-    ? searchDashboard
-    : activePage === "verification"
-    ? searchVerification
-    : activePage === "tradesmen"
-      ? searchTradesmen
-      : activePage === "homeowners"
-        ? searchHomeowners
-        : activePage === "reports"
-          ? searchReports
-        : "";
-  const setTopbarSearchValue = (value: string) => {
-    if (activePage === "dashboard") setSearchDashboard(value);
-    if (activePage === "verification") setSearchVerification(value);
-    if (activePage === "tradesmen") setSearchTradesmen(value);
-    if (activePage === "homeowners") setSearchHomeowners(value);
-    if (activePage === "reports") setSearchReports(value);
-  };
 
   // Toast helper
   const showToast = (msg: string, type: ToastType = "success") => {
@@ -1822,10 +2267,10 @@ export default function DashboardPage() {
       const user = data?.user ?? {};
       setAdminProfile({
         id: String(user.id ?? user.ID ?? "—"),
+        fullName: String(user.full_name ?? user.FullName ?? "").trim(),
         email: String(user.email ?? user.Email ?? "admin@fixit.com"),
         role: String(user.role ?? user.Role ?? "admin"),
         isActive: Boolean(user.is_active ?? user.IsActive ?? true),
-        twoFactorEnabled: Boolean(user.two_factor_enabled ?? user.TwoFactorEnabled ?? false),
         updatedAt: user.updated_at ?? user.UpdatedAt,
       });
     } catch {
@@ -1839,24 +2284,24 @@ export default function DashboardPage() {
     setProfileEditor({
       open: true,
       mode,
+      fullName: mode === "name" ? adminProfile?.fullName ?? "" : "",
       email: mode === "email" ? adminProfile?.email ?? "" : "",
       currentPassword: "",
       newPassword: "",
       confirmPassword: "",
-      twoFactorEnabled: adminProfile?.twoFactorEnabled ?? false,
       saving: false,
     });
   };
 
-  const closeProfileEditor = (force = false) => {
-    setProfileEditor((prev) => (!force && prev.saving ? prev : {
+  const closeProfileEditor = () => {
+    setProfileEditor((prev) => (prev.saving ? prev : {
       open: false,
       mode: null,
+      fullName: "",
       email: "",
       currentPassword: "",
       newPassword: "",
       confirmPassword: "",
-      twoFactorEnabled: adminProfile?.twoFactorEnabled ?? false,
       saving: false,
     }));
   };
@@ -2090,15 +2535,6 @@ export default function DashboardPage() {
     loadActivity();
     loadAdminProfile();
   }, [authToken, apiBase, router]);
-
-  useEffect(() => {
-    if (!authToken) return;
-    if (!autoRefresh) return;
-    const interval = setInterval(() => {
-      loadUsers();
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [authToken, apiBase, autoRefresh]);
 
   // Approve / Reject
   const rejectTradesman = (id: string, name: string) => {
@@ -2361,10 +2797,18 @@ export default function DashboardPage() {
   // Modal helpers
   const openHOModal = (h: Homeowner) => {
     setModal({
-      open: true, title: h.name,
+      open: true,
+      title: "Homeowner Details",
+      hero: (
+        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "2px 0 6px" }}>
+          <Avatar initials={h.initials} color={h.color} size={52} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text)" }}>{h.name}</div>
+            <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 3, overflowWrap: "anywhere", wordBreak: "break-word" }}>{h.email}</div>
+          </div>
+        </div>
+      ),
       rows: [
-        { label: "Full Name", value: h.name },
-        { label: "Email",     value: h.email },
         { label: "Location",  value: h.location },
         { label: "Registered",value: h.registered },
         { label: "Jobs Posted",value: String(h.jobs) },
@@ -2421,10 +2865,18 @@ export default function DashboardPage() {
   };
   const openTMModal = (t: Tradesman) => {
     setModal({
-      open: true, title: t.name,
+      open: true,
+      title: "Tradesman Details",
+      hero: (
+        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "2px 0 6px" }}>
+          <Avatar initials={t.initials} color={t.color} size={52} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text)" }}>{t.name}</div>
+            <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 3, overflowWrap: "anywhere", wordBreak: "break-word" }}>{t.email}</div>
+          </div>
+        </div>
+      ),
       rows: [
-        { label: "Full Name",  value: t.name },
-        { label: "Email",      value: t.email },
         { label: "Category",   value: t.category },
         { label: "License No.",value: t.license },
         { label: "Joined",     value: t.joined },
@@ -2499,6 +2951,18 @@ export default function DashboardPage() {
     let endpoint = "";
     let payload: Record<string, string | boolean> = {};
 
+    if (profileEditor.mode === "name") {
+      const trimmedName = profileEditor.fullName.trim();
+      if (!trimmedName) {
+        showToast("Please enter the admin name.", "error");
+        return;
+      }
+      endpoint = "/api/profile/me/name";
+      payload = {
+        full_name: trimmedName,
+      };
+    }
+
     if (profileEditor.mode === "email") {
       if (!profileEditor.email.trim()) {
         showToast("Please enter a new email.", "error");
@@ -2535,13 +2999,6 @@ export default function DashboardPage() {
       };
     }
 
-    if (profileEditor.mode === "security") {
-      endpoint = "/api/profile/me/security";
-      payload = {
-        two_factor_enabled: profileEditor.twoFactorEnabled,
-      };
-    }
-
     setProfileEditor((prev) => ({ ...prev, saving: true }));
     try {
       const res = await fetch(`${apiBase}${endpoint}`, {
@@ -2570,13 +3027,13 @@ export default function DashboardPage() {
       }
 
       const successMessage =
-        profileEditor.mode === "email"
+        profileEditor.mode === "name"
+          ? "Admin name updated successfully."
+          : profileEditor.mode === "email"
           ? "Email updated successfully."
-          : profileEditor.mode === "password"
-            ? "Password updated successfully."
-            : "Security settings updated successfully.";
+          : "Password updated successfully.";
 
-      closeProfileEditor(true);
+      closeProfileEditor();
       await loadAdminProfile();
       showToast(successMessage, "success");
     } catch {
@@ -2597,10 +3054,12 @@ export default function DashboardPage() {
     verification: "Verifications",
     tradesmen:    "Tradesmen",
     homeowners:   "Homeowners",
+    ratings:      "Ratings",
     reports:      "Reports",
     profile:      "Profile",
     settings:     "Settings",
   };
+  const sidebarWidth = sidebarOpen ? 260 : 84;
 
   // ── PAGES ──────────────────────────────────────────────────────
 
@@ -2625,12 +3084,8 @@ export default function DashboardPage() {
       {/* Two-column: analytics + activity */}
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 20, marginBottom: 28 }}>
         <UserGrowthChart
-          homeownerCount={homeowners.length}
-          tradesmanCount={tradesmen.length}
-          totalUsers={totalUsers}
-          activeUsers={activeUsers}
-          latestMonthUsers={latestMonthUsers}
-          averageMonthlyUsers={averageMonthlyUsers}
+          homeowners={homeowners}
+          tradesmen={tradesmen}
           style={{ marginBottom: 0 }}
         />
 
@@ -2655,7 +3110,7 @@ export default function DashboardPage() {
 
   const PageVerification = () => (
     <div style={{ animation: "fadeUp .35s ease both" }}>
-      <Card>
+      <Card style={{ overflow: "visible" }}>
         <CardHead title="Verification Requests" subtitle="Review and approve ID/license submissions"
           right={
             <>
@@ -2741,7 +3196,7 @@ export default function DashboardPage() {
 
   const PageTradesmen = () => (
     <div style={{ animation: "fadeUp .35s ease both" }}>
-      <Card>
+      <Card style={{ overflow: "visible" }}>
         <CardHead title="All Tradesmen" subtitle={`${tradesmen.length} registered tradesmen`} right={<Pill color="navy">{tradesmen.length} Total</Pill>} />
         <Toolbar
           placeholder="Search tradesmen…"
@@ -2764,12 +3219,9 @@ export default function DashboardPage() {
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 style={{ transition: "background .15s" }}>
                 <Td>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <Avatar initials={t.initials} color={t.color} size={38} />
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{t.name}</div>
-                      <div style={{ fontSize: 12, color: "var(--muted)" }}>{t.email}</div>
-                    </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{t.name}</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>{t.email}</div>
                   </div>
                 </Td>
                 <Td>{t.category}</Td>
@@ -2807,9 +3259,256 @@ export default function DashboardPage() {
     </div>
   );
 
+  const PageRatings = () => {
+    const analyticsReviews = filteredTradesmanRatings.flatMap(({ reviews }) => reviews);
+    const analyticsAverageRating = averageRating(analyticsReviews);
+    const analyticsTradesmenCount = filteredTradesmanRatings.filter(({ reviews }) => reviews.length > 0).length;
+    const ratingBreakdown = [5, 4, 3, 2, 1].map((stars) => {
+      const count = analyticsReviews.filter((review) => review.rating === stars).length;
+      const percent = analyticsReviews.length > 0 ? Math.round((count / analyticsReviews.length) * 100) : 0;
+      return { stars, count, percent };
+    });
+    const maxBreakdownCount = Math.max(...ratingBreakdown.map((item) => item.count), 1);
+    const recommendedReviews = analyticsReviews.filter((review) => review.rating >= 4).length;
+    const recommendationRate = analyticsReviews.length > 0 ? Math.round((recommendedReviews / analyticsReviews.length) * 100) : 0;
+    const verifiedReviewRate = analyticsReviews.length > 0
+      ? Math.round((analyticsReviews.filter((review) => review.verifiedBooking).length / analyticsReviews.length) * 100)
+      : 0;
+    const averageReviewsPerTradesman = analyticsTradesmenCount > 0
+      ? (analyticsReviews.length / analyticsTradesmenCount).toFixed(1)
+      : "0.0";
+    const hasAnalyticsData = analyticsReviews.length > 0;
+
+    return (
+      <div style={{ animation: "fadeUp .35s ease both" }}>
+        <Card style={{ marginBottom: 20 }}>
+          <CardHead
+            title="Ratings Analytics"
+            subtitle="Track review quality, recommendation rate, and score distribution across the current ratings results"
+            right={
+              <>
+                <Pill color="orange">{formatRatingValue(analyticsAverageRating)} avg</Pill>
+                <Pill color="navy">{analyticsReviews.length} reviews</Pill>
+              </>
+            }
+          />
+          <div style={{ padding: 24, display: "grid", gridTemplateColumns: "minmax(0,1.35fr) minmax(260px,0.95fr)", gap: 24, alignItems: "start" }}>
+            {hasAnalyticsData ? (
+              <>
+                <div style={{ display: "grid", gap: 14 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)" }}>Rating Distribution</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>See how many reviews fall into each star tier.</div>
+                  </div>
+                  {ratingBreakdown.map((item) => (
+                    <div key={item.stars} style={{ display: "grid", gridTemplateColumns: "56px minmax(0,1fr) auto", gap: 12, alignItems: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 800, color: "var(--text)" }}>
+                        <span>{item.stars}.0</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <polygon points="12 2 15.1 8.6 22 9.3 17 14.1 18.3 21 12 17.4 5.7 21 7 14.1 2 9.3 8.9 8.6 12 2" />
+                        </svg>
+                      </div>
+                      <div style={{ height: 12, borderRadius: 999, background: "var(--surface-2)", overflow: "hidden", border: "1px solid var(--border)" }}>
+                        <div
+                          style={{
+                            width: `${(item.count / maxBreakdownCount) * 100}%`,
+                            height: "100%",
+                            borderRadius: 999,
+                            background: item.stars >= 4 ? "linear-gradient(90deg, var(--accent), #FFB262)" : "linear-gradient(90deg, #94A3B8, #CBD5E1)",
+                          }}
+                        />
+                      </div>
+                      <div style={{ minWidth: 56, textAlign: "right", fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>
+                        {item.count} · {item.percent}%
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12, alignContent: "start" }}>
+                  {[
+                    { label: "Recommendation Rate", value: `${recommendationRate}%`, caption: "Reviews with 4 to 5 stars", tone: "var(--success-text)", bg: "var(--success-bg)" },
+                    { label: "Reviewed Tradesmen", value: String(analyticsTradesmenCount), caption: "Shown in current results", tone: "var(--info-text)", bg: "var(--info-bg)" },
+                    { label: "Verified Reviews", value: `${verifiedReviewRate}%`, caption: "Marked as verified bookings", tone: "var(--warning-text)", bg: "var(--warning-bg)" },
+                    { label: "Avg / Tradesman", value: averageReviewsPerTradesman, caption: "Average review count each", tone: "var(--text)", bg: "var(--surface-2)" },
+                  ].map((item) => (
+                    <div key={item.label} style={{ border: "1px solid var(--border)", borderRadius: 16, background: "var(--surface-2)", padding: "16px 18px" }}>
+                      <div style={{ display: "inline-flex", padding: "5px 10px", borderRadius: 999, background: item.bg, color: item.tone, fontSize: 11, fontWeight: 800, marginBottom: 12 }}>
+                        {item.label}
+                      </div>
+                      <div style={{ fontSize: 28, lineHeight: 1, fontWeight: 800, color: "var(--text)", letterSpacing: -1, marginBottom: 8 }}>
+                        {item.value}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--muted)" }}>{item.caption}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div style={{ gridColumn: "1 / -1", borderRadius: 18, border: "1.5px dashed var(--border)", background: "var(--surface-2)", padding: "36px 24px", textAlign: "center" }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)", marginBottom: 8 }}>No analytics match the current filters</div>
+                <div style={{ fontSize: 12, color: "var(--muted)" }}>Try widening the category, rating, or search filters to see ratings insights again.</div>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <div style={{ display: "grid", gridTemplateColumns: "320px minmax(0,1fr)", gap: 20 }}>
+          <Card style={{ alignSelf: "start", overflow: "visible" }}>
+            <CardHead
+              title="Ratings by Tradesman"
+              subtitle="Select a tradesman to view every review left for their completed jobs"
+              right={<Pill color="navy">{filteredTradesmanRatings.length} Listed</Pill>}
+            />
+            <Toolbar
+              placeholder="Search tradesmen or reviews…"
+              filters={[["All Categories","Electrician","Plumbing","HVAC","Carpentry","Painter","Appliance Repair"],["All Ratings","4+ Stars","4.5+ Stars","5 Stars"]]}
+              searchValue={searchRatings}
+              onSearchChange={setSearchRatings}
+              filterValues={ratingsFilters}
+              onFilterChange={(index, value) => setRatingsFilters((prev) => {
+                const next = [...prev];
+                next[index] = value;
+                return next;
+              })}
+            />
+            <div style={{ padding: "16px", display: "grid", gap: 10 }}>
+              {filteredTradesmanRatings.length > 0 ? (
+                filteredTradesmanRatings.map(({ tradesman, reviews, average, recommendationRate }) => {
+                  const active = selectedTradesmanRating?.tradesman.id === tradesman.id;
+                  return (
+                    <button
+                      key={tradesman.id}
+                      type="button"
+                      onClick={() => setSelectedRatingsTradesmanId(tradesman.id)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        borderRadius: 16,
+                        border: `1.5px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                        background: active ? "var(--accent-soft)" : "var(--surface)",
+                        padding: "14px",
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                        transition: "all .2s ease",
+                        boxShadow: active ? "0 10px 24px rgba(255,122,26,.12)" : "none",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                        <Avatar initials={tradesman.initials} color={tradesman.color} size={46} />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {tradesman.name}
+                          </div>
+                          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {tradesman.category}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <StarRating value={Math.round(average)} />
+                          <span style={{ fontSize: 13, fontWeight: 800, color: "var(--text)" }}>{formatRatingValue(average)}</span>
+                        </div>
+                        <Badge status={tradesman.status} />
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 12, color: "var(--muted)" }}>
+                        <span>{reviews.length} reviews</span>
+                        <span>{recommendationRate}% recommend</span>
+                      </div>
+                    </button>
+                  );
+                })
+              ) : (
+                <div style={{ border: "1.5px dashed var(--border)", borderRadius: 16, background: "var(--surface-2)", padding: "24px 18px", textAlign: "center" }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)", marginBottom: 6 }}>No tradesmen match the search</div>
+                  <div style={{ fontSize: 12, color: "var(--muted)" }}>Try another name, category, or review keyword.</div>
+                </div>
+              )}
+            </div>
+          </Card>
+
+          <Card>
+            <CardHead
+              title={selectedTradesmanRating ? `${selectedTradesmanRating.tradesman.name} Reviews` : "Tradesman Reviews"}
+              subtitle={selectedTradesmanRating ? "All sample reviews linked to the selected tradesman" : "Select a tradesman from the list to review feedback"}
+              right={
+                selectedTradesmanRating ? (
+                  <Pill color="orange">{formatRatingValue(selectedTradesmanRating.average)} / 5 avg</Pill>
+                ) : undefined
+              }
+            />
+
+            {selectedTradesmanRating ? (
+              <div style={{ padding: 24 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) repeat(3, minmax(120px,1fr))", gap: 14, marginBottom: 22 }}>
+                  <div style={{ border: "1px solid var(--border)", borderRadius: 18, background: "var(--surface-2)", padding: "18px 18px", display: "flex", alignItems: "center", gap: 14 }}>
+                    <Avatar initials={selectedTradesmanRating.tradesman.initials} color={selectedTradesmanRating.tradesman.color} size={60} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text)" }}>{selectedTradesmanRating.tradesman.name}</div>
+                      <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4, overflowWrap: "anywhere", wordBreak: "break-word" }}>{selectedTradesmanRating.tradesman.email}</div>
+                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>{selectedTradesmanRating.tradesman.category}</div>
+                    </div>
+                  </div>
+                  {[
+                    { label: "Average", value: formatRatingValue(selectedTradesmanRating.average), caption: "Overall review score" },
+                    { label: "Reviews", value: String(selectedTradesmanRating.reviews.length), caption: "Visible in admin" },
+                    { label: "Jobs Done", value: String(selectedTradesmanRating.tradesman.jobs), caption: "Completed jobs" },
+                  ].map((item) => (
+                    <div key={item.label} style={{ border: "1px solid var(--border)", borderRadius: 18, background: "var(--surface-2)", padding: "18px 18px" }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.7px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>{item.label}</div>
+                      <div style={{ fontSize: 28, lineHeight: 1, fontWeight: 800, color: "var(--text)", letterSpacing: -1 }}>{item.value}</div>
+                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 10 }}>{item.caption}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: "grid", gap: 14 }}>
+                  {selectedTradesmanRating.reviews.map((review) => (
+                    <div key={review.id} style={{ border: "1px solid var(--border)", borderRadius: 18, background: "var(--surface-2)", padding: "18px 18px" }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text)" }}>{review.reviewerName}</div>
+                          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+                            {review.reviewerRole} · {review.jobType}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+                            <StarRating value={review.rating} />
+                            <span style={{ fontSize: 13, fontWeight: 800, color: "var(--text)" }}>{formatRatingValue(review.rating)}</span>
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>{formatDate(review.submittedAt)}</div>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 13, lineHeight: 1.7, color: "var(--text)", marginBottom: 12 }}>
+                        {review.comment}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <Pill color="navy">{review.jobType}</Pill>
+                        {review.verifiedBooking && <Pill color="green">Verified booking</Pill>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: 28 }}>
+                <div style={{ border: "1.5px dashed var(--border)", borderRadius: 18, background: "var(--surface-2)", padding: "36px 24px", textAlign: "center" }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)", marginBottom: 8 }}>No reviews available</div>
+                  <div style={{ fontSize: 12, color: "var(--muted)" }}>Choose a tradesman from the sidebar list to inspect their reviews.</div>
+                </div>
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
+    );
+  };
+
   const PageHomeowners = () => (
     <div style={{ animation: "fadeUp .35s ease both" }}>
-      <Card>
+      <Card style={{ overflow: "visible" }}>
         <CardHead
           title="All Homeowners"
           subtitle={`${homeowners.length} registered homeowners`}
@@ -2841,12 +3540,9 @@ export default function DashboardPage() {
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 style={{ transition: "background .15s" }}>
                 <Td>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <Avatar initials={h.initials} color={h.color} size={38} />
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{h.name}</div>
-                      <div style={{ fontSize: 12, color: "var(--muted)" }}>{h.email}</div>
-                    </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{h.name}</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>{h.email}</div>
                   </div>
                 </Td>
                 <Td>{h.location}</Td>
@@ -3052,93 +3748,83 @@ export default function DashboardPage() {
     );
   };
 
-  const PageSettings = () => (
-    <div style={{ animation: "fadeUp .35s ease both" }}>
-      <Card>
-        <CardHead title="Settings" subtitle="Personalize your admin experience" />
-        <div style={{ padding: 24 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>
-            Appearance
+  const PageSettings = () => {
+    const adminEmail = adminProfile?.email ?? "admin@fixit.com";
+    const adminName = adminProfile?.fullName?.trim() || adminDisplayNameFromEmail(adminEmail);
+
+    return (
+      <div style={{ display: "grid", gap: 20, animation: "fadeUp .35s ease both" }}>
+        <Card>
+          <CardHead title="Settings" subtitle="Personalize your admin experience" />
+          <div style={{ padding: 24 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>
+              Appearance
+            </div>
+            <Toggle
+              checked={isDark}
+              onChange={setIsDark}
+              label="Dark mode"
+              description="Switch the admin portal to a darker theme."
+            />
           </div>
-          <Toggle
-            checked={isDark}
-            onChange={setIsDark}
-            label="Dark mode"
-            description="Switch the admin portal to a darker theme."
-          />
-          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--muted)", margin: "18px 0 10px" }}>
-            Data
-          </div>
-          <Toggle
-            checked={autoRefresh}
-            onChange={setAutoRefresh}
-            label="Auto-refresh dashboard"
-            description="Refresh recent lists every 30 seconds."
-          />
-        </div>
-      </Card>
-    </div>
-  );
+        </Card>
+
+        <Card>
+          <CardHead title="Account Settings" subtitle="Update your admin account details" />
+          {[
+            { icon: icons.user, label: "Name", sub: adminName, mode: "name" as ProfileEditorMode },
+            { icon: icons.bell, label: "Email", sub: adminEmail, mode: "email" as ProfileEditorMode },
+            { icon: icons.shield, label: "Password", sub: "Change your admin password", mode: "password" as ProfileEditorMode },
+          ].map((item, i, arr) => (
+            <div
+              key={item.label}
+              onClick={() => openProfileEditor(item.mode)}
+              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 20px", borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none", cursor: "pointer", transition: "background .15s" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flex: 1 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 9, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent)" }}>{item.icon}</div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{item.label}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 1, overflowWrap: "anywhere", wordBreak: "break-word" }}>{item.sub}</div>
+                </div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+          ))}
+        </Card>
+      </div>
+    );
+  };
 
   const PageProfile = () => {
     const adminEmail = adminProfile?.email ?? "admin@fixit.com";
-    const adminName = adminDisplayNameFromEmail(adminEmail);
+    const adminName = adminProfile?.fullName?.trim() || adminDisplayNameFromEmail(adminEmail);
     const adminRole = humanizeRole(adminProfile?.role);
-    const securityLabel = adminProfile?.twoFactorEnabled ? "2FA enabled" : "2FA disabled";
 
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 24, animation: "fadeUp .35s ease both" }}>
-        <div>
-          <Card style={{ marginBottom: 16 }}>
+      <div style={{ animation: "fadeUp .35s ease both" }}>
+        <Card style={{ marginBottom: 20 }}>
+          <CardHead
+            title="Account Details"
+            subtitle="View the active admin account"
+          />
+          <div style={{ padding: 24, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
             {[
-              { icon: icons.bell, label: "Email", sub: adminEmail, mode: "email" as ProfileEditorMode },
-              { icon: icons.shield, label: "Password", sub: "Update your admin password", mode: "password" as ProfileEditorMode },
-              { icon: icons.shield, label: "Security", sub: securityLabel, mode: "security" as ProfileEditorMode },
-            ].map((item, i) => (
-              <div
-                key={item.label}
-                onClick={() => openProfileEditor(item.mode)}
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 20px", borderBottom: i < 2 ? "1px solid var(--border)" : "none", cursor: "pointer", transition: "background .15s" }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 9, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent)" }}>{item.icon}</div>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{item.label}</div>
-                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 1 }}>{item.sub}</div>
-                  </div>
-                </div>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+              ["Full Name", adminName],
+              ["Role", adminRole],
+              ["Email", adminEmail],
+              ["Account Status", adminProfile?.isActive ? "Active" : "Inactive"],
+              ["Last Updated", formatDateTime(adminProfile?.updatedAt)],
+            ].map(([l, v]) => (
+              <div key={l}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>{l}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", overflowWrap: "anywhere" }}>{v}</div>
               </div>
             ))}
-          </Card>
-        </div>
-
-        <div>
-          <Card style={{ marginBottom: 20 }}>
-            <CardHead
-              title="Account Details"
-              subtitle="Manage the active admin account"
-              right={<Btn variant="view" onClick={loadAdminProfile} disabled={profileLoading}>{profileLoading ? "Refreshing..." : "Refresh"}</Btn>}
-            />
-            <div style={{ padding: 24, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-              {[
-                ["Full Name", adminName],
-                ["Role", adminRole],
-                ["Email", adminEmail],
-                ["Security", securityLabel],
-                ["Account Status", adminProfile?.isActive ? "Active" : "Inactive"],
-                ["Last Updated", formatDateTime(adminProfile?.updatedAt)],
-              ].map(([l, v]) => (
-                <div key={l}>
-                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>{l}</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", overflowWrap: "anywhere" }}>{v}</div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
+          </div>
+        </Card>
       </div>
     );
   };
@@ -3148,18 +3834,38 @@ export default function DashboardPage() {
     <div style={{ ...themeVars, display: "flex", minHeight: "100vh", fontFamily: "'Plus Jakarta Sans', sans-serif", background: "var(--bg)", color: "var(--text)" }}>
 
       {/* SIDEBAR */}
-      <nav style={{ width: 260, flexShrink: 0, background: "var(--sidebar)", display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 50, boxShadow: "2px 0 20px rgba(15,25,35,.15)", overflowY: "auto" }}>
+      <nav
+        style={{
+          width: sidebarWidth,
+          flexShrink: 0,
+          background: "var(--sidebar)",
+          borderRight: "1px solid var(--sidebar-edge)",
+          display: "flex",
+          flexDirection: "column",
+          position: "fixed",
+          top: 0,
+          left: 0,
+          bottom: 0,
+          zIndex: 50,
+          boxShadow: "var(--sidebar-panel-shadow)",
+          overflowX: "hidden",
+          overflowY: "auto",
+          transition: "width .24s ease",
+        }}
+      >
         {/* Logo */}
-        <div style={{ padding: "20px 25px 18px", borderBottom: "1px solid var(--sidebar-divider)", display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ padding: sidebarOpen ? "22px 22px 18px" : "22px 13px 18px", borderBottom: "1px solid var(--sidebar-divider)", display: "flex", alignItems: "center", justifyContent: sidebarOpen ? "flex-start" : "center", gap: sidebarOpen ? 14 : 0 }}>
           <SidebarShield />
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: "var(--sidebar-brand)", letterSpacing: -0.3 }}>Fix It</div>
-            <div style={{ fontSize: 11, color: "var(--sidebar-brand-muted)", fontWeight: 500, letterSpacing: 0.5 }}>Admin Portal</div>
-          </div>
+          {sidebarOpen && (
+            <div>
+              <div style={{ fontSize: 21, fontWeight: 800, color: "var(--sidebar-brand)", letterSpacing: -0.4 }}>Fix It</div>
+              <div style={{ fontSize: 15, color: "var(--sidebar-brand-muted)", fontWeight: 600, letterSpacing: 0.2 }}>Marketplace</div>
+            </div>
+          )}
         </div>
 
         {/* Nav */}
-        <div style={{ flex: 1, padding: "14px 12px 4px" }}>
+        <div style={{ flex: 1, padding: sidebarOpen ? "18px 14px 10px" : "18px 10px 10px" }}>
           {[
             { label: "Main" },
             { icon: icons.grid,     label: "Dashboard",     page: "dashboard" as Page },
@@ -3167,13 +3873,18 @@ export default function DashboardPage() {
             { label: "Users" },
             { icon: icons.wrench,   label: "Tradesmen",     page: "tradesmen" as Page },
             { icon: icons.home,     label: "Homeowners",    page: "homeowners" as Page },
+            { icon: icons.star,     label: "Ratings",       page: "ratings" as Page, badge: totalRatingsCount },
             { icon: icons.flag,     label: "Reports",       page: "reports" as Page, badge: openReportsCount },
             { label: "System" },
             { icon: icons.user,     label: "Profile",       page: "profile" as Page },
             { icon: icons.settings, label: "Settings",      page: "settings" as Page },
           ].map((item, i) =>
             !item.icon ? (
-              <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--sidebar-section)", padding: "14px 8px 8px" }}>{item.label}</div>
+              sidebarOpen ? (
+                <div key={i} style={{ fontSize: 11, fontWeight: 800, letterSpacing: "1.7px", textTransform: "uppercase", color: "var(--sidebar-section)", padding: i === 0 ? "2px 10px 10px" : "18px 10px 10px" }}>{item.label}</div>
+              ) : (
+                <div key={i} style={{ height: i === 0 ? 12 : 18 }} />
+              )
             ) : (
               <NavItem
                 key={i}
@@ -3181,6 +3892,7 @@ export default function DashboardPage() {
                 label={item.label}
                 active={item.page === activePage}
                 badge={item.badge}
+                collapsed={!sidebarOpen}
                 onClick={() => item.page ? setActivePage(item.page) : showToast(`${item.label} opened`, "info")}
               />
             )
@@ -3188,38 +3900,61 @@ export default function DashboardPage() {
         </div>
 
         {/* Sign out */}
-        <div style={{ padding: "12px 16px 24px", borderTop: "1px solid var(--sidebar-divider)" }}>
+        <div style={{ padding: sidebarOpen ? "16px 16px 24px" : "16px 10px 24px", borderTop: "1px solid var(--sidebar-divider)", background: "linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.08))" }}>
           <button onClick={handleLogout}
-            style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", borderRadius: 10, background: "var(--danger-bg)", border: "1px solid var(--danger-border)", cursor: "pointer", width: "100%", fontFamily: "inherit", transition: "background .2s", color: "var(--danger-text)" }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--danger-solid)"; e.currentTarget.style.color = "var(--on-solid)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "var(--danger-bg)"; e.currentTarget.style.color = "var(--danger-text)"; }}>
+            title="Sign Out"
+            style={{ display: "flex", alignItems: "center", justifyContent: sidebarOpen ? "flex-start" : "center", gap: sidebarOpen ? 10 : 0, padding: sidebarOpen ? "12px 14px" : "12px 0", borderRadius: 14, background: "var(--sidebar-signout-bg)", border: "1px solid var(--sidebar-signout-border)", cursor: "pointer", width: "100%", fontFamily: "inherit", transition: "all .2s ease", color: "var(--sidebar-signout-text)", boxShadow: "0 10px 24px rgba(10,20,48,.14)" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--sidebar-signout-hover-bg)"; e.currentTarget.style.color = "var(--sidebar-signout-hover-text)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "var(--sidebar-signout-bg)"; e.currentTarget.style.color = "var(--sidebar-signout-text)"; e.currentTarget.style.transform = "translateY(0)"; }}>
             <span style={{ display: "flex" }}>{icons.logout}</span>
-            <span style={{ fontSize: 13, fontWeight: 700 }}>Sign Out</span>
+            {sidebarOpen && <span style={{ fontSize: 14, fontWeight: 800 }}>Sign Out</span>}
           </button>
         </div>
       </nav>
 
       {/* MAIN */}
-      <div style={{ marginLeft: 260, flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+      <div style={{ marginLeft: sidebarWidth, flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh", transition: "margin-left .24s ease" }}>
         {/* Topbar */}
-        <div style={{ background: "var(--surface)", height: 83, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 32px", position: "sticky", top: 0, zIndex: 40, boxShadow: "var(--shadow)" }}>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text)", letterSpacing: -0.3 }}>{pageTitles[activePage]}</div>
-            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, marginTop: 1 }}>Fix It Marketplace › Admin Portal › {pageTitles[activePage]}</div>
+        <div style={{ background: "var(--surface)", height: 99, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 32px", position: "sticky", top: 0, zIndex: 40, boxShadow: "var(--shadow)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <button
+              type="button"
+              onClick={() => setSidebarOpen((prev) => !prev)}
+              aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+              aria-pressed={sidebarOpen}
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 10,
+                border: "1.5px solid var(--border)",
+                background: sidebarOpen ? "var(--accent-soft)" : "var(--surface-2)",
+                color: sidebarOpen ? "var(--accent)" : "var(--muted)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                transition: "all .2s ease",
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "var(--accent)";
+                e.currentTarget.style.background = "var(--accent-soft)";
+                e.currentTarget.style.color = "var(--accent)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "var(--border)";
+                e.currentTarget.style.background = sidebarOpen ? "var(--accent-soft)" : "var(--surface-2)";
+                e.currentTarget.style.color = sidebarOpen ? "var(--accent)" : "var(--muted)";
+              }}
+            >
+              {icons.menu}
+            </button>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text)", letterSpacing: -0.3 }}>{pageTitles[activePage]}</div>
+              <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, marginTop: 1 }}>Fix It Marketplace › Admin Portal › {pageTitles[activePage]}</div>
+            </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {/* Search */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: "var(--surface-2)", border: "1.5px solid var(--border)", borderRadius: 8, width: 220, color: "var(--muted)", fontSize: 13, cursor: canSearchTopbar ? "text" : "not-allowed", opacity: canSearchTopbar ? 1 : 0.6 }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input
-                type="text"
-                placeholder="Search anything…"
-                value={topbarSearchValue}
-                onChange={(e) => setTopbarSearchValue(e.target.value)}
-                disabled={!canSearchTopbar}
-                style={{ border: "none", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 13, color: "var(--text)", width: "100%" }}
-              />
-            </div>
             {/* Bell */}
             <div style={{ position: "relative" }}>
               <button
@@ -3300,6 +4035,7 @@ export default function DashboardPage() {
           {activePage === "verification" && <PageVerification />}
           {activePage === "tradesmen"    && <PageTradesmen />}
           {activePage === "homeowners"   && <PageHomeowners />}
+          {activePage === "ratings"      && <PageRatings />}
           {activePage === "reports"      && <PageReports />}
           {activePage === "profile"      && <PageProfile />}
           {activePage === "settings"     && <PageSettings />}
@@ -3310,17 +4046,18 @@ export default function DashboardPage() {
       <Toast msg={toast.msg} type={toast.type} show={toast.show} />
 
       {/* Modal */}
-      <Modal open={modal.open} onClose={() => setModal((m) => ({ ...m, open: false }))} title={modal.title} rows={modal.rows} actions={modal.actions} />
+      <Modal open={modal.open} onClose={() => setModal((m) => ({ ...m, open: false }))} title={modal.title} hero={modal.hero} rows={modal.rows} actions={modal.actions} />
       <ProfileEditorModal
         open={profileEditor.open}
         mode={profileEditor.mode}
         saving={profileEditor.saving}
+        currentName={adminProfile?.fullName?.trim() || adminDisplayNameFromEmail(adminProfile?.email ?? "admin@fixit.com")}
+        fullName={profileEditor.fullName}
         currentEmail={adminProfile?.email ?? "admin@fixit.com"}
         email={profileEditor.email}
         currentPassword={profileEditor.currentPassword}
         newPassword={profileEditor.newPassword}
         confirmPassword={profileEditor.confirmPassword}
-        twoFactorEnabled={profileEditor.twoFactorEnabled}
         onClose={closeProfileEditor}
         onChange={(patch) => setProfileEditor((prev) => ({ ...prev, ...patch }))}
         onSubmit={saveProfileEditor}

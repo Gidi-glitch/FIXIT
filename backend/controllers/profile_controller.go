@@ -20,13 +20,13 @@ type UpdateEmailRequest struct {
 	Email           string `json:"email"`
 }
 
+type UpdateNameRequest struct {
+	FullName string `json:"full_name"`
+}
+
 type UpdatePasswordRequest struct {
 	CurrentPassword string `json:"current_password"`
 	NewPassword     string `json:"new_password"`
-}
-
-type UpdateSecurityRequest struct {
-	TwoFactorEnabled bool `json:"two_factor_enabled"`
 }
 
 func currentUserFromRequest(r *http.Request) (*models.User, error) {
@@ -64,12 +64,12 @@ func GetMyProfile(w http.ResponseWriter, r *http.Request) {
 
 	response := map[string]any{
 		"user": map[string]any{
-			"id":                 user.ID,
-			"email":              user.Email,
-			"role":               user.Role,
-			"is_active":          user.IsActive,
-			"two_factor_enabled": user.TwoFactorEnabled,
-			"updated_at":         user.UpdatedAt,
+			"id":         user.ID,
+			"full_name":  user.FullName,
+			"email":      user.Email,
+			"role":       user.Role,
+			"is_active":  user.IsActive,
+			"updated_at": user.UpdatedAt,
 		},
 		"documents": documents,
 	}
@@ -87,6 +87,56 @@ func GetMyProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, response)
+}
+
+func UpdateMyName(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	user, err := currentUserFromRequest(r)
+	if err != nil {
+		status := http.StatusUnauthorized
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			status = http.StatusNotFound
+		}
+		writeError(w, status, err.Error())
+		return
+	}
+
+	var req UpdateNameRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	fullName := strings.TrimSpace(req.FullName)
+	if fullName == "" {
+		writeError(w, http.StatusBadRequest, "full_name is required")
+		return
+	}
+	if fullName == user.FullName {
+		writeError(w, http.StatusBadRequest, "new name must be different")
+		return
+	}
+
+	if err := config.DB.Model(user).Update("full_name", fullName).Error; err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update name")
+		return
+	}
+
+	user.FullName = fullName
+	writeJSON(w, http.StatusOK, map[string]any{
+		"message": "name updated successfully",
+		"user": map[string]any{
+			"id":        user.ID,
+			"full_name": user.FullName,
+			"email":     user.Email,
+			"role":      user.Role,
+			"is_active": user.IsActive,
+		},
+	})
 }
 
 func UpdateMyEmail(w http.ResponseWriter, r *http.Request) {
@@ -148,11 +198,11 @@ func UpdateMyEmail(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"message": "email updated successfully",
 		"user": map[string]any{
-			"id":                 user.ID,
-			"email":              user.Email,
-			"role":               user.Role,
-			"is_active":          user.IsActive,
-			"two_factor_enabled": user.TwoFactorEnabled,
+			"id":        user.ID,
+			"full_name": user.FullName,
+			"email":     user.Email,
+			"role":      user.Role,
+			"is_active": user.IsActive,
 		},
 	})
 }
@@ -210,45 +260,5 @@ func UpdateMyPassword(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"message": "password updated successfully",
-	})
-}
-
-func UpdateMySecurity(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPatch {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	user, err := currentUserFromRequest(r)
-	if err != nil {
-		status := http.StatusUnauthorized
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			status = http.StatusNotFound
-		}
-		writeError(w, status, err.Error())
-		return
-	}
-
-	var req UpdateSecurityRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if err := config.DB.Model(user).Update("two_factor_enabled", req.TwoFactorEnabled).Error; err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update security settings")
-		return
-	}
-
-	user.TwoFactorEnabled = req.TwoFactorEnabled
-	writeJSON(w, http.StatusOK, map[string]any{
-		"message": "security settings updated successfully",
-		"user": map[string]any{
-			"id":                 user.ID,
-			"email":              user.Email,
-			"role":               user.Role,
-			"is_active":          user.IsActive,
-			"two_factor_enabled": user.TwoFactorEnabled,
-		},
 	})
 }

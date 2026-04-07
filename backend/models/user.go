@@ -4,9 +4,9 @@ import "gorm.io/gorm"
 
 type User struct {
 	gorm.Model
-	Email            string `json:"email" gorm:"uniqueIndex;not null"`
-	PasswordHash     string `json:"-" gorm:"not null"`
-	Role             string `json:"role" gorm:"not null"`
-	IsActive         bool   `json:"is_active" gorm:"default:true"`
-	TwoFactorEnabled bool   `json:"two_factor_enabled" gorm:"default:false"`
+	FullName     string `json:"full_name"`
+	Email        string `json:"email" gorm:"uniqueIndex;not null"`
+	PasswordHash string `json:"-" gorm:"not null"`
+	Role         string `json:"role" gorm:"not null"`
+	IsActive     bool   `json:"is_active" gorm:"default:true"`
 }

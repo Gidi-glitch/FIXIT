@@ -9,7 +9,7 @@ import (
 
 func RegisterProfileRoutes() {
 	http.Handle("/api/profile/me", middleware.AuthMiddleware(http.HandlerFunc(controllers.GetMyProfile)))
+	http.Handle("/api/profile/me/name", middleware.AuthMiddleware(http.HandlerFunc(controllers.UpdateMyName)))
 	http.Handle("/api/profile/me/email", middleware.AuthMiddleware(http.HandlerFunc(controllers.UpdateMyEmail)))
 	http.Handle("/api/profile/me/password", middleware.AuthMiddleware(http.HandlerFunc(controllers.UpdateMyPassword)))
-	http.Handle("/api/profile/me/security", middleware.AuthMiddleware(http.HandlerFunc(controllers.UpdateMySecurity)))
 }

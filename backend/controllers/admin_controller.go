@@ -16,7 +16,7 @@ import (
 )
 
 func documentPublicURL(doc models.VerificationDocument) string {
-	if services.ResolveDocumentFilePath(doc) == "" {
+	if doc.ID == 0 {
 		return ""
 	}
 	return fmt.Sprintf("/api/admin/documents/%d/file", doc.ID)
@@ -381,7 +381,7 @@ func ListTradespeople(w http.ResponseWriter, r *http.Request) {
 
 	var profiles []models.TradespersonProfile
 	// Use an inner join to exclude orphaned profiles when users are deleted.
-	query := config.DB.Joins("User").Preload("User")
+	query := config.DB.Joins("User")
 	if status != "" {
 		query = query.Where("verification_status = ?", status)
 	}
@@ -403,13 +403,10 @@ func ListTradespeople(w http.ResponseWriter, r *http.Request) {
 			Where("user_id IN ? AND LOWER(document_group) IN ?", userIDs, []string{"license", "government_id"}).
 			Order("created_at desc").
 			Find(&docs).Error; err == nil {
-			for _, d := range docs {
-				if services.ResolveDocumentFilePath(d) == "" {
-					continue
-				}
-				switch strings.ToLower(d.DocumentGroup) {
-				case "license":
-					if _, exists := licenseDocMap[d.UserID]; !exists {
+				for _, d := range docs {
+					switch strings.ToLower(d.DocumentGroup) {
+					case "license":
+						if _, exists := licenseDocMap[d.UserID]; !exists {
 						licenseDocMap[d.UserID] = d
 					}
 				case "government_id":
@@ -462,8 +459,8 @@ func ListHomeowners(w http.ResponseWriter, r *http.Request) {
 
 	var profiles []models.HomeownerProfile
 	// Use an inner join to exclude orphaned profiles when users are deleted.
-	query := config.DB.Joins("User").Preload("User")
-	if err := query.Order("created_at asc").Find(&profiles).Error; err != nil {
+	query := config.DB.Joins("User")
+	if err := query.Order("homeowner_profiles.created_at asc").Find(&profiles).Error; err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list homeowners")
 		return
 	}
@@ -481,13 +478,10 @@ func ListHomeowners(w http.ResponseWriter, r *http.Request) {
 			Where("user_id IN ? AND LOWER(document_group) IN ?", userIDs, groups).
 			Order("created_at desc").
 			Find(&docs).Error; err == nil {
-			for _, d := range docs {
-				if services.ResolveDocumentFilePath(d) == "" {
-					continue
-				}
-				if _, exists := docMap[d.UserID]; !exists {
-					docMap[d.UserID] = d
-				}
+				for _, d := range docs {
+					if _, exists := docMap[d.UserID]; !exists {
+						docMap[d.UserID] = d
+					}
 			}
 		}
 	}
