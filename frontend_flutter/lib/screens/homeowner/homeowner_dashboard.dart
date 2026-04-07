@@ -302,7 +302,7 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
               autoOpenChat: _messageChatRequestId > 0,
               chatRequestId: _messageChatRequestId,
             ),
-            const ProfileScreen(),
+            ProfileScreen(onMessageRequested: _openMessagesForTradesperson),
           ],
         ),
         bottomNavigationBar: _buildBottomNavigation(),

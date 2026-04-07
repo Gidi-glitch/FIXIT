@@ -38,6 +38,7 @@ class _BookingsScreenState extends State<BookingsScreen>
     'Accepted',
     'In Progress',
     'Completed',
+    'Cancelled',
     'Under Review',
     'Disputed',
   ];

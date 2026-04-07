@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Help & Support Screen for the Fix It Marketplace Homeowner App.
 ///
@@ -26,8 +27,6 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
   static const Color _successGreen = Color(0xFF10B981);
   static const Color _errorRed = Color(0xFFEF4444);
   static const Color _borderGray = Color(0xFFE5E7EB);
-  static const Color _infoBlue = Color(0xFF3B82F6);
-  static const Color _purple = Color(0xFF8B5CF6);
 
   // ── FAQ state ──────────────────────────────────────────────────
   int? _expandedFaqIndex;
@@ -116,6 +115,52 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
   void dispose() {
     _reportController.dispose();
     super.dispose();
+  }
+
+  void _handleQuickHelpTap(String title) {
+    if (title == 'Live Chat') {
+      Navigator.of(context).pop(true);
+      return;
+    }
+
+    if (title == 'Email Us') {
+      _openEmailSupport();
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$title is coming soon.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _openEmailSupport() async {
+    const supportEmail = 'fixitsupport@gmail.com';
+    final uri = Uri.parse(
+      'mailto:fixitapp@gmail.com?subject=${Uri.encodeComponent(
+        'Fix It App Support Request')}',
+    );
+
+    final didLaunch = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    );
+
+    if (didLaunch || !mounted) return;
+
+    await Clipboard.setData(const ClipboardData(text: supportEmail));
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text(
+          'Unable to open email app. Support email copied to clipboard.',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _submitReport() async {
@@ -297,7 +342,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    onTap: () {},
+                    onTap: () => _handleQuickHelpTap(title),
                     borderRadius: BorderRadius.circular(16),
                     child: Container(
                       padding: const EdgeInsets.all(16),

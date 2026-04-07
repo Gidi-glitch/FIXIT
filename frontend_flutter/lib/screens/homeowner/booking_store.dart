@@ -43,6 +43,12 @@ class BookingModel {
   });
 
   BookingModel copyWith({
+    String? specialization,
+    String? problemDescription,
+    String? address,
+    String? date,
+    String? time,
+    double? offeredBudget,
     String? status,
     bool? isReviewed,
     double? reviewRating,
@@ -54,12 +60,12 @@ class BookingModel {
       tradespersonName: tradespersonName,
       tradespersonAvatar: tradespersonAvatar,
       trade: trade,
-      specialization: specialization,
-      problemDescription: problemDescription,
-      address: address,
-      date: date,
-      time: time,
-      offeredBudget: offeredBudget,
+      specialization: specialization ?? this.specialization,
+      problemDescription: problemDescription ?? this.problemDescription,
+      address: address ?? this.address,
+      date: date ?? this.date,
+      time: time ?? this.time,
+      offeredBudget: offeredBudget ?? this.offeredBudget,
       status: status ?? this.status,
       createdAt: createdAt,
       isReviewed: isReviewed ?? this.isReviewed,
@@ -166,6 +172,28 @@ class BookingStore {
     if (index != -1) {
       _bookings[index] = _bookings[index].copyWith(status: status);
     }
+  }
+
+  static void updateBookingDetails(
+    String id, {
+    String? specialization,
+    String? problemDescription,
+    String? address,
+    String? date,
+    String? time,
+    double? offeredBudget,
+  }) {
+    final index = _bookings.indexWhere((b) => b.id == id);
+    if (index == -1) return;
+
+    _bookings[index] = _bookings[index].copyWith(
+      specialization: specialization,
+      problemDescription: problemDescription,
+      address: address,
+      date: date,
+      time: time,
+      offeredBudget: offeredBudget,
+    );
   }
 
   static void submitReview(

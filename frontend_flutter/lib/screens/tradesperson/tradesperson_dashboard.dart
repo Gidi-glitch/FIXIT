@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
 import 'jobs_screen.dart';
 import 'requests_screen.dart';
+import 'tradesperson_messages_screen.dart';
 import 'tradesperson_profile_screen.dart';
 import 'tradesperson_work_store.dart';
 
@@ -25,6 +26,10 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
   String _displayName = 'Tradesperson';
   String _firstName = 'Tradesperson';
   String? _profileImagePath;
+  String? _messageHomeownerName;
+  String? _messageService;
+  String? _messageAvatar;
+  int _messageChatRequestId = 0;
 
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
@@ -170,6 +175,16 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
     super.dispose();
   }
 
+  void _openMessagesForHomeowner(String name, String service, String avatar) {
+    setState(() {
+      _messageHomeownerName = name.trim();
+      _messageService = service.trim();
+      _messageAvatar = avatar.trim();
+      _messageChatRequestId++;
+      _currentNavIndex = 3;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -185,8 +200,16 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
             _buildHomeContent(),
             RequestsScreen(
               onNavigateToJobs: () => setState(() => _currentNavIndex = 2),
+              onMessageRequested: _openMessagesForHomeowner,
             ),
             const JobsScreen(),
+            TradespersonMessagesScreen(
+              initialHomeownerName: _messageHomeownerName,
+              initialService: _messageService,
+              initialAvatar: _messageAvatar,
+              autoOpenChat: _messageChatRequestId > 0,
+              chatRequestId: _messageChatRequestId,
+            ),
             TradespersonProfileScreen(onDutyNotifier: _onDutyNotifier),
           ],
         ),
@@ -804,30 +827,76 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                             TradespersonWorkStore.declineRequestById(
                               request['id'] as String,
                             );
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Text(
+                                  'Request declined.',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                backgroundColor: _textMuted,
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                margin: const EdgeInsets.all(16),
+                              ),
+                            );
                           },
                           style: OutlinedButton.styleFrom(
                             foregroundColor: _errorRed,
-                            side: const BorderSide(
-                              color: _errorRed,
-                              width: 1.5,
+                            side: BorderSide(
+                              color: _errorRed.withValues(alpha: 0.35),
                             ),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(14),
                             ),
                           ),
                           child: const Text(
                             'Decline',
                             style: TextStyle(
-                              fontSize: 13,
+                              fontSize: 14,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       Expanded(
-                        child: ElevatedButton(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            _openMessagesForHomeowner(
+                              (request['homeowner'] ?? '').toString(),
+                              (request['service'] ?? '').toString(),
+                              (request['avatar'] ?? '').toString(),
+                            );
+                          },
+                          icon: const Icon(
+                            Icons.chat_bubble_outline_rounded,
+                            size: 16,
+                          ),
+                          label: const Text(
+                            'Message',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _primaryBlue,
+                            side: BorderSide(
+                              color: _primaryBlue.withValues(alpha: 0.35),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton.icon(
                           onPressed: () {
                             TradespersonWorkStore.acceptRequestById(
                               request['id'] as String,
@@ -850,19 +919,20 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                             );
                             setState(() => _currentNavIndex = 2);
                           },
+                          icon: const Icon(Icons.check_rounded, size: 18),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: _successGreen,
+                            backgroundColor: _primaryBlue,
                             foregroundColor: Colors.white,
                             elevation: 0,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(14),
                             ),
                           ),
-                          child: const Text(
+                          label: const Text(
                             'Accept',
                             style: TextStyle(
-                              fontSize: 13,
+                              fontSize: 14,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -1299,7 +1369,8 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
               _buildNavItem(0, Icons.dashboard_rounded, 'Dashboard'),
               _buildNavItem(1, Icons.inbox_rounded, 'Requests'),
               _buildNavItem(2, Icons.handyman_rounded, 'Jobs'),
-              _buildNavItem(3, Icons.person_outline_rounded, 'Profile'),
+              _buildNavItem(3, Icons.chat_bubble_outline_rounded, 'Messages'),
+              _buildNavItem(4, Icons.person_outline_rounded, 'Profile'),
             ],
           ),
         ),

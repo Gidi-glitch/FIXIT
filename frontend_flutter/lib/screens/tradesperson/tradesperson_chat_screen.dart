@@ -1,25 +1,24 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../services/attachment_saver.dart';
 import '../../shared/chat_store.dart';
 
-class ChatScreen extends StatefulWidget {
+class TradespersonChatScreen extends StatefulWidget {
   final Map<String, dynamic> conversation;
 
-  const ChatScreen({super.key, required this.conversation});
+  const TradespersonChatScreen({super.key, required this.conversation});
 
   @override
-  State<ChatScreen> createState() => _ChatScreenState();
+  State<TradespersonChatScreen> createState() => _TradespersonChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
-  // ── Color Palette ──────────────────────────────────────────────
+class _TradespersonChatScreenState extends State<TradespersonChatScreen> {
   static const Color _primaryBlue = Color(0xFF1E3A8A);
   static const Color _accentOrange = Color(0xFFF97316);
   static const Color _backgroundGray = Color(0xFFF9FAFB);
@@ -32,13 +31,12 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _imagePicker = ImagePicker();
   final AttachmentSaver _attachmentSaver = AttachmentSaver();
+
   bool _hasText = false;
   Map<String, dynamic>? _pendingAttachment;
   final Map<String, double> _imageAspectRatios = {};
   bool _hasConversationChanges = false;
 
-  // ── Sample conversation data keyed by conversation id ──────────
-  // In production this comes from your Go backend via API.
   late List<Map<String, dynamic>> _messages;
 
   String get _conversationId {
@@ -70,7 +68,7 @@ class _ChatScreenState extends State<ChatScreen> {
       'id': _conversationId,
       'name': (widget.conversation['name'] ?? '').toString(),
       'avatar': (widget.conversation['avatar'] ?? '').toString(),
-      'trade': (widget.conversation['trade'] ?? '').toString(),
+      'service': (widget.conversation['service'] ?? '').toString(),
       'isOnline': widget.conversation['isOnline'] ?? false,
       'lastMessage': latest != null
           ? _lastMessagePreview(latest)
@@ -127,131 +125,29 @@ class _ChatScreenState extends State<ChatScreen> {
 
   List<Map<String, dynamic>> _sampleMessages(String conversationId) {
     final Map<String, List<Map<String, dynamic>>> data = {
-      '1': [
-        _msg(
-          'pro',
-          'Hello! I received your booking request for the pipe leak repair.',
-          '10:02 AM',
-        ),
-        _msg(
-          'me',
-          'Hi Juan! Yes, the leak is under the kitchen sink. It\'s been dripping since last night.',
-          '10:04 AM',
-        ),
-        _msg(
-          'pro',
-          'Got it. Can you send me a photo of the area so I can prepare the right tools?',
-          '10:05 AM',
-        ),
-        _msg('me', 'Sure, let me take one now.', '10:06 AM'),
-        _msg('pro', 'No worries, take your time.', '10:07 AM'),
-        _msg('me', '[Photo attached]', '10:09 AM', isAttachment: true),
-        _msg(
-          'pro',
-          'Looks like a worn-out pipe joint. I have the parts. I\'m on my way now. Will be there in 15 minutes.',
-          '10:11 AM',
-        ),
+      'tp-1': [
+        _msg('client', 'Hi! Can you fix our water heater today?', '9:05 AM'),
+        _msg('me', 'Yes, I can. I have an opening this morning.', '9:07 AM'),
+        _msg('client', 'Great. Address is in Balayhangin, Calauan.', '9:08 AM'),
+        _msg('me', 'Got it. Please send a photo of the unit.', '9:10 AM'),
+        _msg('client', '[Photo attached]', '9:12 AM', isAttachment: true),
+        _msg('me', 'Thanks! I will be there at 10:30 AM.', '9:14 AM'),
       ],
-      '2': [
-        _msg(
-          'me',
-          'Hi Maria, I need someone to check the wiring in my living room. Some outlets stopped working.',
-          '8:30 AM',
-        ),
-        _msg(
-          'pro',
-          'Hello! I can help with that. Is it just one outlet or multiple?',
-          '8:32 AM',
-        ),
-        _msg(
-          'me',
-          'Around 3 outlets on the same wall. The circuit breaker seems fine.',
-          '8:35 AM',
-        ),
-        _msg(
-          'pro',
-          'Probably a loose wire somewhere. Sure, I can check the wiring tomorrow morning.',
-          '8:40 AM',
-        ),
-        _msg('me', 'That would be great, thank you!', '8:41 AM'),
+      'tp-2': [
+        _msg('client', 'Can you check our kitchen sink leak too?', '8:30 AM'),
+        _msg('me', 'Sure. I will inspect both issues in one visit.', '8:35 AM'),
+        _msg('client', 'Perfect, thank you!', '8:36 AM'),
       ],
-      '3': [
-        _msg(
-          'me',
-          'Hi Pedro, the AC in my bedroom has been making a loud noise and barely cools.',
-          '9:00 AM',
-        ),
-        _msg('pro', 'Hi! How old is the unit approximately?', '9:05 AM'),
-        _msg('me', 'Around 5 years old. Samsung inverter.', '9:06 AM'),
-        _msg(
-          'pro',
-          'I see. Based on the symptoms, it might be the compressor or low refrigerant. I need to inspect it in person.',
-          '9:10 AM',
-        ),
-        _msg('me', 'Okay, when can you come?', '9:12 AM'),
-        _msg(
-          'pro',
-          'The AC unit needs a new compressor. I\'ll send you a quote.',
-          '11:00 AM',
-        ),
+      'tp-3': [
+        _msg('client', 'The bathroom pipe is still dripping.', '7:50 AM'),
+        _msg('me', 'Please send a close-up photo for assessment.', '7:54 AM'),
+        _msg('client', 'I uploaded photos of the issue.', '7:56 AM'),
       ],
-      '4': [
-        _msg(
-          'pro',
-          'Hi! Just finished installing your faucet. Everything is working properly now.',
-          'Yesterday',
-        ),
-        _msg(
-          'me',
-          'Thank you so much Jose! Quick and clean work.',
-          'Yesterday',
-        ),
-        _msg('me', 'I left a 5-star review for you.', 'Yesterday'),
-        _msg(
-          'pro',
-          'Thank you for the review! Happy to help anytime.',
-          'Yesterday',
-        ),
-      ],
-      '5': [
-        _msg(
-          'pro',
-          'The cabinet door is fixed and all hinges are reinforced. Good as new!',
-          'Mar 18',
-        ),
-        _msg('me', 'Wow it looks perfect! How much do I owe you?', 'Mar 18'),
-        _msg('pro', '₱350 as agreed. You can pay via GCash or cash.', 'Mar 18'),
-        _msg('me', 'Sent via GCash. Thanks Antonio!', 'Mar 18'),
-        _msg(
-          'pro',
-          'The cabinet is all fixed now. Let me know if you need anything else.',
-          'Mar 18',
-        ),
-      ],
-      '6': [
-        _msg(
-          'pro',
-          'Welcome to Fix It Marketplace! How can we help you today?',
-          'Mar 15',
-        ),
-        _msg(
-          'me',
-          'Hi! I just signed up. How does the verification work for tradespeople?',
-          'Mar 15',
-        ),
-        _msg(
-          'pro',
-          'Great question! Every tradesperson submits a valid government ID and trade license. Our team reviews them within 24 hours before they can accept bookings.',
-          'Mar 15',
-        ),
-        _msg('me', 'That\'s reassuring. Thanks!', 'Mar 15'),
-        _msg(
-          'pro',
-          'Anytime! Feel free to message us for any concerns. 😊',
-          'Mar 15',
-        ),
+      'tp-4': [
+        _msg('client', 'Reminder: keep all communication in-app.', 'Yesterday'),
       ],
     };
+
     return data[conversationId] ?? [];
   }
 
@@ -364,7 +260,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Ask about your project details',
+              'Discuss job details with homeowners',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 16,
@@ -374,7 +270,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Discuss pricing and schedule',
+              'Confirm schedule, pricing, and updates',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
@@ -1104,14 +1000,10 @@ class _ChatScreenState extends State<ChatScreen> {
     return '$hour:$minute $period';
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  //  BUILD
-  // ═══════════════════════════════════════════════════════════════
-
   @override
   Widget build(BuildContext context) {
     final isOnline = widget.conversation['isOnline'] as bool;
-    final isSupport = widget.conversation['trade'] == 'Support';
+    final isSupport = widget.conversation['service'] == 'Support';
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light.copyWith(
@@ -1136,13 +1028,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  //  HEADER
-  // ═══════════════════════════════════════════════════════════════
-
   Widget _buildHeader(BuildContext context, bool isOnline, bool isSupport) {
-    final _ = isSupport ? _accentOrange : _primaryBlue;
-
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -1159,7 +1045,6 @@ class _ChatScreenState extends State<ChatScreen> {
           padding: const EdgeInsets.fromLTRB(8, 8, 16, 16),
           child: Row(
             children: [
-              // Back button
               IconButton(
                 onPressed: _closeChatWithResult,
                 icon: const Icon(
@@ -1168,8 +1053,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   size: 20,
                 ),
               ),
-
-              // Avatar
               Stack(
                 children: [
                   Container(
@@ -1211,8 +1094,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 ],
               ),
               const SizedBox(width: 12),
-
-              // Name & status
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1242,7 +1123,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         Text(
                           isOnline
                               ? 'Online now'
-                              : widget.conversation['trade'] as String,
+                              : widget.conversation['service'] as String,
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.white.withValues(alpha: 0.8),
@@ -1254,8 +1135,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   ],
                 ),
               ),
-
-              // Call button
               Container(
                 width: 40,
                 height: 40,
@@ -1270,8 +1149,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-
-              // More options
               Container(
                 width: 40,
                 height: 40,
@@ -1328,10 +1205,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  //  MESSAGE LIST
-  // ═══════════════════════════════════════════════════════════════
-
   Widget _buildMessageList() {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 280),
@@ -1362,7 +1235,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     ? _messages[messageIndex + 1]
                     : null;
 
-                // Group messages: show time only when sender changes or last in group
                 final isFirstInGroup =
                     prevMsg == null || prevMsg['sender'] != msg['sender'];
                 final isLastInGroup =
@@ -1400,7 +1272,6 @@ class _ChatScreenState extends State<ChatScreen> {
             : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          // Pro avatar (only on last bubble in a group)
           if (!isMe) ...[
             if (isLastInGroup)
               Container(
@@ -1429,8 +1300,6 @@ class _ChatScreenState extends State<ChatScreen> {
               const SizedBox(width: 32),
             const SizedBox(width: 8),
           ],
-
-          // Bubble
           Flexible(
             child: Column(
               crossAxisAlignment: isMe
@@ -1490,8 +1359,6 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                         ),
                 ),
-
-                // Timestamp — only on last bubble in group
                 if (isLastInGroup)
                   Padding(
                     padding: const EdgeInsets.only(top: 4, left: 4, right: 4),
@@ -1507,7 +1374,6 @@ class _ChatScreenState extends State<ChatScreen> {
               ],
             ),
           ),
-
           if (isMe) const SizedBox(width: 4),
         ],
       ),
@@ -1622,10 +1488,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  //  INPUT BAR
-  // ═══════════════════════════════════════════════════════════════
-
   Widget _buildInputBar() {
     return Container(
       decoration: BoxDecoration(
@@ -1649,7 +1511,6 @@ class _ChatScreenState extends State<ChatScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  // Attachment button
                   Material(
                     color: Colors.transparent,
                     child: InkWell(
@@ -1681,8 +1542,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-
-                  // Text field
                   Expanded(
                     child: Container(
                       constraints: const BoxConstraints(maxHeight: 120),
@@ -1722,8 +1581,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-
-                  // Send button
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     width: 42,

@@ -16,7 +16,10 @@ import 'settings/privacy_security_screen.dart';
 /// Profile Screen for the Fix It Marketplace Homeowner App.
 /// Displays user profile information and settings menu options.
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final void Function(String tradespersonName, String trade, String avatar)?
+  onMessageRequested;
+
+  const ProfileScreen({super.key, this.onMessageRequested});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -209,10 +212,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _openHelpSupport() async {
-    await Navigator.push<void>(
+    final openSupportChat = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => const HelpSupportScreen()),
     );
+
+    if (openSupportChat == true) {
+      widget.onMessageRequested?.call('Fix It Support', 'Support', 'FI');
+    }
   }
 
   Future<void> _logout(BuildContext context) async {

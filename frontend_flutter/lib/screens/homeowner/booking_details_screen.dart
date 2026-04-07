@@ -689,6 +689,399 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
     }
   }
 
+  Future<void> _showEditRequestModal() async {
+    final serviceController = TextEditingController(
+      text: _currentBooking.specialization,
+    );
+    final detailsController = TextEditingController(
+      text: _currentBooking.problemDescription,
+    );
+    final addressController = TextEditingController(
+      text: _currentBooking.address,
+    );
+    final dateController = TextEditingController(text: _currentBooking.date);
+    final timeController = TextEditingController(text: _currentBooking.time);
+    final budgetController = TextEditingController(
+      text: _currentBooking.offeredBudget.toStringAsFixed(0),
+    );
+
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) {
+          bool canSave() {
+            final budget = double.tryParse(budgetController.text.trim());
+            return serviceController.text.trim().isNotEmpty &&
+                detailsController.text.trim().isNotEmpty &&
+                addressController.text.trim().isNotEmpty &&
+                dateController.text.trim().isNotEmpty &&
+                timeController.text.trim().isNotEmpty &&
+                budget != null &&
+                budget > 0;
+          }
+
+          return StatefulBuilder(
+            builder: (context, setModalState) {
+              InputDecoration inputDecoration({
+                required String label,
+                required String hint,
+                required IconData icon,
+              }) => InputDecoration(
+                labelText: label,
+                hintText: hint,
+                prefixIcon: Icon(
+                  icon,
+                  size: 20,
+                  color: _textMuted.withValues(alpha: 0.8),
+                ),
+                filled: true,
+                fillColor: _backgroundGray,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(
+                    color: _textMuted.withValues(alpha: 0.16),
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: _primaryBlue, width: 1.6),
+                ),
+              );
+
+              final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+              final isValid = canSave();
+
+              return Container(
+                decoration: const BoxDecoration(
+                  color: _cardWhite,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(18, 10, 18, bottomInset + 16),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 40,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: _textMuted.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(50),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.fromLTRB(14, 14, 10, 14),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [_primaryBlue, _infoBlue],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: _primaryBlue.withValues(alpha: 0.22),
+                                blurRadius: 16,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(
+                                  Icons.edit_note_rounded,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Edit Request',
+                                      style: TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      'Update details before the request is accepted',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.white70,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Close',
+                                onPressed: () => Navigator.pop(context),
+                                icon: const Icon(
+                                  Icons.close_rounded,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: serviceController,
+                          decoration: inputDecoration(
+                            label: 'Service Needed',
+                            hint: 'e.g. Pipe Repair & Installation',
+                            icon: Icons.handyman_rounded,
+                          ),
+                          onChanged: (_) => setModalState(() {}),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: detailsController,
+                          maxLines: 3,
+                          decoration: inputDecoration(
+                            label: 'Problem Description',
+                            hint: 'Briefly explain the issue',
+                            icon: Icons.description_outlined,
+                          ),
+                          onChanged: (_) => setModalState(() {}),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: addressController,
+                          decoration: inputDecoration(
+                            label: 'Address',
+                            hint: 'Enter complete service address',
+                            icon: Icons.location_on_outlined,
+                          ),
+                          onChanged: (_) => setModalState(() {}),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: dateController,
+                                decoration: inputDecoration(
+                                  label: 'Date',
+                                  hint: 'e.g. Tomorrow',
+                                  icon: Icons.calendar_today_rounded,
+                                ),
+                                onChanged: (_) => setModalState(() {}),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextField(
+                                controller: timeController,
+                                decoration: inputDecoration(
+                                  label: 'Time',
+                                  hint: 'e.g. 9:00 AM',
+                                  icon: Icons.access_time_rounded,
+                                ),
+                                onChanged: (_) => setModalState(() {}),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: budgetController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: inputDecoration(
+                            label: 'Offered Budget (₱)',
+                            hint: 'Enter amount',
+                            icon: Icons.payments_outlined,
+                          ),
+                          onChanged: (_) => setModalState(() {}),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isValid
+                                ? _successGreen.withValues(alpha: 0.08)
+                                : _warningYellow.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isValid
+                                  ? _successGreen.withValues(alpha: 0.28)
+                                  : _warningYellow.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                isValid
+                                    ? Icons.check_circle_rounded
+                                    : Icons.info_outline_rounded,
+                                size: 18,
+                                color: isValid ? _successGreen : _warningYellow,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  isValid
+                                      ? 'Looks good. You can save changes now.'
+                                      : 'Complete all fields with a valid budget.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: isValid ? _successGreen : _textDark,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => Navigator.pop(context),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: _textMuted,
+                                  side: BorderSide(
+                                    color: _textMuted.withValues(alpha: 0.35),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: isValid
+                                    ? () {
+                                        final budget =
+                                            double.tryParse(
+                                              budgetController.text.trim(),
+                                            ) ??
+                                            _currentBooking.offeredBudget;
+
+                                        BookingStore.updateBookingDetails(
+                                          _currentBooking.id,
+                                          specialization: serviceController.text
+                                              .trim(),
+                                          problemDescription: detailsController
+                                              .text
+                                              .trim(),
+                                          address: addressController.text
+                                              .trim(),
+                                          date: dateController.text.trim(),
+                                          time: timeController.text.trim(),
+                                          offeredBudget: budget,
+                                        );
+
+                                        final latest =
+                                            BookingStore.getBookingById(
+                                              _currentBooking.id,
+                                            );
+                                        if (latest != null && mounted) {
+                                          setState(
+                                            () => _currentBooking = latest,
+                                          );
+                                        }
+
+                                        if (context.mounted) {
+                                          Navigator.pop(context);
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                'Booking request updated.',
+                                              ),
+                                              duration: Duration(seconds: 2),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    : null,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _primaryBlue,
+                                  foregroundColor: Colors.white,
+                                  disabledBackgroundColor: _textMuted
+                                      .withValues(alpha: 0.3),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  elevation: 0,
+                                ),
+                                child: const Text(
+                                  'Save Changes',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      serviceController.dispose();
+      detailsController.dispose();
+      addressController.dispose();
+      dateController.dispose();
+      timeController.dispose();
+      budgetController.dispose();
+    }
+  }
+
   Future<bool> _showCompletionWarningDialog() async {
     final shouldLeave =
         await showDialog<bool>(
@@ -1410,14 +1803,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
             SizedBox(
               width: double.infinity,
               child: OutlinedButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Edit feature coming soon'),
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                },
+                onPressed: _showEditRequestModal,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _primaryBlue,
                   side: const BorderSide(color: _primaryBlue, width: 1.5),
@@ -1434,7 +1820,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
             ),
           ] else if (_currentBooking.status == 'Accepted' ||
               _currentBooking.status == 'In Progress') ...[
-            // Message & Call for Accepted/In Progress
+            // Message + secondary action (Cancel for Accepted, Call for In Progress)
             Row(
               children: [
                 Expanded(
@@ -1461,26 +1847,49 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Calling tradesperson...'),
-                          duration: Duration(seconds: 2),
+                  child: _currentBooking.status == 'Accepted'
+                      ? OutlinedButton.icon(
+                          onPressed: () {
+                            _updateBookingStatus('Cancelled');
+                            Navigator.pop(context);
+                          },
+                          icon: const Icon(Icons.cancel_rounded, size: 18),
+                          label: const Text('Cancel Booking'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _errorRed,
+                            side: const BorderSide(
+                              color: _errorRed,
+                              width: 1.5,
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        )
+                      : OutlinedButton.icon(
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Calling tradesperson...'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.call_rounded, size: 18),
+                          label: const Text('Call'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _primaryBlue,
+                            side: const BorderSide(
+                              color: _primaryBlue,
+                              width: 1.5,
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
                         ),
-                      );
-                    },
-                    icon: const Icon(Icons.call_rounded, size: 18),
-                    label: const Text('Call'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: _primaryBlue,
-                      side: const BorderSide(color: _primaryBlue, width: 1.5),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
                 ),
               ],
             ),

@@ -6,9 +6,15 @@ import 'tradesperson_work_store.dart';
 /// Displays all incoming booking requests from homeowners.
 /// Tradespeople can Accept or Decline each request from this screen.
 class RequestsScreen extends StatefulWidget {
-  const RequestsScreen({super.key, required this.onNavigateToJobs});
+  const RequestsScreen({
+    super.key,
+    required this.onNavigateToJobs,
+    required this.onMessageRequested,
+  });
 
   final VoidCallback onNavigateToJobs;
+  final void Function(String homeownerName, String service, String avatar)
+  onMessageRequested;
 
   @override
   State<RequestsScreen> createState() => _RequestsScreenState();
@@ -232,6 +238,15 @@ class _RequestsScreenState extends State<RequestsScreen>
         );
       }
     });
+  }
+
+  void _messageHomeowner(Map<String, dynamic> request) {
+    final homeowner = (request['homeowner'] ?? '').toString().trim();
+    final service = (request['service'] ?? '').toString().trim();
+    final avatar = (request['avatar'] ?? '').toString().trim();
+
+    if (homeowner.isEmpty) return;
+    widget.onMessageRequested(homeowner, service, avatar);
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -673,12 +688,35 @@ class _RequestsScreenState extends State<RequestsScreen>
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  flex: 2,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _messageHomeowner(request),
+                    icon: const Icon(Icons.chat_bubble_outline_rounded, size: 16),
+                    label: const Text(
+                      'Message',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _primaryBlue,
+                      side: BorderSide(
+                        color: _primaryBlue.withValues(alpha: 0.35),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () => _acceptRequest(request),
                     icon: const Icon(Icons.check_rounded, size: 18),
                     label: const Text(
-                      'Accept Request',
+                      'Accept',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
