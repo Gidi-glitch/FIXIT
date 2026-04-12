@@ -15,6 +15,10 @@ class TradespersonWorkStore {
   static String get lastMutation => _lastMutation;
   static String? get lastAcceptedJobId => _lastAcceptedJobId;
 
+  /// Returns true when at least one job is currently 'In Progress'.
+  static bool get hasJobInProgress =>
+      _jobs.any((j) => j['status'] == 'In Progress');
+
   static final List<Map<String, dynamic>> _requests = [
     {
       'id': 'REQ-001',
@@ -178,6 +182,8 @@ class TradespersonWorkStore {
     },
   ];
 
+  // ── Public getters ─────────────────────────────────────────────
+
   static List<Map<String, dynamic>> get requests =>
       List.unmodifiable(_requests.map((r) => Map<String, dynamic>.from(r)));
 
@@ -190,6 +196,8 @@ class TradespersonWorkStore {
         .map((r) => Map<String, dynamic>.from(r))
         .toList(growable: false);
   }
+
+  // ── Mutations ──────────────────────────────────────────────────
 
   static void acceptRequestById(String requestId) {
     final index = _requests.indexWhere((r) => r['id'] == requestId);
@@ -219,6 +227,32 @@ class TradespersonWorkStore {
     _requests.removeWhere((r) => r['id'] == requestId);
     _lastAcceptedJobId = null;
     _notify('decline_request');
+  }
+
+  /// Transitions an Accepted job to In Progress.
+  /// Only succeeds when no other job is already In Progress.
+  static bool startJobById(String jobId) {
+    // Guard: only one In Progress job at a time
+    if (hasJobInProgress) return false;
+
+    final index = _jobs.indexWhere((j) => j['id'] == jobId);
+    if (index == -1) return false;
+    if (_jobs[index]['status'] != 'Accepted') return false;
+
+    final now = TimeOfDay.now();
+    final hour = now.hourOfPeriod == 0 ? 12 : now.hourOfPeriod;
+    final minute = now.minute.toString().padLeft(2, '0');
+    final period = now.period == DayPeriod.am ? 'AM' : 'PM';
+    final timeLabel = '$hour:$minute $period';
+
+    _jobs[index] = {
+      ..._jobs[index],
+      'status': 'In Progress',
+      'startedAt': timeLabel,
+    };
+    _lastAcceptedJobId = null;
+    _notify('start_job');
+    return true;
   }
 
   static void markJobAsComplete(String jobId) {

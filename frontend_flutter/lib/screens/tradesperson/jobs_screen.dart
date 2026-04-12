@@ -3,11 +3,14 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'tradesperson_work_store.dart';
+import 'job_details_screen.dart';
 
 /// Jobs Screen for the Fix It Marketplace Tradesperson App.
-/// Displays all active and historical jobs for the tradesperson.
-/// The tradesperson can mark a job as Complete from this screen,
-/// which triggers payment release to the tradesperson.
+///
+/// • Cards are tappable and push [JobDetailsScreen].
+/// • Accepted jobs show a "Start Job" button.
+///   → Disabled (with inline warning) when another job is In Progress.
+/// • In-Progress jobs show "Mark as Complete".
 class JobsScreen extends StatefulWidget {
   const JobsScreen({super.key});
 
@@ -28,6 +31,7 @@ class _JobsScreenState extends State<JobsScreen>
   static const Color _warningYellow = Color(0xFFF59E0B);
   static const Color _errorRed = Color(0xFFEF4444);
   static const Color _infoBlue = Color(0xFF3B82F6);
+
   bool _isSyncingAcceptedJob = false;
   int _handledMutationToken = 0;
 
@@ -83,44 +87,180 @@ class _JobsScreenState extends State<JobsScreen>
   List<Map<String, dynamic>> get _jobs => TradespersonWorkStore.jobs;
 
   // ── Status helpers ─────────────────────────────────────────────
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'In Progress':
-        return _infoBlue;
-      case 'Accepted':
-        return _successGreen;
-      case 'Completed':
-        return _successGreen;
-      case 'Cancelled':
-        return _errorRed;
-      case 'Under Review':
-        return _warningYellow;
-      default:
-        return _textMuted;
-    }
-  }
+  Color _statusColor(String status) => switch (status) {
+    'In Progress' => _infoBlue,
+    'Accepted' => _successGreen,
+    'Completed' => _successGreen,
+    'Cancelled' => _errorRed,
+    'Under Review' => _warningYellow,
+    _ => _textMuted,
+  };
 
-  IconData _statusIcon(String status) {
-    switch (status) {
-      case 'In Progress':
-        return Icons.handyman_rounded;
-      case 'Accepted':
-        return Icons.check_circle_outline_rounded;
-      case 'Completed':
-        return Icons.task_alt_rounded;
-      case 'Cancelled':
-        return Icons.cancel_outlined;
-      default:
-        return Icons.circle_outlined;
-    }
-  }
+  IconData _statusIcon(String status) => switch (status) {
+    'In Progress' => Icons.handyman_rounded,
+    'Accepted' => Icons.check_circle_outline_rounded,
+    'Completed' => Icons.task_alt_rounded,
+    'Cancelled' => Icons.cancel_outlined,
+    _ => Icons.circle_outlined,
+  };
 
   List<Map<String, dynamic>> get _filtered {
     if (_activeFilter == 'All') return List.from(_jobs);
     return _jobs.where((j) => j['status'] == _activeFilter).toList();
   }
 
-  // ── Mark as Complete ───────────────────────────────────────────
+  // ── Navigate to Job Details ─────────────────────────────────────
+  Future<void> _openJobDetails(Map<String, dynamic> job) async {
+    await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => JobDetailsScreen(jobId: job['id'] as String),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  // ── Start Job (inline from card) ────────────────────────────────
+  void _startJob(Map<String, dynamic> job) async {
+    if (TradespersonWorkStore.hasJobInProgress) {
+      _showBlockedSnack();
+      return;
+    }
+
+    final confirmed = await _showStartJobDialog(job);
+    if (confirmed != true || !mounted) return;
+
+    final success = TradespersonWorkStore.startJobById(job['id'] as String);
+    if (!mounted) return;
+
+    if (success) {
+      _showSnack(
+        'Job started! Head to ${job['homeowner'].toString().split(' ').first}\'s place.',
+        _infoBlue,
+        icon: Icons.handyman_rounded,
+      );
+    } else {
+      _showBlockedSnack();
+    }
+  }
+
+  Future<bool?> _showStartJobDialog(Map<String, dynamic> job) {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+          decoration: BoxDecoration(
+            color: _cardWhite,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.14),
+                blurRadius: 30,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [_accentOrange, Color(0xFFFB923C)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  Icons.play_arrow_rounded,
+                  color: Colors.white,
+                  size: 30,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Start Job?',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: _textDark,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'You are about to start "${job['service']}". '
+                '${job['homeowner']} will be notified.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: _textMuted.withValues(alpha: 0.9),
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 22),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: BorderSide(
+                          color: _textMuted.withValues(alpha: 0.3),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: const Text(
+                        'Not Yet',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: _textMuted,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _accentOrange,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: const Text(
+                        'Start Now',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Mark as Complete (inline from card) ─────────────────────────
   void _markAsComplete(Map<String, dynamic> job) {
     showDialog<bool>(
       context: context,
@@ -173,7 +313,8 @@ class _JobsScreenState extends State<JobsScreen>
               ),
               const SizedBox(height: 8),
               Text(
-                'Confirm that you have finished the job for ${job['homeowner']}. The homeowner will be notified to release your payment.',
+                'Confirm that you have finished the job for ${job['homeowner']}. '
+                'The homeowner will be notified to settle your payment.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14,
@@ -236,23 +377,45 @@ class _JobsScreenState extends State<JobsScreen>
     ).then((confirmed) {
       if (confirmed == true) {
         TradespersonWorkStore.markJobAsComplete(job['id'] as String);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              'Job marked as complete. Homeowner has been notified.',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            backgroundColor: _successGreen,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            margin: const EdgeInsets.all(16),
-          ),
+        _showSnack(
+          'Job marked as complete. Homeowner has been notified.',
+          _successGreen,
+          icon: Icons.task_alt_rounded,
         );
       }
     });
   }
+
+  // ── Snackbars ───────────────────────────────────────────────────
+
+  void _showSnack(String msg, Color color, {required IconData icon}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(icon, color: Colors.white, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                msg,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  void _showBlockedSnack() => _showSnack(
+    'Finish your current In Progress job before starting another.',
+    _warningYellow,
+    icon: Icons.warning_amber_rounded,
+  );
 
   // ═══════════════════════════════════════════════════════════════
   //  BUILD
@@ -320,9 +483,8 @@ class _JobsScreenState extends State<JobsScreen>
           TweenAnimationBuilder<double>(
             tween: Tween(begin: 0, end: 1),
             duration: const Duration(milliseconds: 850),
-            builder: (context, value, child) {
-              return Transform.rotate(angle: value * 2 * math.pi, child: child);
-            },
+            builder: (context, value, child) =>
+                Transform.rotate(angle: value * 2 * math.pi, child: child),
             child: Container(
               width: 72,
               height: 72,
@@ -508,7 +670,7 @@ class _JobsScreenState extends State<JobsScreen>
   }
 
   // ═══════════════════════════════════════════════════════════════
-  //  JOB CARD
+  //  JOB CARD  (tappable → JobDetailsScreen)
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildJobCard(Map<String, dynamic> job) {
@@ -517,7 +679,9 @@ class _JobsScreenState extends State<JobsScreen>
     final isCompleted = status == 'Completed';
     final isCancelled = status == 'Cancelled';
     final isInProgress = status == 'In Progress';
+    final isAccepted = status == 'Accepted';
     final isDimmed = isCompleted || isCancelled;
+    final isStartBlocked = isAccepted && TradespersonWorkStore.hasJobInProgress;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -526,6 +690,11 @@ class _JobsScreenState extends State<JobsScreen>
         borderRadius: BorderRadius.circular(20),
         border: isInProgress
             ? Border.all(color: _infoBlue.withValues(alpha: 0.3), width: 1.5)
+            : isAccepted && !isStartBlocked
+            ? Border.all(
+                color: _accentOrange.withValues(alpha: 0.25),
+                width: 1.2,
+              )
             : null,
         boxShadow: [
           BoxShadow(
@@ -535,276 +704,363 @@ class _JobsScreenState extends State<JobsScreen>
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Header Row ─────────────────────────────────────────
-            Row(
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          onTap: () => _openJobDetails(job),
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: isDimmed
-                          ? [
-                              _textMuted.withValues(alpha: 0.4),
-                              _textMuted.withValues(alpha: 0.25),
-                            ]
-                          : [_primaryBlue, const Color(0xFF3B82F6)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Center(
-                    child: Text(
-                      job['avatar'] as String,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                // ── Header Row ─────────────────────────────────────
+                Row(
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: isDimmed
+                              ? [
+                                  _textMuted.withValues(alpha: 0.4),
+                                  _textMuted.withValues(alpha: 0.25),
+                                ]
+                              : [_primaryBlue, const Color(0xFF3B82F6)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        job['homeowner'] as String,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: isDimmed
-                              ? _textMuted.withValues(alpha: 0.6)
-                              : _textDark,
+                      child: Center(
+                        child: Text(
+                          job['avatar'] as String,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        job['id'] as String,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: _textMuted.withValues(alpha: 0.6),
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Status Badge
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(_statusIcon(status), size: 12, color: statusColor),
-                      const SizedBox(width: 4),
-                      Text(
-                        status,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: statusColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 14),
-            Container(
-              height: 1,
-              color: isDimmed
-                  ? Colors.grey.shade100.withValues(alpha: 0.5)
-                  : Colors.grey.shade100,
-            ),
-            const SizedBox(height: 12),
-
-            // ── Service Name ──────────────────────────────────────
-            Text(
-              job['service'] as String,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                color: isDimmed ? _textMuted.withValues(alpha: 0.6) : _textDark,
-                letterSpacing: -0.2,
-              ),
-            ),
-            const SizedBox(height: 6),
-
-            // ── Description ───────────────────────────────────────
-            Text(
-              job['description'] as String,
-              style: TextStyle(
-                fontSize: 13,
-                color: isDimmed
-                    ? _textMuted.withValues(alpha: 0.45)
-                    : _textMuted.withValues(alpha: 0.85),
-                height: 1.45,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-
-            const SizedBox(height: 12),
-            Container(
-              height: 1,
-              color: isDimmed
-                  ? Colors.grey.shade100.withValues(alpha: 0.5)
-                  : Colors.grey.shade100,
-            ),
-            const SizedBox(height: 12),
-
-            // ── Details Row ───────────────────────────────────────
-            Row(
-              children: [
-                _buildDetailItem(
-                  Icons.calendar_today_rounded,
-                  job['date'] as String,
-                  isDimmed: isDimmed,
-                ),
-                const SizedBox(width: 14),
-                _buildDetailItem(
-                  Icons.access_time_rounded,
-                  job['time'] as String,
-                  isDimmed: isDimmed,
-                ),
-                const SizedBox(width: 14),
-                _buildDetailItem(
-                  Icons.payments_outlined,
-                  '₱${(job['budget'] as double).toStringAsFixed(0)}',
-                  isDimmed: isDimmed,
-                  highlight: !isDimmed,
-                ),
-                const Spacer(),
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: _primaryBlue.withValues(
-                      alpha: isDimmed ? 0.04 : 0.08,
                     ),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    color: _primaryBlue.withValues(
-                      alpha: isDimmed ? 0.35 : 1.0,
-                    ),
-                    size: 13,
-                  ),
-                ),
-              ],
-            ),
-
-            // ── Address ───────────────────────────────────────────
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Icon(
-                  Icons.location_on_outlined,
-                  size: 14,
-                  color: _textMuted.withValues(alpha: isDimmed ? 0.3 : 0.6),
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    job['address'] as String,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: _textMuted.withValues(
-                        alpha: isDimmed ? 0.4 : 0.75,
-                      ),
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-
-            // ── Completed info / rating ────────────────────────────
-            if (isCompleted && job['completedAt'] != null) ...[
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Icon(
-                    Icons.task_alt_rounded,
-                    size: 14,
-                    color: _successGreen.withValues(alpha: 0.7),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Completed: ${job['completedAt']}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: _successGreen.withValues(alpha: 0.8),
-                    ),
-                  ),
-                  if (job['rating'] != null) ...[
                     const SizedBox(width: 12),
-                    const Icon(
-                      Icons.star_rounded,
-                      size: 14,
-                      color: _accentOrange,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            job['homeowner'] as String,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: isDimmed
+                                  ? _textMuted.withValues(alpha: 0.6)
+                                  : _textDark,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            job['id'] as String,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: _textMuted.withValues(alpha: 0.6),
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(width: 3),
-                    Text(
-                      '${job['rating']}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: _accentOrange,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _statusIcon(status),
+                            size: 12,
+                            color: statusColor,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            status,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: statusColor,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
-                ],
-              ),
-            ],
+                ),
 
-            // ── Mark as Complete Button (In Progress only) ─────────
-            if (isInProgress) ...[
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => _markAsComplete(job),
-                  icon: const Icon(Icons.task_alt_rounded, size: 18),
-                  label: const Text(
-                    'Mark as Complete',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _successGreen,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
+                const SizedBox(height: 14),
+                Container(
+                  height: 1,
+                  color: isDimmed
+                      ? Colors.grey.shade100.withValues(alpha: 0.5)
+                      : Colors.grey.shade100,
+                ),
+                const SizedBox(height: 12),
+
+                // ── Service Name ──────────────────────────────────
+                Text(
+                  job['service'] as String,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: isDimmed
+                        ? _textMuted.withValues(alpha: 0.6)
+                        : _textDark,
+                    letterSpacing: -0.2,
                   ),
                 ),
-              ),
-            ],
-          ],
+                const SizedBox(height: 6),
+
+                // ── Description (preview) ─────────────────────────
+                Text(
+                  job['description'] as String,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDimmed
+                        ? _textMuted.withValues(alpha: 0.45)
+                        : _textMuted.withValues(alpha: 0.85),
+                    height: 1.45,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+
+                const SizedBox(height: 12),
+                Container(
+                  height: 1,
+                  color: isDimmed
+                      ? Colors.grey.shade100.withValues(alpha: 0.5)
+                      : Colors.grey.shade100,
+                ),
+                const SizedBox(height: 12),
+
+                // ── Details Row ───────────────────────────────────
+                Row(
+                  children: [
+                    _buildDetailItem(
+                      Icons.calendar_today_rounded,
+                      job['date'] as String,
+                      isDimmed: isDimmed,
+                    ),
+                    const SizedBox(width: 14),
+                    _buildDetailItem(
+                      Icons.access_time_rounded,
+                      job['time'] as String,
+                      isDimmed: isDimmed,
+                    ),
+                    const SizedBox(width: 14),
+                    _buildDetailItem(
+                      Icons.payments_outlined,
+                      '₱${(job['budget'] as double).toStringAsFixed(0)}',
+                      isDimmed: isDimmed,
+                      highlight: !isDimmed,
+                    ),
+                    const Spacer(),
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: _primaryBlue.withValues(
+                          alpha: isDimmed ? 0.04 : 0.08,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        color: _primaryBlue.withValues(
+                          alpha: isDimmed ? 0.35 : 1.0,
+                        ),
+                        size: 13,
+                      ),
+                    ),
+                  ],
+                ),
+
+                // ── Address ───────────────────────────────────────
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.location_on_outlined,
+                      size: 14,
+                      color: _textMuted.withValues(alpha: isDimmed ? 0.3 : 0.6),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        job['address'] as String,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _textMuted.withValues(
+                            alpha: isDimmed ? 0.4 : 0.75,
+                          ),
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+
+                // ── Completed info / rating ────────────────────────
+                if (isCompleted && job['completedAt'] != null) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.task_alt_rounded,
+                        size: 14,
+                        color: _successGreen.withValues(alpha: 0.7),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Completed: ${job['completedAt']}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _successGreen.withValues(alpha: 0.8),
+                        ),
+                      ),
+                      if (job['rating'] != null) ...[
+                        const SizedBox(width: 12),
+                        const Icon(
+                          Icons.star_rounded,
+                          size: 14,
+                          color: _accentOrange,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          '${job['rating']}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: _accentOrange,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+
+                // ── Mark as Complete (In Progress) ─────────────────
+                if (isInProgress) ...[
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _markAsComplete(job),
+                      icon: const Icon(Icons.task_alt_rounded, size: 18),
+                      label: const Text(
+                        'Mark as Complete',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _successGreen,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+
+                // ── Start Job (Accepted) ────────────────────────────
+                if (isAccepted) ...[
+                  const SizedBox(height: 14),
+                  if (isStartBlocked) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _warningYellow.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: _warningYellow.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            size: 14,
+                            color: _warningYellow.withValues(alpha: 0.9),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Complete your current In Progress job first.',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: _warningYellow.withValues(alpha: 0.9),
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: isStartBlocked ? null : () => _startJob(job),
+                      icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                      label: const Text(
+                        'Start Job',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _accentOrange,
+                        disabledBackgroundColor: _textMuted.withValues(
+                          alpha: 0.12,
+                        ),
+                        foregroundColor: Colors.white,
+                        disabledForegroundColor: _textMuted.withValues(
+                          alpha: 0.4,
+                        ),
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );

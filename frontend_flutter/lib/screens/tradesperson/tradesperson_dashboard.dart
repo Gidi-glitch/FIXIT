@@ -1364,13 +1364,28 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildNavItem(0, Icons.dashboard_rounded, 'Dashboard'),
-              _buildNavItem(1, Icons.inbox_rounded, 'Requests'),
-              _buildNavItem(2, Icons.handyman_rounded, 'Jobs'),
-              _buildNavItem(3, Icons.chat_bubble_outline_rounded, 'Messages'),
-              _buildNavItem(4, Icons.person_outline_rounded, 'Profile'),
+              Expanded(
+                child: _buildNavItem(0, Icons.dashboard_rounded, 'Dashboard'),
+              ),
+              Expanded(
+                child: _buildNavItem(1, Icons.inbox_rounded, 'Requests'),
+              ),
+              Expanded(child: _buildNavItem(2, Icons.handyman_rounded, 'Jobs')),
+              Expanded(
+                child: _buildNavItem(
+                  3,
+                  Icons.chat_bubble_outline_rounded,
+                  'Messages',
+                ),
+              ),
+              Expanded(
+                child: _buildNavItem(
+                  4,
+                  Icons.person_outline_rounded,
+                  'Profile',
+                ),
+              ),
             ],
           ),
         ),
@@ -1385,7 +1400,7 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
         decoration: BoxDecoration(
           color: isActive
               ? _primaryBlue.withValues(alpha: 0.1)
@@ -1399,6 +1414,9 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
             const SizedBox(height: 4),
             Text(
               label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,

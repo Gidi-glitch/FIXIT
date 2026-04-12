@@ -36,12 +36,12 @@ dependencies:
   cupertino_icons: ^1.0.8
   http: ^1.6.0
   image_picker: ^1.0.4
-  file_picker: ^8.0.0
+  file_picker: ^11.0.2
   path_provider: ^2.1.5
   mime: ^2.0.0
   path: ^1.9.1
   shared_preferences: ^2.3.0
-  device_info_plus: ^10.0.0
+  device_info_plus: ^12.4.0
   url_launcher: ^6.3.2
 
 dev_dependencies:

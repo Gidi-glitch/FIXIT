@@ -537,70 +537,91 @@ class _RequestsScreenState extends State<RequestsScreen>
                         ],
                       ),
                       const SizedBox(height: 3),
-                      Row(
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          Icon(
-                            Icons.location_on_outlined,
-                            size: 13,
-                            color: _textMuted.withValues(alpha: 0.7),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.location_on_outlined,
+                                size: 13,
+                                color: _textMuted.withValues(alpha: 0.7),
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                request['barangay'] as String,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: _textMuted.withValues(alpha: 0.8),
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 3),
-                          Text(
-                            request['barangay'] as String,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: _textMuted.withValues(alpha: 0.8),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Icon(
-                            Icons.access_time_rounded,
-                            size: 13,
-                            color: _textMuted.withValues(alpha: 0.7),
-                          ),
-                          const SizedBox(width: 3),
-                          Text(
-                            request['postedAt'] as String,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: _textMuted.withValues(alpha: 0.8),
-                            ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.access_time_rounded,
+                                size: 13,
+                                color: _textMuted.withValues(alpha: 0.7),
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                request['postedAt'] as String,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: _textMuted.withValues(alpha: 0.8),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ],
                   ),
                 ),
-                // Urgency Badge
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: urgencyColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        _urgencyIcon(request['urgency'] as String),
-                        size: 12,
-                        color: urgencyColor,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        request['urgency'] as String,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: urgencyColor,
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Align(
+                    alignment: Alignment.topRight,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: urgencyColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _urgencyIcon(request['urgency'] as String),
+                              size: 12,
+                              color: urgencyColor,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              request['urgency'] as String,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: urgencyColor,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ],
@@ -639,18 +660,19 @@ class _RequestsScreenState extends State<RequestsScreen>
             const SizedBox(height: 12),
 
             // ── Details Row ───────────────────────────────────────
-            Row(
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 _buildDetailChip(
                   Icons.calendar_today_rounded,
                   request['date'] as String,
                 ),
-                const SizedBox(width: 12),
                 _buildDetailChip(
                   Icons.access_time_rounded,
                   request['time'] as String,
                 ),
-                const SizedBox(width: 12),
                 _buildDetailChip(
                   Icons.payments_outlined,
                   '₱${(request['budget'] as double).toStringAsFixed(0)}',
@@ -690,7 +712,10 @@ class _RequestsScreenState extends State<RequestsScreen>
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () => _messageHomeowner(request),
-                    icon: const Icon(Icons.chat_bubble_outline_rounded, size: 16),
+                    icon: const Icon(
+                      Icons.chat_bubble_outline_rounded,
+                      size: 16,
+                    ),
                     label: const Text(
                       'Message',
                       style: TextStyle(

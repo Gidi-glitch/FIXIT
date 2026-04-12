@@ -1088,7 +1088,7 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                 ),
               ),
               TextButton(
-                onPressed: () {},
+                onPressed: () => setState(() => _currentNavIndex = 1),
                 style: TextButton.styleFrom(
                   foregroundColor: _primaryBlue,
                   padding: const EdgeInsets.symmetric(

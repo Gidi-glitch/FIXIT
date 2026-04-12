@@ -203,7 +203,7 @@ class _TradespersonRegistrationScreenState
         return;
       }
 
-            setState(() => _isSubmitting = true);
+      setState(() => _isSubmitting = true);
 
       try {
         await ApiService.registerTradesperson(
@@ -224,7 +224,9 @@ class _TradespersonRegistrationScreenState
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Registration submitted! Your documents are pending verification.'),
+              content: Text(
+                'Registration submitted! Your documents are pending verification.',
+              ),
               backgroundColor: Color(0xFF1E3A8A),
               behavior: SnackBarBehavior.floating,
               margin: EdgeInsets.all(16),
@@ -235,7 +237,8 @@ class _TradespersonRegistrationScreenState
       } on HttpException catch (e) {
         if (mounted) _showErrorSnackBar(e.message);
       } catch (_) {
-        if (mounted) _showErrorSnackBar('Connection error. Is the server running?');
+        if (mounted)
+          _showErrorSnackBar('Connection error. Is the server running?');
       } finally {
         if (mounted) setState(() => _isSubmitting = false);
       }
@@ -288,7 +291,7 @@ class _TradespersonRegistrationScreenState
     setState(() => _isUploadingGovernmentId = true);
 
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
       );
@@ -319,7 +322,7 @@ class _TradespersonRegistrationScreenState
     setState(() => _isUploadingLicense = true);
 
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
       );
