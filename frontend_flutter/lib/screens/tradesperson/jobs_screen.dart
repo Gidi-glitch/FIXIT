@@ -54,6 +54,23 @@ class _JobsScreenState extends State<JobsScreen>
   Future<void> _handleStoreChanged() async {
     if (!mounted) return;
 
+    if (TradespersonWorkStore.lastMutation == 'open_job_details') {
+      final pendingJobId = TradespersonWorkStore.consumePendingOpenJobId();
+      if (pendingJobId != null) {
+        Map<String, dynamic>? job;
+        try {
+          job = _jobs.firstWhere((j) => j['id'] == pendingJobId);
+        } catch (_) {
+          job = null;
+        }
+        if (job != null && mounted) {
+          await _openJobDetails(job);
+        }
+      }
+      if (mounted) setState(() {});
+      return;
+    }
+
     final token = TradespersonWorkStore.mutationToken;
     if (token == _handledMutationToken) {
       setState(() {});

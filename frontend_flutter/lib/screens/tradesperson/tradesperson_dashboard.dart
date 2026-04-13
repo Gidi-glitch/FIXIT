@@ -5,6 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
 import 'jobs_screen.dart';
 import 'requests_screen.dart';
+import 'settings/tradesperson_edit_profile_screen.dart';
+import 'settings/tradesperson_my_documents_screen.dart';
+import 'settings/tradesperson_service_area_screen.dart';
 import 'tradesperson_messages_screen.dart';
 import 'tradesperson_profile_screen.dart';
 import 'tradesperson_work_store.dart';
@@ -57,14 +60,15 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
   List<Map<String, dynamic>> get _incomingRequests =>
       TradespersonWorkStore.dashboardRequests();
 
-  final Map<String, dynamic> _currentJob = {
-    'homeowner': 'Ana Santos',
-    'issue': 'Water Heater Repair',
-    'location': 'Balayhangin, Calauan',
-    'status': 'In Progress',
-    'startTime': '10:30 AM',
-    'avatar': 'AS',
-  };
+  Map<String, dynamic>? get _currentJob {
+    try {
+      return TradespersonWorkStore.jobs.firstWhere(
+        (job) => job['status'] == 'In Progress',
+      );
+    } catch (_) {
+      return null;
+    }
+  }
 
   final List<Map<String, dynamic>> _quickActions = [
     {'icon': Icons.edit_rounded, 'label': 'Edit Profile'},
@@ -183,6 +187,58 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
       _messageChatRequestId++;
       _currentNavIndex = 3;
     });
+  }
+
+  void _handleQuickActionTap(String label) {
+    switch (label) {
+      case 'Edit Profile':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const TradespersonEditProfileScreen(),
+          ),
+        );
+        break;
+      case 'Service Area':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const TradespersonServiceAreaScreen(),
+          ),
+        );
+        break;
+      case 'Documents':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const TradespersonMyDocumentsScreen(),
+          ),
+        );
+        break;
+      default:
+        break;
+    }
+  }
+
+  void _openCurrentJobDetails() {
+    final job = _currentJob;
+    if (job == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'No in-progress job to view yet.',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: _textMuted,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _currentNavIndex = 2);
+    TradespersonWorkStore.requestOpenJobDetails((job['id'] ?? '').toString());
   }
 
   @override
@@ -954,6 +1010,8 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildCurrentJobSection() {
+    final currentJob = _currentJob;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -969,147 +1027,110 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
             ),
           ),
         ),
-        Container(
-          margin: const EdgeInsets.symmetric(horizontal: 20),
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                _primaryBlue.withValues(alpha: 0.08),
-                _primaryBlue.withValues(alpha: 0.03),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: _primaryBlue.withValues(alpha: 0.15),
-              width: 1.5,
-            ),
-          ),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [_primaryBlue, Color(0xFF3B82F6)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Center(
-                      child: Text(
-                        _currentJob['avatar'] as String,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _currentJob['homeowner'] as String,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: _textDark,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _currentJob['issue'] as String,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: _textMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _infoBlue.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.circle, color: _infoBlue, size: 6),
-                        const SizedBox(width: 4),
-                        Text(
-                          _currentJob['status'] as String,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: _infoBlue,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _cardWhite,
-                  borderRadius: BorderRadius.circular(12),
+        if (currentJob == null)
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 20),
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: _cardWhite,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
-                child: Row(
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  'No in-progress job right now',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: _textDark,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Active jobs will appear here.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: _textMuted.withValues(alpha: 0.85),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  _primaryBlue.withValues(alpha: 0.08),
+                  _primaryBlue.withValues(alpha: 0.03),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: _primaryBlue.withValues(alpha: 0.15),
+                width: 1.5,
+              ),
+            ),
+            child: Column(
+              children: [
+                Row(
                   children: [
-                    Icon(
-                      Icons.location_on_rounded,
-                      size: 18,
-                      color: _primaryBlue,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _currentJob['location'] as String,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: _textDark,
+                    Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [_primaryBlue, Color(0xFF3B82F6)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Center(
+                        child: Text(
+                          (currentJob['avatar'] ?? 'TP').toString(),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _textMuted.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Row(
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(
-                            Icons.access_time_rounded,
-                            size: 12,
-                            color: _textMuted,
-                          ),
-                          const SizedBox(width: 4),
                           Text(
-                            'Started ${_currentJob['startTime']}',
+                            (currentJob['homeowner'] ?? '').toString(),
                             style: const TextStyle(
-                              fontSize: 11,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: _textDark,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            (currentJob['service'] ?? '').toString(),
+                            style: const TextStyle(
+                              fontSize: 13,
                               fontWeight: FontWeight.w500,
                               color: _textMuted,
                             ),
@@ -1117,42 +1138,121 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                         ],
                       ),
                     ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _infoBlue.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.circle, color: _infoBlue, size: 6),
+                          const SizedBox(width: 4),
+                          Text(
+                            (currentJob['status'] ?? 'In Progress').toString(),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: _infoBlue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => setState(() => _currentNavIndex = 2),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _primaryBlue,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _cardWhite,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  child: Row(
                     children: [
-                      Icon(Icons.visibility_rounded, size: 18),
-                      SizedBox(width: 8),
-                      Text(
-                        'View Details',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
+                      Icon(
+                        Icons.location_on_rounded,
+                        size: 18,
+                        color: _primaryBlue,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          (currentJob['address'] ?? '').toString(),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _textDark,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _textMuted.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.access_time_rounded,
+                              size: 12,
+                              color: _textMuted,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Started ${(currentJob['startedAt'] ?? currentJob['time'] ?? '').toString()}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: _textMuted,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _openCurrentJobDetails,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _primaryBlue,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.visibility_rounded, size: 18),
+                        SizedBox(width: 8),
+                        Text(
+                          'View Details',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
       ],
     );
   }
@@ -1291,49 +1391,53 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Row(
             children: _quickActions.map((action) {
+              final label = action['label'] as String;
               return Expanded(
-                child: Container(
-                  margin: EdgeInsets.only(
-                    right: action != _quickActions.last ? 10 : 0,
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: BoxDecoration(
-                    color: _cardWhite,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: _primaryBlue.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
+                child: GestureDetector(
+                  onTap: () => _handleQuickActionTap(label),
+                  child: Container(
+                    margin: EdgeInsets.only(
+                      right: action != _quickActions.last ? 10 : 0,
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    decoration: BoxDecoration(
+                      color: _cardWhite,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
                         ),
-                        child: Icon(
-                          action['icon'] as IconData,
-                          color: _primaryBlue,
-                          size: 20,
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: _primaryBlue.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            action['icon'] as IconData,
+                            color: _primaryBlue,
+                            size: 20,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        action['label'] as String,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: _textDark,
+                        const SizedBox(height: 10),
+                        Text(
+                          label,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: _textDark,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               );

@@ -82,23 +82,9 @@ class _MyAddressesScreenState extends State<MyAddressesScreen> {
 
   static const String _prefsKey = 'saved_addresses';
 
-  static const List<String> _barangays = [
-    'Balayhangin',
-    'Cansuso',
-    'Dayap',
-    'Hanggan',
-    'Imok',
-    'Kanlurang Mayao',
-    'Laguna',
-    'Lagunat',
-    'Matuon',
-    'Palayan',
-    'Pansol',
-    'Silangan Mayao',
-    'Sucol',
-    'Turbina',
-    'Ulango',
-    'Wawa',
+  static const List<String> _barangays = ['Balayhangin', 'Bangyas', 'Dayap',
+  'Hanggan', 'Imok', 'Kanluran', 'Lamot 1', 'Lamot 2','Limao', 'Mabacan','Masiit', 
+  'Paliparan', 'Perez', 'Prinza', 'San Isidro', 'Santo Tomas','Silangan'
   ];
 
   static const List<String> _labelOptions = ['Home', 'Work', 'Other'];

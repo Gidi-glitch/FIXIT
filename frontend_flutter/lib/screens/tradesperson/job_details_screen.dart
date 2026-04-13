@@ -36,7 +36,6 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
   static const Color _warningYellow = Color(0xFFF59E0B);
   static const Color _errorRed = Color(0xFFEF4444);
   static const Color _infoBlue = Color(0xFF3B82F6);
-  static const Color _borderGray = Color(0xFFE5E7EB);
 
   bool _didMutate = false;
 
@@ -69,14 +68,6 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
   }
 
   // ── Status helpers ──────────────────────────────────────────────
-
-  Color _statusColor(String status) => switch (status) {
-    'In Progress' => _infoBlue,
-    'Accepted' => _successGreen,
-    'Completed' => _successGreen,
-    'Cancelled' => _errorRed,
-    _ => _textMuted,
-  };
 
   IconData _statusIcon(String status) => switch (status) {
     'In Progress' => Icons.handyman_rounded,
@@ -928,7 +919,6 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildTimeline(Map<String, dynamic> job, String status) {
-    final isAccepted = status == 'Accepted';
     final isInProgress = status == 'In Progress';
     final isCompleted = status == 'Completed';
     final isCancelled = status == 'Cancelled';

@@ -10,10 +10,12 @@ class TradespersonWorkStore {
   static int _mutationToken = 0;
   static String _lastMutation = 'init';
   static String? _lastAcceptedJobId;
+  static String? _pendingOpenJobId;
 
   static int get mutationToken => _mutationToken;
   static String get lastMutation => _lastMutation;
   static String? get lastAcceptedJobId => _lastAcceptedJobId;
+  static String? get pendingOpenJobId => _pendingOpenJobId;
 
   /// Returns true when at least one job is currently 'In Progress'.
   static bool get hasJobInProgress =>
@@ -266,6 +268,17 @@ class TradespersonWorkStore {
     };
     _lastAcceptedJobId = null;
     _notify('complete_job');
+  }
+
+  static void requestOpenJobDetails(String jobId) {
+    _pendingOpenJobId = jobId;
+    _notify('open_job_details');
+  }
+
+  static String? consumePendingOpenJobId() {
+    final id = _pendingOpenJobId;
+    _pendingOpenJobId = null;
+    return id;
   }
 
   static void _notify(String mutation) {

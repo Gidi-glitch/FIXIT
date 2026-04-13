@@ -150,6 +150,42 @@ class ApiService {
     return _decodeResponse(response);
   }
 
+  static Future<Map<String, dynamic>> updateProfile({
+    required String token,
+    required Map<String, dynamic> data,
+  }) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/api/profile/me'),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": 'Bearer $token',
+      },
+      body: jsonEncode(data),
+    );
+
+    return _decodeResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> changePassword({
+    required String token,
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/auth/change-password'),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": 'Bearer $token',
+      },
+      body: jsonEncode({
+        'current_password': currentPassword,
+        'new_password': newPassword,
+      }),
+    );
+
+    return _decodeResponse(response);
+  }
+
   static Map<String, dynamic> _decodeResponse(http.Response response) {
     final responseBody = response.body.isNotEmpty
         ? jsonDecode(response.body) as Map<String, dynamic>
