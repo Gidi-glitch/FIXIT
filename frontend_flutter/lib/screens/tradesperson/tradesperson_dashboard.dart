@@ -11,6 +11,7 @@ import 'settings/tradesperson_service_area_screen.dart';
 import 'tradesperson_messages_screen.dart';
 import 'tradesperson_profile_screen.dart';
 import 'tradesperson_work_store.dart';
+import 'view_reviews_screen.dart';
 
 /// Tradesperson Dashboard for the Fix It Marketplace Android app.
 /// Provides job management, availability toggle, incoming requests,
@@ -211,6 +212,11 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
             builder: (_) => const TradespersonMyDocumentsScreen(),
           ),
         );
+        break;
+      case 'Reviews':
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const ViewReviewsScreen()));
         break;
       default:
         break;

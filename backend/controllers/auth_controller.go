@@ -16,6 +16,7 @@ import (
 	"fixit-backend/middleware"
 	"fixit-backend/models"
 
+	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -37,6 +38,11 @@ type resetPasswordRequest struct {
 	Email       string `json:"email"`
 	OTP         string `json:"otp"`
 	NewPassword string `json:"new_password"`
+}
+
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
 }
 
 type resetCodeEntry struct {
@@ -301,6 +307,75 @@ func ResetPassword(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"message": "password reset successful",
+	})
+}
+
+func ChangePassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	claims, ok := r.Context().Value(middleware.UserContextKey).(jwt.MapClaims)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	userID, ok := claims["user_id"].(float64)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "invalid token claims")
+		return
+	}
+
+	var req changePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	currentPassword := strings.TrimSpace(req.CurrentPassword)
+	newPassword := strings.TrimSpace(req.NewPassword)
+
+	if currentPassword == "" || newPassword == "" {
+		writeError(w, http.StatusBadRequest, "current_password and new_password are required")
+		return
+	}
+
+	if len(newPassword) < 8 {
+		writeError(w, http.StatusBadRequest, "new_password must be at least 8 characters")
+		return
+	}
+
+	if currentPassword == newPassword {
+		writeError(w, http.StatusBadRequest, "new_password must be different from current_password")
+		return
+	}
+
+	var user models.User
+	if err := config.DB.First(&user, uint(userID)).Error; err != nil {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword)); err != nil {
+		writeError(w, http.StatusUnauthorized, "current password is incorrect")
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to hash password")
+		return
+	}
+
+	if err := config.DB.Model(&user).Update("password_hash", string(hashedPassword)).Error; err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update password")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"message": "password changed successfully",
 	})
 }
 

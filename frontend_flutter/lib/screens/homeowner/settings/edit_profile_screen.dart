@@ -344,11 +344,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       // 3. Call API
       if (token != null && token.isNotEmpty) {
-        final apiService = ApiService();
-        await (apiService as dynamic).updateProfile(
-          token: token,
-          data: payload,
-        );
+        await ApiService.updateProfile(token: token, data: payload);
       }
 
       // 4. Persist to local cache

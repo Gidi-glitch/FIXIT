@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"fixit-backend/controllers"
+	"fixit-backend/middleware"
 )
 
 func RegisterAuthRoutes() {
@@ -13,4 +14,5 @@ func RegisterAuthRoutes() {
 	http.HandleFunc("/api/auth/forgot-password", controllers.ForgotPassword)
 	http.HandleFunc("/api/auth/verify-reset-code", controllers.VerifyResetCode)
 	http.HandleFunc("/api/auth/reset-password", controllers.ResetPassword)
+	http.Handle("/api/auth/change-password", middleware.AuthMiddleware(http.HandlerFunc(controllers.ChangePassword)))
 }

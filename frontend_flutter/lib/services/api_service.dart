@@ -10,7 +10,7 @@ class ApiService {
       "http://10.0.2.2:8080";*/ // Use 10.0.2.2 for Android emulator
 
   static const String _emulatorUrl = "http://10.0.2.2:8080";
-  static const String _physicalUrl = "http://192.168.1.15:8080";
+  static const String _physicalUrl = "http://192.168.1.10:8080";
 
   static String baseUrl = _emulatorUrl; // safe default
 

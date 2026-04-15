@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../services/api_service.dart';
 import '../../login_screen.dart';
 
 /// Privacy & Security Screen for the Fix It Marketplace Homeowner App.
@@ -80,8 +81,11 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
     required String currentPassword,
     required String newPassword,
   }) async {
-    // TODO: Replace this with your real backend method when available.
-    await Future<void>.delayed(Duration.zero);
+    await ApiService.changePassword(
+      token: token,
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+    );
   }
 
   // ── Change password ─────────────────────────────────────────────

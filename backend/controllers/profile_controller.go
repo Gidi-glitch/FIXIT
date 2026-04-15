@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -11,7 +13,29 @@ import (
 	"fixit-backend/services"
 
 	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 )
+
+type updateMyProfileRequest struct {
+	FirstName *string `json:"first_name"`
+	LastName  *string `json:"last_name"`
+	Phone     *string `json:"phone"`
+	Email     *string `json:"email"`
+	Bio       *string `json:"bio"`
+	Gender    *string `json:"gender"`
+	Barangay  *string `json:"barangay"`
+}
+
+func ProfileMe(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		GetMyProfile(w, r)
+	case http.MethodPut:
+		UpdateMyProfile(w, r)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
 
 func buildPublicFileURL(r *http.Request, filePath string) string {
 	trimmed := strings.TrimPrefix(filepath.ToSlash(filePath), "uploads/")
@@ -30,20 +54,20 @@ func buildPublicFileURL(r *http.Request, filePath string) string {
 	return scheme + "://" + r.Host + "/uploads/" + trimmed
 }
 
-func getUserProfileDetails(userID uint, role string) (string, string, string) {
+func getUserProfileDetails(userID uint, role string) (string, string, string, string, string) {
 	if role == "homeowner" {
 		var profile models.HomeownerProfile
 		if err := config.DB.Where("user_id = ?", userID).First(&profile).Error; err == nil {
-			return profile.FirstName, profile.LastName, profile.Barangay
+			return profile.FirstName, profile.LastName, profile.Barangay, profile.Bio, profile.Gender
 		}
 	} else if role == "tradesperson" {
 		var profile models.TradespersonProfile
 		if err := config.DB.Where("user_id = ?", userID).First(&profile).Error; err == nil {
-			return profile.FirstName, profile.LastName, profile.ServiceBarangay
+			return profile.FirstName, profile.LastName, profile.ServiceBarangay, profile.Bio, profile.Gender
 		}
 	}
 
-	return "", "", ""
+	return "", "", "", "", ""
 }
 
 func GetMyProfile(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +92,7 @@ func GetMyProfile(w http.ResponseWriter, r *http.Request) {
 	var documents []models.VerificationDocument
 	config.DB.Where("user_id = ?", user.ID).Find(&documents)
 
-	firstName, lastName, barangay := getUserProfileDetails(user.ID, user.Role)
+	firstName, lastName, barangay, bio, gender := getUserProfileDetails(user.ID, user.Role)
 
 	var photo models.UserProfilePhoto
 	profileImageURL := ""
@@ -84,6 +108,8 @@ func GetMyProfile(w http.ResponseWriter, r *http.Request) {
 			"is_active":         user.IsActive,
 			"first_name":        firstName,
 			"last_name":         lastName,
+			"bio":               bio,
+			"gender":            gender,
 			"barangay":          barangay,
 			"profile_image_url": profileImageURL,
 		},
@@ -103,6 +129,184 @@ func GetMyProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, response)
+}
+
+func UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	claims, ok := r.Context().Value(middleware.UserContextKey).(jwt.MapClaims)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	userID, ok := claims["user_id"].(float64)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "invalid token claims")
+		return
+	}
+
+	var req updateMyProfileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	var user models.User
+	if err := config.DB.First(&user, uint(userID)).Error; err != nil {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+
+	userUpdates := map[string]any{}
+	if req.Email != nil {
+		email := normalizeEmail(*req.Email)
+		if email == "" {
+			writeError(w, http.StatusBadRequest, "email cannot be empty")
+			return
+		}
+
+		var existing models.User
+		err := config.DB.Where("email = ? AND id <> ?", email, user.ID).First(&existing).Error
+		if err == nil {
+			writeError(w, http.StatusConflict, "email is already in use")
+			return
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(w, http.StatusInternalServerError, "failed to validate email")
+			return
+		}
+
+		if user.Email != email {
+			userUpdates["email"] = email
+		}
+	}
+
+	if len(userUpdates) > 0 {
+		if err := config.DB.Model(&user).Updates(userUpdates).Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to update user")
+			return
+		}
+	}
+
+	switch user.Role {
+	case "homeowner":
+		var profile models.HomeownerProfile
+		if err := config.DB.Where("user_id = ?", user.ID).First(&profile).Error; err != nil {
+			writeError(w, http.StatusNotFound, "homeowner profile not found")
+			return
+		}
+
+		updates := map[string]any{}
+		if req.FirstName != nil {
+			firstName := strings.TrimSpace(*req.FirstName)
+			if firstName == "" {
+				writeError(w, http.StatusBadRequest, "first_name cannot be empty")
+				return
+			}
+			updates["first_name"] = firstName
+		}
+		if req.LastName != nil {
+			lastName := strings.TrimSpace(*req.LastName)
+			if lastName == "" {
+				writeError(w, http.StatusBadRequest, "last_name cannot be empty")
+				return
+			}
+			updates["last_name"] = lastName
+		}
+		if req.Phone != nil {
+			phone := strings.TrimSpace(*req.Phone)
+			if phone == "" {
+				writeError(w, http.StatusBadRequest, "phone cannot be empty")
+				return
+			}
+			updates["phone"] = phone
+		}
+		if req.Barangay != nil {
+			barangay := strings.TrimSpace(*req.Barangay)
+			if barangay == "" {
+				writeError(w, http.StatusBadRequest, "barangay cannot be empty")
+				return
+			}
+			updates["barangay"] = barangay
+		}
+		if req.Gender != nil {
+			updates["gender"] = strings.TrimSpace(*req.Gender)
+		}
+		if req.Bio != nil {
+			updates["bio"] = strings.TrimSpace(*req.Bio)
+		}
+
+		if len(updates) > 0 {
+			if err := config.DB.Model(&profile).Updates(updates).Error; err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to update homeowner profile")
+				return
+			}
+		}
+
+	case "tradesperson":
+		var profile models.TradespersonProfile
+		if err := config.DB.Where("user_id = ?", user.ID).First(&profile).Error; err != nil {
+			writeError(w, http.StatusNotFound, "tradesperson profile not found")
+			return
+		}
+
+		updates := map[string]any{}
+		if req.FirstName != nil {
+			firstName := strings.TrimSpace(*req.FirstName)
+			if firstName == "" {
+				writeError(w, http.StatusBadRequest, "first_name cannot be empty")
+				return
+			}
+			updates["first_name"] = firstName
+		}
+		if req.LastName != nil {
+			lastName := strings.TrimSpace(*req.LastName)
+			if lastName == "" {
+				writeError(w, http.StatusBadRequest, "last_name cannot be empty")
+				return
+			}
+			updates["last_name"] = lastName
+		}
+		if req.Phone != nil {
+			phone := strings.TrimSpace(*req.Phone)
+			if phone == "" {
+				writeError(w, http.StatusBadRequest, "phone cannot be empty")
+				return
+			}
+			updates["phone"] = phone
+		}
+		if req.Barangay != nil {
+			barangay := strings.TrimSpace(*req.Barangay)
+			if barangay == "" {
+				writeError(w, http.StatusBadRequest, "barangay cannot be empty")
+				return
+			}
+			updates["service_barangay"] = barangay
+		}
+		if req.Bio != nil {
+			updates["bio"] = strings.TrimSpace(*req.Bio)
+		}
+		if req.Gender != nil {
+			updates["gender"] = strings.TrimSpace(*req.Gender)
+		}
+
+		if len(updates) > 0 {
+			if err := config.DB.Model(&profile).Updates(updates).Error; err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to update tradesperson profile")
+				return
+			}
+		}
+
+	default:
+		writeError(w, http.StatusBadRequest, "unsupported user role")
+		return
+	}
+
+	GetMyProfile(w, r)
 }
 
 func UploadProfilePhoto(w http.ResponseWriter, r *http.Request) {
