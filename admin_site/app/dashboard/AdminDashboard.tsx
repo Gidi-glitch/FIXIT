@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, ReactNode, useEffect, CSSProperties, useRef } from "react";
+import { Fragment, useState, ReactNode, useEffect, CSSProperties, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 // ─────────────────────────────────────────────────────────────────
@@ -73,12 +73,43 @@ interface ActivityEntry {
   time: string;
 }
 
+interface RequestAnalyticsBooking {
+  id: string;
+  status: string;
+  createdAt?: string;
+  updatedAt?: string;
+  completedAt?: string;
+}
+
 interface UserGrowthPoint {
   key: string;
   label: string;
   homeowners: number;
   tradesmen: number;
   total: number;
+}
+
+interface RequestAnalyticsPoint {
+  key: string;
+  label: string;
+  total: number;
+  completed: number;
+  cancelled: number;
+}
+
+interface FailedBookingPoint {
+  key: string;
+  label: string;
+  homeownerCancelled: number;
+  tradesmanRejected: number;
+  totalFailed: number;
+}
+
+interface ServiceBookingSlice {
+  id: string;
+  label: string;
+  count: number;
+  color: string;
 }
 
 type AnalyticsRange = "today" | "week" | "month";
@@ -352,6 +383,146 @@ const buildRangeAnalyticsData = (
   return buckets;
 };
 
+const buildMockRequestAnalyticsData = (range: AnalyticsRange): RequestAnalyticsPoint[] => {
+  if (range === "today") {
+    return [
+      { key: "0", label: "12 AM", total: 1, completed: 0, cancelled: 0 },
+      { key: "3", label: "3 AM", total: 0, completed: 0, cancelled: 0 },
+      { key: "6", label: "6 AM", total: 2, completed: 1, cancelled: 0 },
+      { key: "9", label: "9 AM", total: 6, completed: 3, cancelled: 1 },
+      { key: "12", label: "12 PM", total: 8, completed: 5, cancelled: 1 },
+      { key: "15", label: "3 PM", total: 7, completed: 4, cancelled: 2 },
+      { key: "18", label: "6 PM", total: 5, completed: 3, cancelled: 1 },
+      { key: "21", label: "9 PM", total: 3, completed: 2, cancelled: 1 },
+    ];
+  }
+
+  if (range === "week") {
+    return [
+      { key: "mon", label: "Mon", total: 18, completed: 11, cancelled: 2 },
+      { key: "tue", label: "Tue", total: 22, completed: 14, cancelled: 3 },
+      { key: "wed", label: "Wed", total: 20, completed: 13, cancelled: 2 },
+      { key: "thu", label: "Thu", total: 27, completed: 18, cancelled: 4 },
+      { key: "fri", label: "Fri", total: 31, completed: 21, cancelled: 5 },
+      { key: "sat", label: "Sat", total: 24, completed: 16, cancelled: 3 },
+      { key: "sun", label: "Sun", total: 16, completed: 10, cancelled: 2 },
+    ];
+  }
+
+  return [
+    { key: "apr-1", label: "Apr 1", total: 11, completed: 7, cancelled: 1 },
+    { key: "apr-4", label: "Apr 4", total: 15, completed: 10, cancelled: 2 },
+    { key: "apr-7", label: "Apr 7", total: 14, completed: 9, cancelled: 2 },
+    { key: "apr-10", label: "Apr 10", total: 18, completed: 12, cancelled: 3 },
+    { key: "apr-13", label: "Apr 13", total: 22, completed: 15, cancelled: 3 },
+    { key: "apr-16", label: "Apr 16", total: 19, completed: 13, cancelled: 2 },
+    { key: "apr-19", label: "Apr 19", total: 24, completed: 17, cancelled: 4 },
+    { key: "apr-22", label: "Apr 22", total: 27, completed: 18, cancelled: 5 },
+    { key: "apr-25", label: "Apr 25", total: 21, completed: 14, cancelled: 3 },
+    { key: "apr-28", label: "Apr 28", total: 25, completed: 17, cancelled: 4 },
+  ];
+};
+
+const startOfWeekMonday = (date: Date) => {
+  const normalized = startOfDay(date);
+  const dayOffset = (normalized.getDay() + 6) % 7;
+  return addDays(normalized, -dayOffset);
+};
+
+const resolveRequestBucketIndex = (range: AnalyticsRange, value: Date, now: Date) => {
+  if (range === "today") {
+    if (!isSameDay(value, now)) return -1;
+    const blockIndex = Math.floor(value.getHours() / 3);
+    return blockIndex >= 0 && blockIndex <= 7 ? blockIndex : -1;
+  }
+
+  if (range === "week") {
+    const start = startOfWeekMonday(now);
+    const day = startOfDay(value);
+    const diffDays = Math.floor((day.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
+    return diffDays >= 0 && diffDays <= 6 ? diffDays : -1;
+  }
+
+  const today = startOfDay(now);
+  const day = startOfDay(value);
+  const diffDays = Math.floor((today.getTime() - day.getTime()) / (24 * 60 * 60 * 1000));
+  if (diffDays < 0 || diffDays > 29) return -1;
+  return Math.max(0, 9 - Math.floor(diffDays / 3));
+};
+
+const buildMergedRequestAnalyticsData = (
+  range: AnalyticsRange,
+  bookings: RequestAnalyticsBooking[],
+): RequestAnalyticsPoint[] => {
+  const points = buildMockRequestAnalyticsData(range).map((point) => ({ ...point }));
+  if (!bookings.length) return points;
+
+  const now = new Date();
+  const addToBucket = (dateValue: string | undefined, field: "total" | "completed" | "cancelled") => {
+    const parsed = parseDashboardDate(dateValue);
+    if (!parsed) return;
+    const index = resolveRequestBucketIndex(range, parsed, now);
+    if (index < 0 || index >= points.length) return;
+    points[index][field] += 1;
+  };
+
+  bookings.forEach((booking) => {
+    const status = String(booking.status ?? "").trim().toLowerCase();
+    addToBucket(booking.createdAt, "total");
+
+    if (status === "completed") {
+      addToBucket(booking.completedAt ?? booking.updatedAt ?? booking.createdAt, "completed");
+      return;
+    }
+
+    if (status === "cancelled" || status === "canceled") {
+      addToBucket(booking.updatedAt ?? booking.createdAt, "cancelled");
+    }
+  });
+
+  return points;
+};
+
+const buildMockFailedBookingsData = (range: AnalyticsRange): FailedBookingPoint[] => {
+  if (range === "today") {
+    return [
+      { key: "0", label: "12 AM", homeownerCancelled: 0, tradesmanRejected: 0, totalFailed: 0 },
+      { key: "3", label: "3 AM", homeownerCancelled: 1, tradesmanRejected: 0, totalFailed: 1 },
+      { key: "6", label: "6 AM", homeownerCancelled: 1, tradesmanRejected: 1, totalFailed: 2 },
+      { key: "9", label: "9 AM", homeownerCancelled: 2, tradesmanRejected: 1, totalFailed: 3 },
+      { key: "12", label: "12 PM", homeownerCancelled: 3, tradesmanRejected: 1, totalFailed: 4 },
+      { key: "15", label: "3 PM", homeownerCancelled: 2, tradesmanRejected: 2, totalFailed: 4 },
+      { key: "18", label: "6 PM", homeownerCancelled: 1, tradesmanRejected: 2, totalFailed: 3 },
+      { key: "21", label: "9 PM", homeownerCancelled: 1, tradesmanRejected: 1, totalFailed: 2 },
+    ];
+  }
+
+  if (range === "week") {
+    return [
+      { key: "mon", label: "Mon", homeownerCancelled: 4, tradesmanRejected: 2, totalFailed: 6 },
+      { key: "tue", label: "Tue", homeownerCancelled: 5, tradesmanRejected: 3, totalFailed: 8 },
+      { key: "wed", label: "Wed", homeownerCancelled: 3, tradesmanRejected: 2, totalFailed: 5 },
+      { key: "thu", label: "Thu", homeownerCancelled: 6, tradesmanRejected: 4, totalFailed: 10 },
+      { key: "fri", label: "Fri", homeownerCancelled: 7, tradesmanRejected: 4, totalFailed: 11 },
+      { key: "sat", label: "Sat", homeownerCancelled: 5, tradesmanRejected: 3, totalFailed: 8 },
+      { key: "sun", label: "Sun", homeownerCancelled: 4, tradesmanRejected: 2, totalFailed: 6 },
+    ];
+  }
+
+  return [
+    { key: "apr-1", label: "Apr 1", homeownerCancelled: 3, tradesmanRejected: 2, totalFailed: 5 },
+    { key: "apr-4", label: "Apr 4", homeownerCancelled: 5, tradesmanRejected: 2, totalFailed: 7 },
+    { key: "apr-7", label: "Apr 7", homeownerCancelled: 4, tradesmanRejected: 3, totalFailed: 7 },
+    { key: "apr-10", label: "Apr 10", homeownerCancelled: 6, tradesmanRejected: 3, totalFailed: 9 },
+    { key: "apr-13", label: "Apr 13", homeownerCancelled: 7, tradesmanRejected: 4, totalFailed: 11 },
+    { key: "apr-16", label: "Apr 16", homeownerCancelled: 5, tradesmanRejected: 4, totalFailed: 9 },
+    { key: "apr-19", label: "Apr 19", homeownerCancelled: 8, tradesmanRejected: 4, totalFailed: 12 },
+    { key: "apr-22", label: "Apr 22", homeownerCancelled: 7, tradesmanRejected: 5, totalFailed: 12 },
+    { key: "apr-25", label: "Apr 25", homeownerCancelled: 6, tradesmanRejected: 3, totalFailed: 9 },
+    { key: "apr-28", label: "Apr 28", homeownerCancelled: 8, tradesmanRejected: 4, totalFailed: 12 },
+  ];
+};
+
 const formatPercent = (value: number) => {
   const rounded = Math.abs(value) >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
   return `${rounded > 0 ? "+" : rounded < 0 ? "" : ""}${rounded}%`;
@@ -397,11 +568,14 @@ const activityDot = (type: string) => {
   switch (type) {
     case "verification_approved":
     case "verification_restored":
+    case "booking_completed":
       return "var(--success-solid)";
     case "verification_rejected":
+    case "booking_cancelled":
       return "var(--danger-solid)";
     case "verification_archived":
     case "tradesperson_reverify":
+    case "booking_under_review":
       return "var(--warning-solid)";
     default:
       return "var(--info-solid)";
@@ -412,7 +586,7 @@ const activityDot = (type: string) => {
 // MOCK DATA
 // ─────────────────────────────────────────────────────────────────
 const TRADESMEN_DATA: Tradesman[] = [
-  { id: "t1", initials: "MR", color: "linear-gradient(135deg,#1560B0,#2E82D8)", name: "Marco Reyes",      email: "marco.r@gmail.com",   category: "⚡ Electrician",     license: "ELEC-2024-00847", credentialUrl: "", joined: "Jan 2025", jobs: 0,  status: "Pending"  },
+  { id: "t1", initials: "MR", color: "linear-gradient(135deg,#1560B0,#2E82D8)", name: "Marco Reyes",      email: "marco.r@gmail.com",   category: "⚡ Electrical",     license: "ELEC-2024-00847", credentialUrl: "", joined: "Jan 2025", jobs: 0,  status: "Pending"  },
   { id: "t2", initials: "JC", color: "linear-gradient(135deg,#0F7060,#17A88E)", name: "Jake Cruz",        email: "jakecruz@gmail.com",  category: "🔧 Plumber",         license: "PLMB-2023-11204", credentialUrl: "", joined: "Feb 2025", jobs: 0,  status: "Pending"  },
   { id: "t3", initials: "AL", color: "linear-gradient(135deg,#5B2D8E,#8040C0)", name: "Ana Lim",          email: "ana.lim@gmail.com",   category: "❄️ HVAC Technician", license: "HVAC-2024-05563", credentialUrl: "", joined: "Mar 2025", jobs: 0,  status: "Pending"  },
   { id: "t4", initials: "RD", color: "linear-gradient(135deg,#1B2B5E,#2D44A0)", name: "Ramon Dela Cruz",  email: "ramon.dc@gmail.com",  category: "🔌 Appliance Repair",license: "APPL-2022-00312", credentialUrl: "", joined: "Nov 2024", jobs: 34, status: "Verified" },
@@ -540,6 +714,15 @@ const SAMPLE_TRADESMAN_REVIEW_TEMPLATES = [
     comment: "Fast turnaround and the finished installation looked neat and secure.",
     verifiedBooking: true,
   },
+];
+
+const SERVICE_BOOKINGS_DATA: ServiceBookingSlice[] = [
+  { id: "electrical", label: "Electrical", count: 42, color: "#2348B8" },
+  { id: "plumbing", label: "Plumbing", count: 35, color: "#17A88E" },
+  { id: "hvac", label: "HVAC", count: 24, color: "#FF7A1A" },
+  { id: "carpentry", label: "Carpentry", count: 18, color: "#8B5CF6" },
+  { id: "painting", label: "Painting", count: 14, color: "#E25937" },
+  { id: "appliance", label: "Appliance Repair", count: 20, color: "#0F766E" },
 ];
 
 // ─────────────────────────────────────────────────────────────────
@@ -1457,23 +1640,23 @@ const StatCard = ({ icon, iconBg, iconColor, num, label, trend, trendType }: {
 };
 
 const UserGrowthChart = ({
-  homeowners,
-  tradesmen,
   style = {},
+  bookings = [],
 }: {
-  homeowners: Homeowner[];
-  tradesmen: Tradesman[];
   style?: React.CSSProperties;
+  bookings?: RequestAnalyticsBooking[];
 }) => {
   const [range, setRange] = useState<AnalyticsRange>("month");
-  const points = buildRangeAnalyticsData(homeowners, tradesmen, range);
+  const [hoveredPointIndex, setHoveredPointIndex] = useState<number | null>(null);
+  const points = buildMergedRequestAnalyticsData(range, bookings);
   const hasData = points.some((point) => point.total > 0);
   const totalInRange = points.reduce((sum, point) => sum + point.total, 0);
-  const homeownerCount = points.reduce((sum, point) => sum + point.homeowners, 0);
-  const tradesmanCount = points.reduce((sum, point) => sum + point.tradesmen, 0);
+  const completedCount = points.reduce((sum, point) => sum + point.completed, 0);
+  const cancelledCount = points.reduce((sum, point) => sum + point.cancelled, 0);
   const averagePerBucket = (totalInRange / Math.max(points.length, 1)).toFixed(range === "today" ? 1 : 0);
   const peakPoint = points.reduce((best, point) => (point.total > best.total ? point : best), points[0]);
-  const maxValue = Math.max(...points.map((point) => Math.max(point.total, point.homeowners, point.tradesmen)), 1);
+  const completionRate = totalInRange > 0 ? Math.round((completedCount / totalInRange) * 100) : 0;
+  const maxValue = Math.max(...points.map((point) => Math.max(point.total, point.completed, point.cancelled)), 1);
   const chartWidth = 640;
   const chartHeight = 260;
   const padding = { top: 16, right: 16, bottom: 30, left: 32 };
@@ -1493,22 +1676,48 @@ const UserGrowthChart = ({
     ...point,
     x: padding.left + (index / denominator) * innerWidth,
     totalY: padding.top + innerHeight - (point.total / maxValue) * innerHeight,
-    homeownerY: padding.top + innerHeight - (point.homeowners / maxValue) * innerHeight,
-    tradesmanY: padding.top + innerHeight - (point.tradesmen / maxValue) * innerHeight,
+    completedY: padding.top + innerHeight - (point.completed / maxValue) * innerHeight,
+    cancelledY: padding.top + innerHeight - (point.cancelled / maxValue) * innerHeight,
   }));
   const linePath = (selector: (point: typeof pointCoords[number]) => number) =>
     pointCoords
       .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${selector(point).toFixed(2)}`)
       .join(" ");
-  const areaPath = hasData
-    ? `${linePath((point) => point.totalY)} L ${pointCoords[pointCoords.length - 1]?.x ?? padding.left} ${padding.top + innerHeight} L ${pointCoords[0]?.x ?? padding.left} ${padding.top + innerHeight} Z`
-    : "";
+  const totalLinePath = linePath((point) => point.totalY);
+  const completedLinePath = linePath((point) => point.completedY);
+  const cancelledLinePath = linePath((point) => point.cancelledY);
+  const createAreaPath = (linePath: string) =>
+    linePath
+      ? `${linePath} L ${pointCoords[pointCoords.length - 1]?.x ?? padding.left} ${padding.top + innerHeight} L ${pointCoords[0]?.x ?? padding.left} ${padding.top + innerHeight} Z`
+      : "";
+  const totalAreaPath = createAreaPath(totalLinePath);
+  const completedAreaPath = createAreaPath(completedLinePath);
+  const cancelledAreaPath = createAreaPath(cancelledLinePath);
+  const hoverStep = pointCoords.length > 1 ? pointCoords[1].x - pointCoords[0].x : innerWidth;
+  const hoveredPoint = hoveredPointIndex !== null ? pointCoords[hoveredPointIndex] : null;
+  const tooltipWidth = 148;
+  const tooltipHeight = 76;
+  const tooltipX = hoveredPoint
+    ? Math.min(
+        Math.max(hoveredPoint.x - tooltipWidth / 2, padding.left),
+        chartWidth - padding.right - tooltipWidth
+      )
+    : 0;
+  const tooltipAnchorY = hoveredPoint
+    ? Math.min(hoveredPoint.totalY, hoveredPoint.completedY, hoveredPoint.cancelledY)
+    : 0;
+  const tooltipY = hoveredPoint
+    ? Math.max(padding.top + 8, tooltipAnchorY - tooltipHeight - 14)
+    : 0;
+
+  useEffect(() => {
+    setHoveredPointIndex(null);
+  }, [range]);
 
   return (
     <Card style={{ marginBottom: 28, ...style }}>
       <CardHead
-        title="Signup Analytics"
-        subtitle="Track homeowner and tradesman account creation across different time ranges"
+        title="Request Over Time"
         right={
           <div style={{ display: "inline-flex", padding: 4, borderRadius: 999, background: "var(--surface-2)", border: "1px solid var(--border)", gap: 4 }}>
             {[
@@ -1548,18 +1757,37 @@ const UserGrowthChart = ({
             <div style={{ minHeight: 260, display: "grid", gap: 18, alignContent: "start" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
                 {[
-                  { label: "Total", color: "var(--info-solid)" },
-                  { label: "Homeowners", color: "#3B82F6" },
-                  { label: "Tradesmen", color: "var(--accent)" },
+                  { label: "Total", color: "#1DA1FF" },
+                  { label: "Completed", color: "#F59E0B" },
+                  { label: "Cancelled", color: "#FF5E57" },
                 ].map((item) => (
                   <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>
-                    <span style={{ width: 10, height: 10, borderRadius: "50%", background: item.color }} />
+                    <span style={{ width: 18, height: 10, borderRadius: 2, border: `2px solid ${item.color}`, background: "transparent" }} />
                     {item.label}
                   </div>
                 ))}
               </div>
-              <div style={{ border: "1px solid var(--border)", borderRadius: 16, background: "var(--surface-2)", padding: "16px 18px" }}>
-                <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ width: "100%", height: 280 }} aria-label={`${rangeLabel} signup analytics line chart`}>
+              <div style={{ border: "1px solid var(--chart-panel-border)", borderRadius: 18, background: "var(--chart-panel-bg)", padding: "16px 18px", boxShadow: "var(--chart-panel-shadow)" }}>
+                <svg
+                  viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+                  style={{ width: "100%", height: 280 }}
+                  aria-label={`${rangeLabel} request analytics line chart`}
+                  onMouseLeave={() => setHoveredPointIndex(null)}
+                >
+                  <defs>
+                    <linearGradient id="request-total-fill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#1DA1FF" stopOpacity="0.32" />
+                      <stop offset="100%" stopColor="#1DA1FF" stopOpacity="0.03" />
+                    </linearGradient>
+                    <linearGradient id="request-completed-fill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#F59E0B" stopOpacity="0.26" />
+                      <stop offset="100%" stopColor="#F59E0B" stopOpacity="0.02" />
+                    </linearGradient>
+                    <linearGradient id="request-cancelled-fill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#FF5E57" stopOpacity="0.22" />
+                      <stop offset="100%" stopColor="#FF5E57" stopOpacity="0.02" />
+                    </linearGradient>
+                  </defs>
                   {Array.from({ length: yTicks + 1 }, (_, index) => {
                     const value = (maxValue / yTicks) * index;
                     const y = padding.top + innerHeight - (value / maxValue) * innerHeight;
@@ -1570,26 +1798,86 @@ const UserGrowthChart = ({
                           x2={chartWidth - padding.right}
                           y1={y}
                           y2={y}
-                          stroke="var(--border)"
-                          strokeDasharray="4 6"
+                          stroke="var(--chart-panel-grid)"
+                          strokeDasharray="0"
                         />
-                        <text x={padding.left - 10} y={y + 4} textAnchor="end" fill="var(--muted)" fontSize="11" fontWeight="700">
+                        <text x={padding.left - 10} y={y + 4} textAnchor="end" fill="var(--chart-panel-label)" fontSize="11" fontWeight="700">
                           {Math.round(value)}
                         </text>
                       </g>
                     );
                   })}
-                  {areaPath && <path d={areaPath} fill="rgba(27,43,94,0.08)" />}
-                  <path d={linePath((point) => point.totalY)} fill="none" stroke="var(--info-solid)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d={linePath((point) => point.homeownerY)} fill="none" stroke="#3B82F6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d={linePath((point) => point.tradesmanY)} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  {pointCoords.map((point, index) => (
+                    shouldShowTick(index) ? (
+                      <line
+                        key={`v-${point.key}`}
+                        x1={point.x}
+                        x2={point.x}
+                        y1={padding.top}
+                        y2={padding.top + innerHeight}
+                        stroke="var(--chart-panel-grid-soft)"
+                      />
+                    ) : null
+                  ))}
+                  {totalAreaPath && <path d={totalAreaPath} fill="url(#request-total-fill)" />}
+                  {completedAreaPath && <path d={completedAreaPath} fill="url(#request-completed-fill)" />}
+                  {cancelledAreaPath && <path d={cancelledAreaPath} fill="url(#request-cancelled-fill)" />}
+                  <path d={totalLinePath} fill="none" stroke="#1DA1FF" strokeWidth="3.25" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d={completedLinePath} fill="none" stroke="#F59E0B" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d={cancelledLinePath} fill="none" stroke="#FF5E57" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+                  {pointCoords.map((point, index) => (
+                    <rect
+                      key={`hover-${point.key}`}
+                      x={index === 0 ? padding.left : point.x - hoverStep / 2}
+                      y={padding.top}
+                      width={index === pointCoords.length - 1 ? chartWidth - padding.right - (point.x - hoverStep / 2) : hoverStep}
+                      height={innerHeight}
+                      fill="transparent"
+                      onMouseEnter={() => setHoveredPointIndex(index)}
+                    />
+                  ))}
+                  {hoveredPoint && (
+                    <>
+                      <line
+                        x1={hoveredPoint.x}
+                        x2={hoveredPoint.x}
+                        y1={padding.top}
+                        y2={padding.top + innerHeight}
+                        stroke="var(--chart-panel-label)"
+                        strokeDasharray="4 4"
+                      />
+                      <circle cx={hoveredPoint.x} cy={hoveredPoint.totalY} r="4.5" fill="#1DA1FF" stroke="var(--chart-panel-bg)" strokeWidth="2" />
+                      <circle cx={hoveredPoint.x} cy={hoveredPoint.completedY} r="4.5" fill="#F59E0B" stroke="var(--chart-panel-bg)" strokeWidth="2" />
+                      <circle cx={hoveredPoint.x} cy={hoveredPoint.cancelledY} r="4.5" fill="#FF5E57" stroke="var(--chart-panel-bg)" strokeWidth="2" />
+                      <g>
+                        <rect
+                          x={tooltipX}
+                          y={tooltipY}
+                          width={tooltipWidth}
+                          height={tooltipHeight}
+                          rx="12"
+                          fill="var(--surface)"
+                          stroke="var(--border)"
+                        />
+                        <text x={tooltipX + 12} y={tooltipY + 18} fill="var(--text)" fontSize="12" fontWeight="800">
+                          {hoveredPoint.label}
+                        </text>
+                        <text x={tooltipX + 12} y={tooltipY + 38} fill="#1DA1FF" fontSize="11" fontWeight="700">
+                          Total: {hoveredPoint.total}
+                        </text>
+                        <text x={tooltipX + 12} y={tooltipY + 54} fill="#F59E0B" fontSize="11" fontWeight="700">
+                          Completed: {hoveredPoint.completed}
+                        </text>
+                        <text x={tooltipX + 12} y={tooltipY + 70} fill="#FF5E57" fontSize="11" fontWeight="700">
+                          Cancelled: {hoveredPoint.cancelled}
+                        </text>
+                      </g>
+                    </>
+                  )}
                   {pointCoords.map((point, index) => (
                     <g key={point.key}>
-                      <circle cx={point.x} cy={point.totalY} r="3.5" fill="var(--info-solid)" />
-                      <circle cx={point.x} cy={point.homeownerY} r="2.75" fill="#3B82F6" />
-                      <circle cx={point.x} cy={point.tradesmanY} r="2.75" fill="var(--accent)" />
                       {shouldShowTick(index) && (
-                        <text x={point.x} y={chartHeight - 6} textAnchor="middle" fill="var(--muted)" fontSize="11" fontWeight="700">
+                        <text x={point.x} y={chartHeight - 6} textAnchor="middle" fill="var(--chart-panel-label-soft)" fontSize="11" fontWeight="700">
                           {point.label}
                         </text>
                       )}
@@ -1601,8 +1889,8 @@ const UserGrowthChart = ({
           ) : (
             <div style={{ minHeight: 260, borderRadius: 16, border: "1.5px dashed var(--border)", background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "24px" }}>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)", marginBottom: 6 }}>No signup data yet</div>
-                <div style={{ fontSize: 12, color: "var(--muted)" }}>This chart will populate once users have created accounts during the selected period.</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)", marginBottom: 6 }}>No request data yet</div>
+                <div style={{ fontSize: 12, color: "var(--muted)" }}>This chart is ready for request analytics once backend data is available.</div>
               </div>
             </div>
           )}
@@ -1610,11 +1898,12 @@ const UserGrowthChart = ({
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12, alignContent: "start" }}>
           {[
-            { label: `${rangeLabel} Total`, value: totalInRange, caption: "All signups", tone: "var(--text)", bg: "var(--info-bg)" },
-            { label: "Homeowners", value: homeownerCount, caption: `Within ${rangeLabel.toLowerCase()}`, tone: "var(--text)", bg: "var(--info-bg)" },
-            { label: "Tradesmen", value: tradesmanCount, caption: `Within ${rangeLabel.toLowerCase()}`, tone: "var(--text)", bg: "var(--info-bg)" },
-            { label: peakLabel, value: peakPoint?.total ?? 0, caption: peakPoint?.total ? peakPoint.label : "No signups", tone: "var(--text)", bg: "var(--info-bg)" },
-            { label: averageLabel, value: averagePerBucket, caption: "Smoothed period average", tone: "var(--text)", bg: "var(--info-bg)" },
+            { label: `${rangeLabel} Total`, value: totalInRange, caption: "All requests", tone: "var(--text)", bg: "var(--info-bg)" },
+            { label: "Completed", value: completedCount, caption: `Within ${rangeLabel.toLowerCase()}`, tone: "var(--success-text)", bg: "var(--success-bg)" },
+            { label: "Cancelled", value: cancelledCount, caption: `Within ${rangeLabel.toLowerCase()}`, tone: "var(--danger-text)", bg: "var(--danger-bg)" },
+            { label: peakLabel, value: peakPoint?.total ?? 0, caption: peakPoint?.total ? peakPoint.label : "No requests", tone: "var(--text)", bg: "var(--info-bg)" },
+            { label: averageLabel, value: averagePerBucket, caption: "Smoothed request average", tone: "var(--text)", bg: "var(--info-bg)" },
+            { label: "Completion Rate", value: `${completionRate}%`, caption: "Completed out of total requests", tone: "var(--success-text)", bg: "var(--success-bg)" },
           ].map((item) => (
             <div key={item.label} style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "16px 18px", background: "var(--surface-2)", minWidth: 0 }}>
               <div style={{ display: "inline-flex", padding: "5px 10px", borderRadius: 999, background: item.bg, color: item.tone, fontSize: 11, fontWeight: 800, marginBottom: 12 }}>
@@ -1624,6 +1913,326 @@ const UserGrowthChart = ({
               <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 10 }}>{item.caption}</div>
             </div>
           ))}
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+const ServiceBookingsChart = ({ style = {} }: { style?: React.CSSProperties }) => {
+  const totalBookings = SERVICE_BOOKINGS_DATA.reduce((sum, item) => sum + item.count, 0);
+  const radius = 78;
+  const circumference = 2 * Math.PI * radius;
+
+  let offsetAccumulator = 0;
+  const slices = SERVICE_BOOKINGS_DATA.map((item) => {
+    const length = totalBookings > 0 ? (item.count / totalBookings) * circumference : 0;
+    const slice = {
+      ...item,
+      length,
+      offset: offsetAccumulator,
+      percent: totalBookings > 0 ? Math.round((item.count / totalBookings) * 100) : 0,
+    };
+    offsetAccumulator += length;
+    return slice;
+  });
+  const topSlice = slices.reduce((best, slice) => (slice.count > best.count ? slice : best), slices[0]);
+
+  return (
+    <Card style={{ marginBottom: 28, ...style }}>
+      <CardHead
+        title="Service Bookings"
+        subtitle="Mock booking breakdown by field of work"
+        right={<Pill color="navy">{totalBookings} bookings</Pill>}
+      />
+      <div style={{ padding: 24 }}>
+        <div style={{ borderRadius: 20, background: "var(--chart-panel-bg)", border: "1px solid var(--chart-panel-border-soft)", padding: "22px 20px 16px", boxShadow: "var(--chart-panel-shadow)" }}>
+          <div style={{ display: "grid", justifyItems: "center", gap: 18 }}>
+            <div style={{ position: "relative", width: 220, height: 220, display: "grid", placeItems: "center" }}>
+              <svg viewBox="0 0 220 220" width="220" height="220" aria-label="Service bookings donut chart">
+                <defs>
+                  {slices.map((slice, index) => (
+                    <linearGradient key={slice.id} id={`booking-slice-${index}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor={slice.color} stopOpacity="1" />
+                      <stop offset="100%" stopColor={slice.color} stopOpacity="0.78" />
+                    </linearGradient>
+                  ))}
+                </defs>
+                <circle cx="110" cy="110" r={radius} fill="none" stroke="var(--chart-panel-grid)" strokeWidth="18" />
+                <circle cx="110" cy="110" r={radius + 11} fill="none" stroke="var(--chart-panel-text)" strokeWidth="1.2" />
+                <circle cx="110" cy="110" r={radius - 11} fill="none" stroke="var(--chart-panel-grid-soft)" strokeWidth="1.2" />
+                <g transform="rotate(-90 110 110)">
+                  {slices.map((slice, index) => (
+                    <circle
+                      key={slice.id}
+                      cx="110"
+                      cy="110"
+                      r={radius}
+                      fill="none"
+                      stroke={`url(#booking-slice-${index})`}
+                      strokeWidth="18"
+                      strokeLinecap="round"
+                      strokeDasharray={`${slice.length} ${Math.max(circumference - slice.length, 0)}`}
+                      strokeDashoffset={-slice.offset}
+                    />
+                  ))}
+                </g>
+              </svg>
+              <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", textAlign: "center", padding: 40 }}>
+                <div>
+                  <div style={{ fontSize: 38, lineHeight: 1, fontWeight: 800, color: "var(--chart-panel-text)", letterSpacing: -1.4 }}>
+                    {topSlice.percent}%
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "var(--chart-panel-text-soft)", marginTop: 8 }}>
+                    Top Field
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--chart-panel-muted)", marginTop: 6 }}>
+                    {topSlice.label}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ width: "100%", display: "grid", gap: 10 }}>
+              {slices.map((slice) => (
+                <div key={slice.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto auto", gap: 12, alignItems: "center", padding: "2px 0" }}>
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", border: `2px solid ${slice.color}`, background: "transparent", flexShrink: 0 }} />
+                  <div style={{ minWidth: 0, fontSize: 14, fontWeight: 700, color: "var(--chart-panel-text-soft)" }}>
+                    {slice.label}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--chart-panel-muted)", minWidth: 36, textAlign: "right" }}>
+                    {slice.count}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "var(--chart-panel-text)", minWidth: 42, textAlign: "right" }}>
+                    {slice.percent}%
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ width: "100%", marginTop: 2, paddingTop: 14, borderTop: "1px solid var(--chart-panel-divider)", display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.7px", textTransform: "uppercase", color: "var(--chart-panel-label)", marginBottom: 8 }}>Total</div>
+                <div style={{ fontSize: 24, lineHeight: 1, fontWeight: 800, color: "var(--chart-panel-text)" }}>{totalBookings}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.7px", textTransform: "uppercase", color: "var(--chart-panel-label)", marginBottom: 8 }}>Leading</div>
+                <div style={{ fontSize: 15, lineHeight: 1.2, fontWeight: 800, color: "var(--chart-panel-text)" }}>{topSlice.label}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.7px", textTransform: "uppercase", color: "var(--chart-panel-label)", marginBottom: 8 }}>Share</div>
+                <div style={{ fontSize: 24, lineHeight: 1, fontWeight: 800, color: "var(--chart-panel-text)" }}>{topSlice.percent}%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+const FailedBookingsChart = ({ style = {} }: { style?: React.CSSProperties }) => {
+  const [range, setRange] = useState<AnalyticsRange>("month");
+  const points = buildMockFailedBookingsData(range);
+  const totalFailed = points.reduce((sum, point) => sum + point.totalFailed, 0);
+  const homeownerCancelledTotal = points.reduce((sum, point) => sum + point.homeownerCancelled, 0);
+  const tradesmanRejectedTotal = points.reduce((sum, point) => sum + point.tradesmanRejected, 0);
+  const peakPoint = points.reduce((best, point) => (point.totalFailed > best.totalFailed ? point : best), points[0]);
+  const averageFailed = (totalFailed / Math.max(points.length, 1)).toFixed(range === "today" ? 1 : 0);
+  const maxValue = Math.max(...points.map((point) => Math.max(point.homeownerCancelled, point.tradesmanRejected, point.totalFailed)), 1);
+  const chartWidth = 860;
+  const chartHeight = 300;
+  const padding = { top: 20, right: 24, bottom: 36, left: 38 };
+  const innerWidth = chartWidth - padding.left - padding.right;
+  const innerHeight = chartHeight - padding.top - padding.bottom;
+  const groupWidth = innerWidth / Math.max(points.length, 1);
+  const barWidth = Math.max(Math.min(groupWidth * 0.24, 22), 12);
+  const rangeLabel = range === "today" ? "Today" : range === "week" ? "This Week" : "This Month";
+  const peakLabel = range === "today" ? "Peak Hour" : "Peak Day";
+  const averageLabel = range === "today" ? "Avg / Hour" : "Avg / Day";
+  const shouldShowTick = (index: number) => {
+    if (range === "today") return index % 2 === 0 || index === points.length - 1;
+    if (range === "week") return true;
+    return index % 2 === 0 || index === points.length - 1;
+  };
+  const pointCoords = points.map((point, index) => {
+    const centerX = padding.left + ((index + 0.5) / points.length) * innerWidth;
+    const homeownerHeight = (point.homeownerCancelled / maxValue) * innerHeight;
+    const tradesmanHeight = (point.tradesmanRejected / maxValue) * innerHeight;
+    const homeownerY = padding.top + innerHeight - homeownerHeight;
+    const tradesmanY = padding.top + innerHeight - tradesmanHeight;
+    return {
+      ...point,
+      centerX,
+      homeownerX: centerX - barWidth - 4,
+      tradesmanX: centerX + 4,
+      homeownerHeight,
+      tradesmanHeight,
+      homeownerY,
+      tradesmanY,
+    };
+  });
+
+  return (
+    <Card style={{ marginBottom: 28, ...style }}>
+      <CardHead
+        title="Failed Bookings"
+        subtitle="Mock stack bar chart showing homeowner cancellations and tradesman rejections"
+        right={
+          <div style={{ display: "inline-flex", padding: 4, borderRadius: 999, background: "var(--surface-2)", border: "1px solid var(--border)", gap: 4 }}>
+            {[
+              { key: "today", label: "Today" },
+              { key: "week", label: "This Week" },
+              { key: "month", label: "This Month" },
+            ].map((option) => {
+              const active = range === option.key;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setRange(option.key as AnalyticsRange)}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 999,
+                    border: "none",
+                    background: active ? "var(--info-solid)" : "transparent",
+                    color: active ? "var(--on-solid)" : "var(--muted)",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    transition: "all .2s",
+                  }}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        }
+      />
+      <div style={{ padding: 24, display: "grid", gap: 18 }}>
+        <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+            {[
+              { label: "Homeowner Cancelled", color: "#F59E0B" },
+              { label: "Tradesman Rejected", color: "#1DA1FF" },
+            ].map((item) => (
+              <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>
+                <span style={{ width: 18, height: 10, borderRadius: 2, background: item.color }} />
+                {item.label}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ border: "1px solid var(--chart-panel-border)", borderRadius: 18, background: "var(--chart-panel-bg)", padding: "16px 18px", boxShadow: "var(--chart-panel-shadow)" }}>
+            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ width: "100%", height: 310 }} aria-label={`${rangeLabel} failed bookings grouped bar chart`}>
+              {Array.from({ length: 5 }, (_, index) => {
+                const value = (maxValue / 4) * index;
+                const y = padding.top + innerHeight - (value / maxValue) * innerHeight;
+                return (
+                  <g key={index}>
+                    <line
+                      x1={padding.left}
+                      x2={chartWidth - padding.right}
+                      y1={y}
+                      y2={y}
+                      stroke="var(--chart-panel-grid)"
+                    />
+                    <text x={padding.left - 10} y={y + 4} textAnchor="end" fill="var(--chart-panel-label)" fontSize="11" fontWeight="700">
+                      {Math.round(value)}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {pointCoords.map((point, index) => (
+                <g key={point.key}>
+                  {shouldShowTick(index) && (
+                    <line
+                      x1={point.centerX}
+                      x2={point.centerX}
+                      y1={padding.top}
+                      y2={padding.top + innerHeight}
+                      stroke="var(--chart-panel-grid-soft)"
+                    />
+                  )}
+                  <rect
+                    x={point.homeownerX}
+                    y={point.homeownerY}
+                    width={barWidth}
+                    height={Math.max(point.homeownerHeight, 0)}
+                    rx={8}
+                    fill="#F59E0B"
+                  />
+                  <rect
+                    x={point.tradesmanX}
+                    y={point.tradesmanY}
+                    width={barWidth}
+                    height={Math.max(point.tradesmanHeight, 0)}
+                    rx={8}
+                    fill="#1DA1FF"
+                  />
+                  <text
+                    x={point.centerX}
+                    y={Math.max(Math.min(point.homeownerY, point.tradesmanY) - 8, padding.top + 10)}
+                    textAnchor="middle"
+                    fill="var(--chart-panel-text)"
+                    fontSize="11"
+                    fontWeight="800"
+                  >
+                    {point.totalFailed}
+                  </text>
+                  {shouldShowTick(index) && (
+                    <text x={point.centerX} y={chartHeight - 8} textAnchor="middle" fill="var(--chart-panel-label-soft)" fontSize="11" fontWeight="700">
+                      {point.label}
+                    </text>
+                  )}
+                </g>
+              ))}
+            </svg>
+          </div>
+        </div>
+
+        <div style={{ border: "1px solid var(--chart-panel-border-soft)", borderRadius: 18, background: "var(--chart-panel-bg)", boxShadow: "var(--chart-panel-shadow)", padding: "16px 18px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 18, alignItems: "center" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "56px minmax(0,1fr)", gap: 14, alignItems: "center" }}>
+              <div style={{ width: 56, height: 56, borderRadius: "50%", border: "6px solid #F59E0B", borderRightColor: "var(--chart-panel-grid)", borderBottomColor: "var(--chart-panel-grid)", transform: "rotate(-35deg)" }} />
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "var(--chart-panel-text-soft)", marginBottom: 6 }}>Homeowner Cancelled</div>
+                <div style={{ fontSize: 20, lineHeight: 1, fontWeight: 800, color: "var(--chart-panel-text)" }}>{homeownerCancelledTotal}</div>
+                <div style={{ fontSize: 12, color: "var(--chart-panel-muted)", marginTop: 8 }}>{rangeLabel}</div>
+              </div>
+            </div>
+
+            <div style={{ height: "100%", width: 1, justifySelf: "center", background: "var(--chart-panel-divider)" }} />
+
+            <div style={{ display: "grid", gridTemplateColumns: "56px minmax(0,1fr)", gap: 14, alignItems: "center" }}>
+              <div style={{ width: 56, height: 56, borderRadius: "50%", border: "6px solid #1DA1FF", borderRightColor: "var(--chart-panel-grid)", borderBottomColor: "var(--chart-panel-grid)", transform: "rotate(-25deg)" }} />
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "var(--chart-panel-text-soft)", marginBottom: 6 }}>Tradesman Rejected</div>
+                <div style={{ fontSize: 20, lineHeight: 1, fontWeight: 800, color: "var(--chart-panel-text)" }}>{tradesmanRejectedTotal}</div>
+                <div style={{ fontSize: 12, color: "var(--chart-panel-muted)", marginTop: 8 }}>{rangeLabel}</div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--chart-panel-divider)", display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 14 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.7px", textTransform: "uppercase", color: "var(--chart-panel-label)", marginBottom: 8 }}>Failed Bookings</div>
+              <div style={{ fontSize: 24, lineHeight: 1, fontWeight: 800, color: "var(--chart-panel-text)" }}>{totalFailed}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.7px", textTransform: "uppercase", color: "var(--chart-panel-label)", marginBottom: 8 }}>{peakLabel}</div>
+              <div style={{ fontSize: 20, lineHeight: 1, fontWeight: 800, color: "var(--chart-panel-text)" }}>{peakPoint?.totalFailed ?? 0}</div>
+              <div style={{ fontSize: 12, color: "var(--chart-panel-muted)", marginTop: 8 }}>{peakPoint?.label ?? "No failed bookings"}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.7px", textTransform: "uppercase", color: "var(--chart-panel-label)", marginBottom: 8 }}>{averageLabel}</div>
+              <div style={{ fontSize: 24, lineHeight: 1, fontWeight: 800, color: "var(--chart-panel-text)" }}>{averageFailed}</div>
+              <div style={{ fontSize: 12, color: "var(--chart-panel-muted)", marginTop: 8 }}>Average failed bookings</div>
+            </div>
+          </div>
         </div>
       </div>
     </Card>
@@ -1863,6 +2472,7 @@ export default function DashboardPage() {
   const [searchDashboard, setSearchDashboard] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedRatingsTradesmanId, setSelectedRatingsTradesmanId] = useState("");
+  const [selectedReviewStarFilter, setSelectedReviewStarFilter] = useState("");
   const [showArchivedOnly, setShowArchivedOnly] = useState(false);
   const [verificationFilters, setVerificationFilters] = useState<string[]>(["", ""]);
   const [tradesmenFilters, setTradesmenFilters] = useState<string[]>(["", ""]);
@@ -1871,6 +2481,7 @@ export default function DashboardPage() {
   const [reportStatusFilter, setReportStatusFilter] = useState("");
   const [reportTab, setReportTab] = useState<ReportTab>("all");
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [requestAnalyticsBookings, setRequestAnalyticsBookings] = useState<RequestAnalyticsBooking[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
   const bellButtonRef = useRef<HTMLButtonElement | null>(null);
   const bellPanelRef = useRef<HTMLDivElement | null>(null);
@@ -1970,6 +2581,18 @@ export default function DashboardPage() {
         "--neutral-border": "rgba(148,163,184,0.35)",
         "--neutral-solid": "#94A3B8",
         "--row-hover": "rgba(148,163,184,0.12)",
+        "--chart-panel-bg": "#10181F",
+        "--chart-panel-border": "rgba(15,23,32,0.24)",
+        "--chart-panel-shadow": "inset 0 1px 0 rgba(255,255,255,0.02)",
+        "--chart-panel-grid": "rgba(255,255,255,0.06)",
+        "--chart-panel-grid-soft": "rgba(255,255,255,0.03)",
+        "--chart-panel-label": "rgba(203,213,225,0.48)",
+        "--chart-panel-label-soft": "rgba(203,213,225,0.46)",
+        "--chart-panel-text": "#F8FAFC",
+        "--chart-panel-text-soft": "rgba(226,232,240,0.84)",
+        "--chart-panel-muted": "rgba(203,213,225,0.58)",
+        "--chart-panel-border-soft": "rgba(255,255,255,0.05)",
+        "--chart-panel-divider": "rgba(255,255,255,0.06)",
         "--primary-bg": "#2348B8",
         "--primary-bg-hover": "#2D56CF",
         "--sidebar-hover": "rgba(255,255,255,0.08)",
@@ -2031,6 +2654,18 @@ export default function DashboardPage() {
         "--neutral-border": "rgba(74,85,104,0.25)",
         "--neutral-solid": "#4A5568",
         "--row-hover": "#F7FAFF",
+        "--chart-panel-bg": "#F8FBFF",
+        "--chart-panel-border": "rgba(35,72,184,0.12)",
+        "--chart-panel-shadow": "inset 0 1px 0 rgba(255,255,255,0.7)",
+        "--chart-panel-grid": "rgba(35,72,184,0.10)",
+        "--chart-panel-grid-soft": "rgba(35,72,184,0.06)",
+        "--chart-panel-label": "rgba(74,85,104,0.7)",
+        "--chart-panel-label-soft": "rgba(74,85,104,0.62)",
+        "--chart-panel-text": "#0F1923",
+        "--chart-panel-text-soft": "#23415F",
+        "--chart-panel-muted": "#6B7A90",
+        "--chart-panel-border-soft": "rgba(35,72,184,0.1)",
+        "--chart-panel-divider": "rgba(35,72,184,0.08)",
         "--primary-bg": "#2348B8",
         "--primary-bg-hover": "#2E56CF",
         "--sidebar-hover": "rgba(255,255,255,0.1)",
@@ -2181,43 +2816,37 @@ export default function DashboardPage() {
   const filteredTradesmanRatings = tradesmanRatings.filter(({ tradesman, reviews, average }) => {
     const matchesSearch =
       !searchRatings.trim() ||
-      matchesQuery(searchRatings, [tradesman.name, tradesman.email, tradesman.category, tradesman.license, tradesman.status]) ||
-      reviews.some((review) =>
-        matchesQuery(searchRatings, [review.reviewerName, review.reviewerRole, review.jobType, review.comment, review.rating])
-      );
+      matchesQuery(searchRatings, [tradesman.name, tradesman.email, tradesman.category, tradesman.license, tradesman.status]);
 
     const matchesCategory = matchesLooseFilter(ratingsFilters[0] ?? "", tradesman.category);
     const minimumRating =
-      ratingsFilters[1] === "4+ Stars"
-        ? 4
-        : ratingsFilters[1] === "4.5+ Stars"
-          ? 4.5
-          : ratingsFilters[1] === "5 Stars"
-            ? 5
-            : 0;
+       ratingsFilters[1] === "4+ Stars"
+         ? 4
+          : ratingsFilters[1] === "4.5+ Stars"
+            ? 4.5
+            : ratingsFilters[1] === "5 Stars"
+              ? 5
+              : 0;
     const matchesMinimumRating = !minimumRating || average >= minimumRating;
 
     return matchesSearch && matchesCategory && matchesMinimumRating;
   });
 
   const selectedTradesmanRating =
-    filteredTradesmanRatings.find(({ tradesman }) => tradesman.id === selectedRatingsTradesmanId) ??
-    filteredTradesmanRatings[0];
+    filteredTradesmanRatings.find(({ tradesman }) => tradesman.id === selectedRatingsTradesmanId);
 
   useEffect(() => {
-    if (filteredTradesmanRatings.length === 0) {
-      if (selectedRatingsTradesmanId) setSelectedRatingsTradesmanId("");
-      return;
-    }
-
-    const stillSelected = filteredTradesmanRatings.some(
-      ({ tradesman }) => tradesman.id === selectedRatingsTradesmanId
-    );
-
-    if (!stillSelected) {
-      setSelectedRatingsTradesmanId(filteredTradesmanRatings[0].tradesman.id);
+    if (
+      selectedRatingsTradesmanId &&
+      !filteredTradesmanRatings.some(({ tradesman }) => tradesman.id === selectedRatingsTradesmanId)
+    ) {
+      setSelectedRatingsTradesmanId("");
     }
   }, [filteredTradesmanRatings, selectedRatingsTradesmanId]);
+
+  useEffect(() => {
+    setSelectedReviewStarFilter("");
+  }, [selectedRatingsTradesmanId]);
 
   const filteredDashboardVerifications = verifications.filter((v) => {
     const statusLabel = toTitle(v.status);
@@ -2492,7 +3121,7 @@ export default function DashboardPage() {
     }
   };
 
-  const loadActivity = async () => {
+  const loadActivity = async (silent = false) => {
     if (!authToken) return;
     try {
       const res = await fetch(`${apiBase}/api/admin/activity?limit=6`, {
@@ -2504,7 +3133,7 @@ export default function DashboardPage() {
           router.push("/login");
           return;
         }
-        showToast("Failed to load activity.", "error");
+        if (!silent) showToast("Failed to load activity.", "error");
         return;
       }
       const data = await res.json();
@@ -2526,14 +3155,56 @@ export default function DashboardPage() {
       });
       setActivity(mapped);
     } catch {
-      showToast("Failed to load activity.", "error");
+      if (!silent) showToast("Failed to load activity.", "error");
+    }
+  };
+
+  const loadRequestAnalyticsBookings = async (silent = false) => {
+    if (!authToken) return;
+    try {
+      const res = await fetch(`${apiBase}/api/bookings`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          localStorage.removeItem("admin_token");
+          router.push("/login");
+          return;
+        }
+        if (!silent) showToast("Failed to load request analytics.", "error");
+        return;
+      }
+
+      const data = await res.json();
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.bookings)
+          ? data.bookings
+          : [];
+      const mapped = list.map((booking) => ({
+        id: String(booking.id ?? booking.ID ?? ""),
+        status: String(booking.status ?? booking.Status ?? ""),
+        createdAt: booking.created_at ?? booking.CreatedAt,
+        updatedAt: booking.updated_at ?? booking.UpdatedAt,
+        completedAt: booking.completed_at ?? booking.CompletedAt,
+      })) as RequestAnalyticsBooking[];
+      setRequestAnalyticsBookings(mapped);
+    } catch {
+      if (!silent) showToast("Failed to load request analytics.", "error");
     }
   };
 
   useEffect(() => {
+    if (!authToken) return;
     loadUsers();
     loadActivity();
+    loadRequestAnalyticsBookings();
     loadAdminProfile();
+    const intervalId = window.setInterval(() => {
+      loadActivity(true);
+      loadRequestAnalyticsBookings(true);
+    }, 15000);
+    return () => window.clearInterval(intervalId);
   }, [authToken, apiBase, router]);
 
   // Approve / Reject
@@ -2560,10 +3231,8 @@ export default function DashboardPage() {
         showToast("Failed to re-verify tradesman.", "error");
         return;
       }
-      setTradesmen((prev) => prev.map((t) => (t.id === id ? { ...t, status: "Pending" } : t)));
-      showToast(`${name} set to re-verify`, "info");
-      loadUsers();
-      loadActivity();
+      setTradesmen((prev) => prev.map((t) => (t.id === id ? { ...t, status: "Suspended" } : t)));
+      showToast(`${name} suspended`, "error");
     } catch {
       showToast("Failed to re-verify tradesman.", "error");
     }
@@ -2589,8 +3258,6 @@ export default function DashboardPage() {
       }
       setTradesmen((prev) => prev.map((t) => (t.id === id ? { ...t, status: "Verified" } : t)));
       showToast(`${name} restored`, "success");
-      loadUsers();
-      loadActivity();
     } catch {
       showToast("Failed to restore tradesman.", "error");
     }
@@ -2616,8 +3283,6 @@ export default function DashboardPage() {
       }
       setHomeowners((prev) => prev.map((h) => (h.id === id ? { ...h, status: "Inactive" } : h)));
       showToast(`${name} revoked`, "error");
-      loadUsers();
-      loadActivity();
     } catch {
       showToast("Failed to revoke homeowner.", "error");
     }
@@ -2643,8 +3308,6 @@ export default function DashboardPage() {
       }
       setHomeowners((prev) => prev.map((h) => (h.id === id ? { ...h, status: "Active" } : h)));
       showToast(`${name} restored`, "success");
-      loadUsers();
-      loadActivity();
     } catch {
       showToast("Failed to restore homeowner.", "error");
     }
@@ -2687,8 +3350,6 @@ export default function DashboardPage() {
           );
         }
       }
-      loadUsers();
-      loadActivity();
       showToast(`Verification ${status}`, status === "approved" ? "success" : "error");
     } catch {
       showToast("Failed to update verification.", "error");
@@ -2721,7 +3382,6 @@ export default function DashboardPage() {
       setVerifications((prev) =>
         prev.map((v) => (v.id === id ? { ...v, status: "archived" } : v))
       );
-      loadActivity();
       showToast("Verification archived", "success");
     } catch {
       showToast("Failed to archive verification.", "error");
@@ -2777,8 +3437,6 @@ export default function DashboardPage() {
         }
       }
 
-      loadUsers();
-      loadActivity();
       showToast("Verification restored to approved", "success");
     } catch {
       showToast("Failed to restore verification. Check if the backend was restarted.", "error");
@@ -3033,8 +3691,23 @@ export default function DashboardPage() {
           ? "Email updated successfully."
           : "Password updated successfully.";
 
+      if (profileEditor.mode === "name") {
+        setAdminProfile((prev) =>
+          prev
+            ? { ...prev, fullName: profileEditor.fullName.trim() }
+            : prev
+        );
+      }
+
+      if (profileEditor.mode === "email") {
+        setAdminProfile((prev) =>
+          prev
+            ? { ...prev, email: profileEditor.email.trim() }
+            : prev
+        );
+      }
+
       closeProfileEditor();
-      await loadAdminProfile();
       showToast(successMessage, "success");
     } catch {
       showToast("Unable to update profile.", "error");
@@ -3081,28 +3754,16 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Two-column: analytics + activity */}
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 20, marginBottom: 28 }}>
-        <UserGrowthChart
-          homeowners={homeowners}
-          tradesmen={tradesmen}
-          style={{ marginBottom: 0 }}
-        />
+      {/* Request analytics */}
+      <div style={{ marginBottom: 28 }}>
+        <UserGrowthChart style={{ marginBottom: 0 }} bookings={requestAnalyticsBookings} />
+      </div>
 
-        {/* Recent activity */}
-        <Card>
-          <CardHead title="Recent Activity" subtitle="Latest events" />
-          {activity.map((a, i) => (
-            <ActivityItem
-              key={a.id}
-              dot={a.dot}
-              title={a.title}
-              sub={a.sub}
-              time={a.time}
-              isLast={i === activity.length - 1}
-            />
-          ))}
-        </Card>
+      {/* Service bookings + failed bookings */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 20 }}>
+        <ServiceBookingsChart style={{ marginBottom: 0 }} />
+
+        <FailedBookingsChart style={{ marginBottom: 0 }} />
       </div>
 
     </div>
@@ -3200,7 +3861,7 @@ export default function DashboardPage() {
         <CardHead title="All Tradesmen" subtitle={`${tradesmen.length} registered tradesmen`} right={<Pill color="navy">{tradesmen.length} Total</Pill>} />
         <Toolbar
           placeholder="Search tradesmen…"
-          filters={[["All Categories","Electrician","Plumbing","HVAC","Carpentry","Painter","Appliance Repair"],["All Status","Verified","Pending"]]}
+          filters={[["All Categories","Electrical","Plumbing","HVAC","Carpentry","Painter","Appliance Repair"],["All Status","Verified","Pending"]]}
           searchValue={searchTradesmen}
           onSearchChange={setSearchTradesmen}
           filterValues={tradesmenFilters}
@@ -3238,7 +3899,7 @@ export default function DashboardPage() {
                         onClick={() =>
                           openConfirm({
                             title: `Revoke ${t.name}?`,
-                            message: "This will reset their verification status to pending.",
+                            message: "This will suspend the tradesman account and block app login.",
                             confirmLabel: "Revoke",
                             onConfirm: () => revokeTradesman(t.id, t.name),
                           })
@@ -3263,6 +3924,11 @@ export default function DashboardPage() {
     const analyticsReviews = filteredTradesmanRatings.flatMap(({ reviews }) => reviews);
     const analyticsAverageRating = averageRating(analyticsReviews);
     const analyticsTradesmenCount = filteredTradesmanRatings.filter(({ reviews }) => reviews.length > 0).length;
+    const filteredSelectedTradesmanReviews = selectedTradesmanRating
+      ? selectedTradesmanRating.reviews.filter((review) =>
+          !selectedReviewStarFilter || review.rating === Number(selectedReviewStarFilter)
+        )
+      : [];
     const ratingBreakdown = [5, 4, 3, 2, 1].map((stars) => {
       const count = analyticsReviews.filter((review) => review.rating === stars).length;
       const percent = analyticsReviews.length > 0 ? Math.round((count / analyticsReviews.length) * 100) : 0;
@@ -3353,155 +4019,202 @@ export default function DashboardPage() {
           </div>
         </Card>
 
-        <div style={{ display: "grid", gridTemplateColumns: "320px minmax(0,1fr)", gap: 20 }}>
-          <Card style={{ alignSelf: "start", overflow: "visible" }}>
-            <CardHead
-              title="Ratings by Tradesman"
-              subtitle="Select a tradesman to view every review left for their completed jobs"
-              right={<Pill color="navy">{filteredTradesmanRatings.length} Listed</Pill>}
-            />
-            <Toolbar
-              placeholder="Search tradesmen or reviews…"
-              filters={[["All Categories","Electrician","Plumbing","HVAC","Carpentry","Painter","Appliance Repair"],["All Ratings","4+ Stars","4.5+ Stars","5 Stars"]]}
-              searchValue={searchRatings}
-              onSearchChange={setSearchRatings}
-              filterValues={ratingsFilters}
-              onFilterChange={(index, value) => setRatingsFilters((prev) => {
-                const next = [...prev];
-                next[index] = value;
-                return next;
-              })}
-            />
-            <div style={{ padding: "16px", display: "grid", gap: 10 }}>
+        <Card style={{ marginBottom: 20, overflow: "visible" }}>
+          <CardHead
+            title="All Tradesmen"
+            subtitle="Click a tradesman's name to expand their reviews directly below their row"
+            right={<Pill color="navy">{filteredTradesmanRatings.length} Listed</Pill>}
+          />
+          <Toolbar
+            placeholder="Search tradesmen…"
+            filters={[["All Categories","Electrical","Plumbing","HVAC","Carpentry","Painter","Appliance Repair"],["All Ratings","4+ Stars","4.5+ Stars","5 Stars"]]}
+            searchValue={searchRatings}
+            onSearchChange={setSearchRatings}
+            filterValues={ratingsFilters}
+            onFilterChange={(index, value) => setRatingsFilters((prev) => {
+              const next = [...prev];
+              next[index] = value;
+              return next;
+            })}
+          />
+          <Table>
+            <thead>
+              <tr>
+                <Th>Tradesman</Th>
+                <Th>Category</Th>
+                <Th>Average</Th>
+                <Th>Reviews</Th>
+                <Th>Recommend</Th>
+                <Th>Status</Th>
+              </tr>
+            </thead>
+            <tbody>
               {filteredTradesmanRatings.length > 0 ? (
                 filteredTradesmanRatings.map(({ tradesman, reviews, average, recommendationRate }) => {
                   const active = selectedTradesmanRating?.tradesman.id === tradesman.id;
                   return (
-                    <button
-                      key={tradesman.id}
-                      type="button"
-                      onClick={() => setSelectedRatingsTradesmanId(tradesman.id)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        borderRadius: 16,
-                        border: `1.5px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                        background: active ? "var(--accent-soft)" : "var(--surface)",
-                        padding: "14px",
-                        cursor: "pointer",
-                        fontFamily: "inherit",
-                        transition: "all .2s ease",
-                        boxShadow: active ? "0 10px 24px rgba(255,122,26,.12)" : "none",
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                        <Avatar initials={tradesman.initials} color={tradesman.color} size={46} />
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {tradesman.name}
+                    <Fragment key={tradesman.id}>
+                      <tr
+                        style={{ background: active ? "var(--accent-soft)" : "transparent" }}
+                      >
+                        <Td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <Avatar initials={tradesman.initials} color={tradesman.color} size={42} />
+                            <div style={{ minWidth: 0 }}>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedRatingsTradesmanId((current) => current === tradesman.id ? "" : tradesman.id)}
+                                style={{
+                                  padding: 0,
+                                  border: "none",
+                                  background: "transparent",
+                                  color: active ? "var(--accent)" : "var(--text)",
+                                  fontFamily: "inherit",
+                                  fontSize: 14,
+                                  fontWeight: 800,
+                                  cursor: "pointer",
+                                  textAlign: "left",
+                                }}
+                              >
+                                {tradesman.name}
+                              </button>
+                              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>{tradesman.email}</div>
+                            </div>
                           </div>
-                          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {tradesman.category}
+                        </Td>
+                        <Td>{tradesman.category}</Td>
+                        <Td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <StarRating value={Math.round(average)} />
+                            <span style={{ fontSize: 13, fontWeight: 800, color: "var(--text)" }}>{formatRatingValue(average)}</span>
                           </div>
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <StarRating value={Math.round(average)} />
-                          <span style={{ fontSize: 13, fontWeight: 800, color: "var(--text)" }}>{formatRatingValue(average)}</span>
-                        </div>
-                        <Badge status={tradesman.status} />
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 12, color: "var(--muted)" }}>
-                        <span>{reviews.length} reviews</span>
-                        <span>{recommendationRate}% recommend</span>
-                      </div>
-                    </button>
+                        </Td>
+                        <Td>{reviews.length}</Td>
+                        <Td>{recommendationRate}%</Td>
+                        <Td><Badge status={tradesman.status} /></Td>
+                      </tr>
+
+                      {active && (
+                        <tr>
+                          <Td colSpan={6} style={{ background: "var(--surface-2)", padding: 0 }}>
+                            <div style={{ padding: 22, display: "grid", gap: 18 }}>
+                              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) repeat(3, minmax(120px,1fr))", gap: 14 }}>
+                                <div style={{ border: "1px solid var(--border)", borderRadius: 18, background: "var(--surface)", padding: "18px 18px", display: "flex", alignItems: "center", gap: 14 }}>
+                                  <Avatar initials={selectedTradesmanRating.tradesman.initials} color={selectedTradesmanRating.tradesman.color} size={60} />
+                                  <div style={{ minWidth: 0, flex: 1 }}>
+                                    <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text)" }}>{selectedTradesmanRating.tradesman.name}</div>
+                                    <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4, overflowWrap: "anywhere", wordBreak: "break-word" }}>{selectedTradesmanRating.tradesman.email}</div>
+                                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>{selectedTradesmanRating.tradesman.category}</div>
+                                  </div>
+                                </div>
+                                {[
+                                  { label: "Average", value: formatRatingValue(selectedTradesmanRating.average), caption: "Overall review score" },
+                                  { label: "Reviews", value: String(selectedTradesmanRating.reviews.length), caption: "Visible in admin" },
+                                  { label: "Jobs Done", value: String(selectedTradesmanRating.tradesman.jobs), caption: "Completed jobs" },
+                                ].map((item) => (
+                                  <div key={item.label} style={{ border: "1px solid var(--border)", borderRadius: 18, background: "var(--surface)", padding: "18px 18px" }}>
+                                    <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.7px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>{item.label}</div>
+                                    <div style={{ fontSize: 28, lineHeight: 1, fontWeight: 800, color: "var(--text)", letterSpacing: -1 }}>{item.value}</div>
+                                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 10 }}>{item.caption}</div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div style={{ display: "grid", gap: 14 }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", letterSpacing: "0.7px", textTransform: "uppercase" }}>
+                                    Filter Reviews By Stars
+                                  </div>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                    {[
+                                      { label: "All", value: "" },
+                                      { label: "5 Star", value: "5" },
+                                      { label: "4 Star", value: "4" },
+                                      { label: "3 Star", value: "3" },
+                                      { label: "2 Star", value: "2" },
+                                      { label: "1 Star", value: "1" },
+                                    ].map((option) => {
+                                      const starActive = selectedReviewStarFilter === option.value;
+                                      return (
+                                        <button
+                                          key={option.label}
+                                          type="button"
+                                          onClick={() => setSelectedReviewStarFilter(option.value)}
+                                          style={{
+                                            padding: "8px 12px",
+                                            borderRadius: 999,
+                                            border: `1px solid ${starActive ? "var(--accent)" : "var(--border)"}`,
+                                            background: starActive ? "var(--accent-soft)" : "var(--surface)",
+                                            color: starActive ? "var(--accent)" : "var(--muted)",
+                                            fontSize: 12,
+                                            fontWeight: 800,
+                                            fontFamily: "inherit",
+                                            cursor: "pointer",
+                                            transition: "all .2s ease",
+                                          }}
+                                        >
+                                          {option.label}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+
+                                {filteredSelectedTradesmanReviews.length > 0 ? (
+                                  filteredSelectedTradesmanReviews.map((review) => (
+                                    <div key={review.id} style={{ border: "1px solid var(--border)", borderRadius: 18, background: "var(--surface)", padding: "18px 18px" }}>
+                                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 12 }}>
+                                        <div>
+                                          <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text)" }}>{review.reviewerName}</div>
+                                          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+                                            {review.reviewerRole} · {review.jobType}
+                                          </div>
+                                        </div>
+                                        <div style={{ textAlign: "right" }}>
+                                          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+                                            <StarRating value={review.rating} />
+                                            <span style={{ fontSize: 13, fontWeight: 800, color: "var(--text)" }}>{formatRatingValue(review.rating)}</span>
+                                          </div>
+                                          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>{formatDate(review.submittedAt)}</div>
+                                        </div>
+                                      </div>
+                                      <div style={{ fontSize: 13, lineHeight: 1.7, color: "var(--text)", marginBottom: 12 }}>
+                                        {review.comment}
+                                      </div>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                                        <Pill color="navy">{review.jobType}</Pill>
+                                        {review.verifiedBooking && <Pill color="green">Verified booking</Pill>}
+                                      </div>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div style={{ border: "1.5px dashed var(--border)", borderRadius: 18, background: "var(--surface)", padding: "28px 24px", textAlign: "center" }}>
+                                    <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)", marginBottom: 8 }}>No {selectedReviewStarFilter || "matching"} reviews found</div>
+                                    <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                                      {selectedReviewStarFilter
+                                        ? `This tradesman has no ${selectedReviewStarFilter}-star reviews in the current selection.`
+                                        : "No reviews are available for this tradesman."}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </Td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })
               ) : (
-                <div style={{ border: "1.5px dashed var(--border)", borderRadius: 16, background: "var(--surface-2)", padding: "24px 18px", textAlign: "center" }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)", marginBottom: 6 }}>No tradesmen match the search</div>
-                  <div style={{ fontSize: 12, color: "var(--muted)" }}>Try another name, category, or review keyword.</div>
-                </div>
+                <tr>
+                  <Td style={{ textAlign: "center", color: "var(--muted)" }} colSpan={6}>
+                    No tradesmen match the current search or filters.
+                  </Td>
+                </tr>
               )}
-            </div>
-          </Card>
-
-          <Card>
-            <CardHead
-              title={selectedTradesmanRating ? `${selectedTradesmanRating.tradesman.name} Reviews` : "Tradesman Reviews"}
-              subtitle={selectedTradesmanRating ? "All sample reviews linked to the selected tradesman" : "Select a tradesman from the list to review feedback"}
-              right={
-                selectedTradesmanRating ? (
-                  <Pill color="orange">{formatRatingValue(selectedTradesmanRating.average)} / 5 avg</Pill>
-                ) : undefined
-              }
-            />
-
-            {selectedTradesmanRating ? (
-              <div style={{ padding: 24 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) repeat(3, minmax(120px,1fr))", gap: 14, marginBottom: 22 }}>
-                  <div style={{ border: "1px solid var(--border)", borderRadius: 18, background: "var(--surface-2)", padding: "18px 18px", display: "flex", alignItems: "center", gap: 14 }}>
-                    <Avatar initials={selectedTradesmanRating.tradesman.initials} color={selectedTradesmanRating.tradesman.color} size={60} />
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text)" }}>{selectedTradesmanRating.tradesman.name}</div>
-                      <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4, overflowWrap: "anywhere", wordBreak: "break-word" }}>{selectedTradesmanRating.tradesman.email}</div>
-                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>{selectedTradesmanRating.tradesman.category}</div>
-                    </div>
-                  </div>
-                  {[
-                    { label: "Average", value: formatRatingValue(selectedTradesmanRating.average), caption: "Overall review score" },
-                    { label: "Reviews", value: String(selectedTradesmanRating.reviews.length), caption: "Visible in admin" },
-                    { label: "Jobs Done", value: String(selectedTradesmanRating.tradesman.jobs), caption: "Completed jobs" },
-                  ].map((item) => (
-                    <div key={item.label} style={{ border: "1px solid var(--border)", borderRadius: 18, background: "var(--surface-2)", padding: "18px 18px" }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.7px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>{item.label}</div>
-                      <div style={{ fontSize: 28, lineHeight: 1, fontWeight: 800, color: "var(--text)", letterSpacing: -1 }}>{item.value}</div>
-                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 10 }}>{item.caption}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ display: "grid", gap: 14 }}>
-                  {selectedTradesmanRating.reviews.map((review) => (
-                    <div key={review.id} style={{ border: "1px solid var(--border)", borderRadius: 18, background: "var(--surface-2)", padding: "18px 18px" }}>
-                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 12 }}>
-                        <div>
-                          <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text)" }}>{review.reviewerName}</div>
-                          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-                            {review.reviewerRole} · {review.jobType}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
-                            <StarRating value={review.rating} />
-                            <span style={{ fontSize: 13, fontWeight: 800, color: "var(--text)" }}>{formatRatingValue(review.rating)}</span>
-                          </div>
-                          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>{formatDate(review.submittedAt)}</div>
-                        </div>
-                      </div>
-                      <div style={{ fontSize: 13, lineHeight: 1.7, color: "var(--text)", marginBottom: 12 }}>
-                        {review.comment}
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                        <Pill color="navy">{review.jobType}</Pill>
-                        {review.verifiedBooking && <Pill color="green">Verified booking</Pill>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div style={{ padding: 28 }}>
-                <div style={{ border: "1.5px dashed var(--border)", borderRadius: 18, background: "var(--surface-2)", padding: "36px 24px", textAlign: "center" }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)", marginBottom: 8 }}>No reviews available</div>
-                  <div style={{ fontSize: 12, color: "var(--muted)" }}>Choose a tradesman from the sidebar list to inspect their reviews.</div>
-                </div>
-              </div>
-            )}
-          </Card>
-        </div>
+            </tbody>
+          </Table>
+        </Card>
       </div>
     );
   };
@@ -3560,7 +4273,7 @@ export default function DashboardPage() {
                         onClick={() =>
                           openConfirm({
                             title: `Revoke ${h.name}?`,
-                            message: "This will deactivate the homeowner account.",
+                            message: "This will suspend the homeowner account and block app login.",
                             confirmLabel: "Revoke",
                             onConfirm: () => revokeHomeowner(h.id, h.name),
                           })
@@ -3590,36 +4303,6 @@ export default function DashboardPage() {
 
     return (
       <div style={{ animation: "fadeUp .35s ease both" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16, marginBottom: 20 }}>
-          <StatCard
-            iconBg="var(--warning-bg)"
-            iconColor="var(--warning-text)"
-            num={openReportsCount}
-            label="Open Reports"
-            trend="Needs review"
-            trendType="warn"
-            icon={icons.flag}
-          />
-          <StatCard
-            iconBg="var(--info-bg)"
-            iconColor="var(--info-text)"
-            num={reports.filter((report) => report.targetType === "Homeowner").length}
-            label="Homeowner Reports"
-            trend="User side"
-            trendType="up"
-            icon={icons.home}
-          />
-          <StatCard
-            iconBg="var(--accent-soft)"
-            iconColor="var(--accent)"
-            num={reports.filter((report) => report.targetType === "Tradesman").length}
-            label="Tradesman Reports"
-            trend="Provider side"
-            trendType="up"
-            icon={icons.wrench}
-          />
-        </div>
-
         <Card>
           <CardHead
             title="User Reports"
@@ -3976,16 +4659,18 @@ export default function DashboardPage() {
                 <div
                   ref={bellPanelRef}
                   style={{
-                    position: "absolute",
-                    top: 46,
-                    right: 0,
-                    width: 320,
+                    position: "fixed",
+                    right: 24,
+                    bottom: 24,
+                    width: 340,
+                    maxWidth: "calc(100vw - 32px)",
                     background: "var(--surface)",
                     border: "1.5px solid var(--border)",
-                    borderRadius: 12,
-                    boxShadow: "var(--shadow)",
-                    zIndex: 60,
+                    borderRadius: 16,
+                    boxShadow: "var(--elevated-shadow)",
+                    zIndex: 120,
                     overflow: "hidden",
+                    animation: "mIn .24s cubic-bezier(.16,1,.3,1)",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
@@ -4011,12 +4696,12 @@ export default function DashboardPage() {
                     )}
                   </div>
                   <button
-                    onClick={() => { setActivePage("dashboard"); setBellOpen(false); }}
+                    onClick={() => setBellOpen(false)}
                     style={{ width: "100%", padding: "10px 14px", borderTop: "1px solid var(--border)", border: "none", background: "var(--surface-2)", fontSize: 12, fontWeight: 700, color: "var(--text)", cursor: "pointer" }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = "var(--accent-soft)"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
                   >
-                    View activity
+                    Close
                   </button>
                 </div>
               )}
@@ -4031,14 +4716,14 @@ export default function DashboardPage() {
 
         {/* Page content */}
         <div style={{ padding: "28px 32px", flex: 1 }}>
-          {activePage === "dashboard"    && <PageDashboard />}
-          {activePage === "verification" && <PageVerification />}
-          {activePage === "tradesmen"    && <PageTradesmen />}
-          {activePage === "homeowners"   && <PageHomeowners />}
-          {activePage === "ratings"      && <PageRatings />}
-          {activePage === "reports"      && <PageReports />}
-          {activePage === "profile"      && <PageProfile />}
-          {activePage === "settings"     && <PageSettings />}
+          {activePage === "dashboard"    && PageDashboard()}
+          {activePage === "verification" && PageVerification()}
+          {activePage === "tradesmen"    && PageTradesmen()}
+          {activePage === "homeowners"   && PageHomeowners()}
+          {activePage === "ratings"      && PageRatings()}
+          {activePage === "reports"      && PageReports()}
+          {activePage === "profile"      && PageProfile()}
+          {activePage === "settings"     && PageSettings()}
         </div>
       </div>
 
