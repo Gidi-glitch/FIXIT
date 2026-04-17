@@ -2,25 +2,17 @@ package controllers
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"fixit-backend/config"
 	"fixit-backend/models"
-	"fixit-backend/services"
 
 	"gorm.io/gorm"
 )
-
-func documentPublicURL(doc models.VerificationDocument) string {
-	if doc.ID == 0 {
-		return ""
-	}
-	return fmt.Sprintf("/api/admin/documents/%d/file", doc.ID)
-}
 
 // ListDocuments handles GET /api/admin/documents
 // Optional query param: ?status=pending|approved|rejected  (omit to return all)
@@ -36,9 +28,6 @@ func ListDocuments(w http.ResponseWriter, r *http.Request) {
 	query := config.DB.Preload("User")
 	if status != "" {
 		query = query.Where("status = ?", status)
-	}
-	if status == "" {
-		query = query.Where("status != ?", "archived")
 	}
 	if err := query.Order("created_at asc").Find(&docs).Error; err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list documents")
@@ -65,11 +54,15 @@ func ListDocuments(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"documents": rows})
 }
 
-// HandleDocument routes:
-// PATCH /api/admin/documents/{id}/approve|reject
-// GET   /api/admin/documents/{id}/file
+// HandleDocument routes PATCH /api/admin/documents/{id}/approve|reject
+// Path must be exactly: /api/admin/documents/{id}/approve  OR  .../reject
 func HandleDocument(w http.ResponseWriter, r *http.Request) {
-	// Split path into segments: ["api","admin","documents","{id}","approve|reject|file"]
+	if r.Method != http.MethodPatch {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	// Split path into segments: ["api","admin","documents","{id}","approve|reject"]
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	if len(parts) != 5 {
 		writeError(w, http.StatusNotFound, "not found")
@@ -83,290 +76,46 @@ func HandleDocument(w http.ResponseWriter, r *http.Request) {
 	}
 
 	action := parts[4]
-	switch action {
-	case "file":
-		if r.Method != http.MethodGet {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-
-		var doc models.VerificationDocument
-		if err := config.DB.First(&doc, docID).Error; err != nil {
-			writeError(w, http.StatusNotFound, "document not found")
-			return
-		}
-		resolvedPath := services.ResolveDocumentFilePath(doc)
-		if resolvedPath == "" {
-			writeError(w, http.StatusNotFound, "document file missing")
-			return
-		}
-
-		http.ServeFile(w, r, resolvedPath)
-		return
-
-	case "approve", "reject":
-		if r.Method != http.MethodPatch {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-
-		// Optional JSON body — only used for reject reason
-		var body struct {
-			Reason string `json:"reason"`
-		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
-
-		var doc models.VerificationDocument
-		if err := config.DB.First(&doc, docID).Error; err != nil {
-			writeError(w, http.StatusNotFound, "document not found")
-			return
-		}
-
-		if doc.Status != "pending" {
-			writeError(w, http.StatusConflict, "document has already been reviewed")
-			return
-		}
-
-		newStatus := "approved"
-		if action == "reject" {
-			newStatus = "rejected"
-		}
-
-		if err := config.DB.Model(&doc).Update("status", newStatus).Error; err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to update document status")
-			return
-		}
-
-		// Keep tradesperson profile verification_status in sync
-		syncTradespersonStatus(doc.UserID)
-
-		writeJSON(w, http.StatusOK, map[string]any{
-			"message":     "document " + newStatus,
-			"document_id": doc.ID,
-			"status":      newStatus,
-		})
-		return
-
-	default:
-		writeError(w, http.StatusNotFound, "not found")
-		return
-	}
-}
-
-// HandleTradesperson routes:
-// PATCH /api/admin/tradespeople/{id}/revoke
-// PATCH /api/admin/tradespeople/{id}/restore
-func HandleTradesperson(w http.ResponseWriter, r *http.Request) {
-	// Split path into segments: ["api","admin","tradespeople","{id}","revoke"]
-	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(parts) != 5 {
+	if action != "approve" && action != "reject" {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
 
-	id, err := strconv.ParseUint(parts[3], 10, 64)
-	if err != nil || id == 0 {
-		writeError(w, http.StatusBadRequest, "invalid tradesperson id")
+	// Optional JSON body — only used for reject reason
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	var doc models.VerificationDocument
+	if err := config.DB.First(&doc, docID).Error; err != nil {
+		writeError(w, http.StatusNotFound, "document not found")
 		return
 	}
 
-	action := parts[4]
-	if action != "revoke" && action != "restore" {
-		writeError(w, http.StatusNotFound, "not found")
+	if doc.Status != "pending" {
+		writeError(w, http.StatusConflict, "document has already been reviewed")
 		return
 	}
 
-	if r.Method != http.MethodPatch {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	newStatus := "approved"
+	if action == "reject" {
+		newStatus = "rejected"
+	}
+
+	if err := config.DB.Model(&doc).Update("status", newStatus).Error; err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update document status")
 		return
 	}
 
-	var profile models.TradespersonProfile
-	if err := config.DB.First(&profile, id).Error; err != nil {
-		// Fallback: allow passing user_id instead of profile id.
-		if err := config.DB.Where("user_id = ?", id).First(&profile).Error; err != nil {
-			writeError(w, http.StatusNotFound, "tradesperson not found")
-			return
-		}
-	}
+	// Keep tradesperson profile verification_status in sync
+	syncTradespersonStatus(doc.UserID)
 
-	fullName := strings.TrimSpace(profile.FirstName + " " + profile.LastName)
-	if fullName == "" {
-		fullName = fmt.Sprintf("User #%d", profile.UserID)
-	}
-
-	switch action {
-	case "revoke":
-		if err := config.DB.Model(&profile).Update("verification_status", "pending").Error; err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to set tradesperson to pending")
-			return
-		}
-
-		if err := config.DB.Model(&models.VerificationDocument{}).
-			Where("user_id = ? AND document_group = ?", profile.UserID, "license").
-			Update("status", "pending").Error; err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to reset tradesperson documents")
-			return
-		}
-
-		_ = logActivity(
-			"Re-verification requested",
-			fmt.Sprintf("%s · Status reset to pending", fullName),
-			"tradesperson_reverify",
-		)
-
-		writeJSON(w, http.StatusOK, map[string]any{
-			"message":             "tradesperson set to pending",
-			"tradesperson_id":     profile.ID,
-			"user_id":             profile.UserID,
-			"verification_status": "pending",
-		})
-	case "restore":
-		if err := config.DB.Model(&profile).Update("verification_status", "approved").Error; err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to restore tradesperson")
-			return
-		}
-
-		if err := config.DB.Model(&models.VerificationDocument{}).
-			Where("user_id = ? AND document_group = ?", profile.UserID, "license").
-			Update("status", "approved").Error; err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to restore tradesperson documents")
-			return
-		}
-
-		_ = logActivity(
-			"Tradesperson restored",
-			fmt.Sprintf("%s · Status set to approved", fullName),
-			"tradesperson_restored",
-		)
-
-		writeJSON(w, http.StatusOK, map[string]any{
-			"message":             "tradesperson restored",
-			"tradesperson_id":     profile.ID,
-			"user_id":             profile.UserID,
-			"verification_status": "approved",
-		})
-	}
-}
-
-// HandleHomeowner routes:
-// PATCH /api/admin/homeowners/{id}/revoke
-// PATCH /api/admin/homeowners/{id}/restore
-// PATCH /api/admin/homeowners/{id}/unreject
-func HandleHomeowner(w http.ResponseWriter, r *http.Request) {
-	// Split path into segments: ["api","admin","homeowners","{id}","revoke"]
-	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(parts) != 5 {
-		writeError(w, http.StatusNotFound, "not found")
-		return
-	}
-
-	id, err := strconv.ParseUint(parts[3], 10, 64)
-	if err != nil || id == 0 {
-		writeError(w, http.StatusBadRequest, "invalid homeowner id")
-		return
-	}
-
-	action := parts[4]
-	if action != "revoke" && action != "restore" && action != "unreject" {
-		writeError(w, http.StatusNotFound, "not found")
-		return
-	}
-
-	if r.Method != http.MethodPatch {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	var profile models.HomeownerProfile
-	if err := config.DB.First(&profile, id).Error; err != nil {
-		// Fallback: allow passing user_id instead of profile id.
-		if err := config.DB.Where("user_id = ?", id).First(&profile).Error; err != nil {
-			writeError(w, http.StatusNotFound, "homeowner not found")
-			return
-		}
-	}
-
-	fullName := strings.TrimSpace(profile.FirstName + " " + profile.LastName)
-	if fullName == "" {
-		fullName = fmt.Sprintf("User #%d", profile.UserID)
-	}
-	switch action {
-	case "revoke":
-		if err := config.DB.Model(&models.User{}).
-			Where("id = ?", profile.UserID).
-			Update("is_active", false).Error; err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to revoke homeowner")
-			return
-		}
-
-		_ = logActivity(
-			"Homeowner revoked",
-			fmt.Sprintf("%s · Account set to inactive", fullName),
-			"homeowner_revoked",
-		)
-
-		writeJSON(w, http.StatusOK, map[string]any{
-			"message":        "homeowner revoked",
-			"homeowner_id":   profile.ID,
-			"user_id":        profile.UserID,
-			"account_status": "inactive",
-		})
-	case "restore":
-		if err := config.DB.Model(&models.User{}).
-			Where("id = ?", profile.UserID).
-			Update("is_active", true).Error; err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to restore homeowner")
-			return
-		}
-
-		_ = logActivity(
-			"Homeowner restored",
-			fmt.Sprintf("%s · Account set to active", fullName),
-			"homeowner_restored",
-		)
-
-		writeJSON(w, http.StatusOK, map[string]any{
-			"message":        "homeowner restored",
-			"homeowner_id":   profile.ID,
-			"user_id":        profile.UserID,
-			"account_status": "active",
-		})
-	case "unreject":
-		if err := config.DB.Model(&models.User{}).
-			Where("id = ?", profile.UserID).
-			Update("is_active", true).Error; err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to reactivate homeowner")
-			return
-		}
-
-		if err := config.DB.Model(&profile).Update("status_id", "approved").Error; err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to update homeowner id status")
-			return
-		}
-
-		if err := config.DB.Model(&models.VerificationDocument{}).
-			Where("user_id = ? AND document_group IN ?", profile.UserID, []string{"government_id", "homeowner_id"}).
-			Where("status != ?", "archived").
-			Update("status", "approved").Error; err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to restore homeowner verification documents")
-			return
-		}
-
-		_ = logActivity(
-			"Homeowner unrejected",
-			fmt.Sprintf("%s · ID status restored to approved", fullName),
-			"homeowner_restored",
-		)
-
-		writeJSON(w, http.StatusOK, map[string]any{
-			"message":        "homeowner unrejected",
-			"homeowner_id":   profile.ID,
-			"user_id":        profile.UserID,
-			"account_status": "active",
-			"id_status":      "approved",
-		})
-	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"message":     "document " + newStatus,
+		"document_id": doc.ID,
+		"status":      newStatus,
+	})
 }
 
 // ListTradespeople handles GET /api/admin/tradespeople
@@ -380,8 +129,7 @@ func ListTradespeople(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 
 	var profiles []models.TradespersonProfile
-	// Use an inner join to exclude orphaned profiles when users are deleted.
-	query := config.DB.Joins("User")
+	query := config.DB.Preload("User")
 	if status != "" {
 		query = query.Where("verification_status = ?", status)
 	}
@@ -390,67 +138,36 @@ func ListTradespeople(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userIDs := make([]uint, 0, len(profiles))
-	for _, p := range profiles {
-		userIDs = append(userIDs, p.UserID)
-	}
-
-	licenseDocMap := map[uint]models.VerificationDocument{}
-	governmentDocMap := map[uint]models.VerificationDocument{}
-	if len(userIDs) > 0 {
-		var docs []models.VerificationDocument
-		if err := config.DB.
-			Where("user_id IN ? AND LOWER(document_group) IN ?", userIDs, []string{"license", "government_id"}).
-			Order("created_at desc").
-			Find(&docs).Error; err == nil {
-				for _, d := range docs {
-					switch strings.ToLower(d.DocumentGroup) {
-					case "license":
-						if _, exists := licenseDocMap[d.UserID]; !exists {
-						licenseDocMap[d.UserID] = d
-					}
-				case "government_id":
-					if _, exists := governmentDocMap[d.UserID]; !exists {
-						governmentDocMap[d.UserID] = d
-					}
-				}
-			}
-		}
-	}
-
 	rows := make([]map[string]any, 0, len(profiles))
 	for _, p := range profiles {
-		row := map[string]any{
-			"id":                  p.ID,
-			"user_id":             p.UserID,
-			"user_email":          p.User.Email,
-			"first_name":          p.FirstName,
-			"last_name":           p.LastName,
-			"phone":               p.Phone,
-			"trade_category":      p.TradeCategory,
-			"years_experience":    p.YearsExperience,
-			"service_barangay":    p.ServiceBarangay,
-			"bio":                 p.Bio,
-			"verification_status": p.VerificationStatus,
-			"created_at":          p.CreatedAt,
-		}
-
-		if doc, ok := licenseDocMap[p.UserID]; ok {
-			row["license_document_url"] = fmt.Sprintf("/api/admin/documents/%d/file", doc.ID)
-			row["license_document_type"] = doc.DocumentType
-		}
-		if doc, ok := governmentDocMap[p.UserID]; ok {
-			row["government_id_document_url"] = fmt.Sprintf("/api/admin/documents/%d/file", doc.ID)
-			row["government_id_document_type"] = doc.DocumentType
-		}
-
-		rows = append(rows, row)
+		docs := findVerificationDocumentsForUser(p.UserID)
+		licenseDoc := findDocumentByGroup(docs, "license")
+		govDoc := findDocumentByGroup(docs, "government_id")
+		status := deriveTradespersonAdminStatus(p.User.IsActive, p.VerificationStatus)
+		rows = append(rows, map[string]any{
+			"id":                         p.ID,
+			"user_id":                    p.UserID,
+			"user_email":                 p.User.Email,
+			"full_name":                  adminUserDisplayName(p.User, p.FirstName, p.LastName),
+			"first_name":                 p.FirstName,
+			"last_name":                  p.LastName,
+			"phone":                      p.Phone,
+			"trade_category":             p.TradeCategory,
+			"years_experience":           p.YearsExperience,
+			"service_barangay":           p.ServiceBarangay,
+			"bio":                        p.Bio,
+			"license":                    documentReference("LIC", licenseDoc, p.UserID),
+			"license_document_url":       buildPublicFileURL(r, documentFilePath(licenseDoc)),
+			"government_id_document_url": buildPublicFileURL(r, documentFilePath(govDoc)),
+			"status":                     status,
+			"verification_status":        p.VerificationStatus,
+			"created_at":                 p.CreatedAt,
+		})
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"tradespeople": rows})
 }
 
-// ListHomeowners handles GET /api/admin/homeowners
 func ListHomeowners(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -458,354 +175,154 @@ func ListHomeowners(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var profiles []models.HomeownerProfile
-	// Use an inner join to exclude orphaned profiles when users are deleted.
-	query := config.DB.Joins("User")
-	if err := query.Order("homeowner_profiles.created_at asc").Find(&profiles).Error; err != nil {
+	if err := config.DB.Preload("User").Order("created_at asc").Find(&profiles).Error; err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list homeowners")
 		return
 	}
 
-	userIDs := make([]uint, 0, len(profiles))
-	for _, p := range profiles {
-		userIDs = append(userIDs, p.UserID)
-	}
-
-	docMap := map[uint]models.VerificationDocument{}
-	if len(userIDs) > 0 {
-		var docs []models.VerificationDocument
-		groups := []string{"government_id", "homeowner_id"}
-		if err := config.DB.
-			Where("user_id IN ? AND LOWER(document_group) IN ?", userIDs, groups).
-			Order("created_at desc").
-			Find(&docs).Error; err == nil {
-				for _, d := range docs {
-					if _, exists := docMap[d.UserID]; !exists {
-						docMap[d.UserID] = d
-					}
-			}
-		}
-	}
-
 	rows := make([]map[string]any, 0, len(profiles))
 	for _, p := range profiles {
-		fullName := strings.TrimSpace(p.FirstName + " " + p.LastName)
-		status := "active"
-		if !p.User.IsActive {
-			status = "inactive"
-		}
-		row := map[string]any{
-			"id":         p.ID,
-			"user_id":    p.UserID,
-			"email":      p.User.Email,
-			"full_name":  fullName,
-			"barangay":   p.Barangay,
-			"created_at": p.CreatedAt,
-			"status":     status,
+		docs := findVerificationDocumentsForUser(p.UserID)
+		idDoc := findDocumentByGroup(docs, "government_id")
+		idStatus := "pending"
+		if idDoc != nil && idDoc.Status != "" {
+			idStatus = idDoc.Status
 		}
 
-		idStatus := strings.TrimSpace(p.StatusID)
-		if doc, ok := docMap[p.UserID]; ok {
-			if idStatus == "" {
-				idStatus = doc.Status
-			}
-			row["id_document_url"] = fmt.Sprintf("/api/admin/documents/%d/file", doc.ID)
-			row["id_document_type"] = doc.DocumentType
-		}
-		if idStatus != "" {
-			row["id_status"] = idStatus
-		}
-
-		rows = append(rows, row)
+		rows = append(rows, map[string]any{
+			"id":              p.ID,
+			"user_id":         p.UserID,
+			"user_email":      p.User.Email,
+			"full_name":       adminUserDisplayName(p.User, p.FirstName, p.LastName),
+			"first_name":      p.FirstName,
+			"last_name":       p.LastName,
+			"phone":           p.Phone,
+			"barangay":        p.Barangay,
+			"bio":             p.Bio,
+			"gender":          p.Gender,
+			"id_number":       documentReference("HO-ID", idDoc, p.UserID),
+			"id_status":       idStatus,
+			"id_document_url": buildPublicFileURL(r, documentFilePath(idDoc)),
+			"status":          deriveHomeownerAdminStatus(p.User.IsActive, idStatus),
+			"created_at":      p.CreatedAt,
+		})
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"homeowners": rows})
 }
 
-// ListVerifications handles GET /api/verifications
-// Optional query param: ?status=pending|approved|rejected  (omit to return all)
-func ListVerifications(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+func HandleTradespersonAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
-	status := r.URL.Query().Get("status")
-
-	var docs []models.VerificationDocument
-	// Be tolerant to legacy/alternate group labels and casing.
-	groups := []string{"government_id", "license", "homeowner_id", "tradesperson_license"}
-	query := config.DB.Preload("User").
-		Where("LOWER(document_group) IN ?", groups)
-	if status != "" {
-		query = query.Where("status = ?", status)
-	}
-	if err := query.Order("created_at asc").Find(&docs).Error; err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list verifications")
-		return
-	}
-
-	rows := make([]map[string]any, 0, len(docs))
-	for _, d := range docs {
-		var vType string
-		switch strings.ToLower(d.DocumentGroup) {
-		case "license", "tradesperson_license":
-			vType = "tradesperson_license"
-		case "government_id", "homeowner_id":
-			// Only homeowner government IDs belong in verification queue.
-			if d.User.Role != "" && d.User.Role != "homeowner" {
-				continue
-			}
-			vType = "homeowner_id"
-		default:
-			continue
-		}
-
-		rows = append(rows, map[string]any{
-			"id":           d.ID,
-			"user_id":      d.UserID,
-			"type":         vType,
-			"status":       d.Status,
-			"document_url": documentPublicURL(d),
-			"created_at":   d.CreatedAt,
-		})
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{"verifications": rows})
-}
-
-// ReviewVerification handles POST /api/verifications/review
-func ReviewVerification(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	var body struct {
-		VerificationID uint   `json:"verification_id"`
-		Status         string `json:"status"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if body.VerificationID == 0 {
-		writeError(w, http.StatusBadRequest, "verification_id is required")
-		return
-	}
-
-	if body.Status != "approved" && body.Status != "rejected" {
-		writeError(w, http.StatusBadRequest, "status must be approved or rejected")
-		return
-	}
-
-	var doc models.VerificationDocument
-	if err := config.DB.First(&doc, body.VerificationID).Error; err != nil {
-		writeError(w, http.StatusNotFound, "verification not found")
-		return
-	}
-
-	if doc.Status != "pending" {
-		writeError(w, http.StatusConflict, "verification has already been reviewed")
-		return
-	}
-
-	if err := config.DB.Model(&doc).Update("status", body.Status).Error; err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update verification")
-		return
-	}
-
-	switch strings.ToLower(doc.DocumentGroup) {
-	case "government_id", "homeowner_id":
-		if err := updateHomeownerIDStatus(doc.UserID, body.Status); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to update homeowner id status")
-			return
-		}
-	}
-
-	syncTradespersonStatus(doc.UserID)
-
-	_ = logActivity(
-		fmt.Sprintf("Verification %s", body.Status),
-		fmt.Sprintf("User #%d · %s", doc.UserID, verificationTypeLabel(doc)),
-		"verification_"+body.Status,
-	)
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"message":         "verification " + body.Status,
-		"verification_id": doc.ID,
-		"status":          body.Status,
-	})
-}
-
-func ensureHomeownerProfile(userID uint) error {
-	var existing models.HomeownerProfile
-	if err := config.DB.Where("user_id = ?", userID).First(&existing).Error; err == nil {
-		return nil
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
-
-	// Best-effort: derive from tradesperson profile if present.
-	var tp models.TradespersonProfile
-	profile := models.HomeownerProfile{
-		UserID:    userID,
-		FirstName: "Unknown",
-		LastName:  "User",
-		Phone:     "N/A",
-		Barangay:  "Unknown",
-	}
-	if err := config.DB.Where("user_id = ?", userID).First(&tp).Error; err == nil {
-		if tp.FirstName != "" {
-			profile.FirstName = tp.FirstName
-		}
-		if tp.LastName != "" {
-			profile.LastName = tp.LastName
-		}
-		if tp.Phone != "" {
-			profile.Phone = tp.Phone
-		}
-		if tp.ServiceBarangay != "" {
-			profile.Barangay = tp.ServiceBarangay
-		}
-	}
-
-	return config.DB.Create(&profile).Error
-}
-
-func updateHomeownerIDStatus(userID uint, status string) error {
-	if err := ensureHomeownerProfile(userID); err != nil {
-		return err
-	}
-	return config.DB.
-		Model(&models.HomeownerProfile{}).
-		Where("user_id = ?", userID).
-		Update("status_id", status).Error
-}
-
-// HandleVerification routes:
-// DELETE /api/verifications/{id}
-// PATCH  /api/verifications/{id}
-func HandleVerification(w http.ResponseWriter, r *http.Request) {
-	// Split path into segments: ["api","verifications","{id}"]
-	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(parts) != 3 {
+	id, action, ok := parseAdminActionPath(r.URL.Path, "/api/admin/tradespeople/")
+	if !ok {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
 
-	id, err := strconv.ParseUint(parts[2], 10, 64)
-	if err != nil || id == 0 {
-		writeError(w, http.StatusBadRequest, "invalid verification id")
-		return
-	}
-
-	var doc models.VerificationDocument
-	if err := config.DB.First(&doc, id).Error; err != nil {
-		writeError(w, http.StatusNotFound, "verification not found")
-		return
-	}
-
-	switch r.Method {
-	case http.MethodDelete:
-		if err := config.DB.Model(&doc).Update("status", "archived").Error; err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to archive verification")
-			return
-		}
-
-		if strings.EqualFold(doc.DocumentGroup, "government_id") || strings.EqualFold(doc.DocumentGroup, "homeowner_id") {
-			if err := updateHomeownerIDStatus(doc.UserID, "archived"); err != nil {
-				writeError(w, http.StatusInternalServerError, "failed to update homeowner id status")
-				return
+	now := time.Now()
+	switch action {
+	case "revoke":
+		if err := config.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(&models.TradespersonProfile{}).
+				Where("id = ?", id).
+				Updates(map[string]any{"verification_status": "rejected", "updated_at": now}).Error; err != nil {
+				return err
 			}
-		}
 
-		_ = logActivity(
-			"Verification archived",
-			fmt.Sprintf("User #%d · %s", doc.UserID, verificationTypeLabel(doc)),
-			"verification_archived",
-		)
-
-		writeJSON(w, http.StatusOK, map[string]any{
-			"message":         "verification archived",
-			"verification_id": id,
-			"status":          "archived",
-		})
-		return
-
-	case http.MethodPatch:
-		if doc.Status != "archived" {
-			writeError(w, http.StatusConflict, "only archived verifications can be restored")
-			return
-		}
-
-		if err := config.DB.Model(&doc).Update("status", "approved").Error; err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to restore verification")
-			return
-		}
-
-		if strings.EqualFold(doc.DocumentGroup, "government_id") || strings.EqualFold(doc.DocumentGroup, "homeowner_id") {
-			if err := updateHomeownerIDStatus(doc.UserID, "approved"); err != nil {
-				writeError(w, http.StatusInternalServerError, "failed to update homeowner id status")
-				return
+			var profile models.TradespersonProfile
+			if err := tx.First(&profile, id).Error; err != nil {
+				return err
 			}
+
+			if err := tx.Model(&models.VerificationDocument{}).
+				Where("user_id = ? AND status <> ?", profile.UserID, "archived").
+				Updates(map[string]any{"status": "rejected", "updated_at": now}).Error; err != nil {
+				return err
+			}
+
+			return tx.Model(&models.User{}).
+				Where("id = ?", profile.UserID).
+				Updates(map[string]any{"is_active": false, "updated_at": now}).Error
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to revoke tradesperson")
+			return
 		}
+		writeJSON(w, http.StatusOK, map[string]string{"message": "tradesperson suspended"})
+	case "restore":
+		if err := config.DB.Transaction(func(tx *gorm.DB) error {
+			var profile models.TradespersonProfile
+			if err := tx.First(&profile, id).Error; err != nil {
+				return err
+			}
 
-		syncTradespersonStatus(doc.UserID)
+			if err := tx.Model(&models.TradespersonProfile{}).
+				Where("id = ?", id).
+				Updates(map[string]any{"verification_status": "approved", "updated_at": now}).Error; err != nil {
+				return err
+			}
 
-		_ = logActivity(
-			"Verification restored",
-			fmt.Sprintf("User #%d · %s", doc.UserID, verificationTypeLabel(doc)),
-			"verification_restored",
-		)
+			if err := tx.Model(&models.VerificationDocument{}).
+				Where("user_id = ?", profile.UserID).
+				Updates(map[string]any{"status": "approved", "updated_at": now}).Error; err != nil {
+				return err
+			}
 
-		writeJSON(w, http.StatusOK, map[string]any{
-			"message":         "verification restored",
-			"verification_id": id,
-			"status":          "approved",
-		})
-		return
-
+			return tx.Model(&models.User{}).
+				Where("id = ?", profile.UserID).
+				Updates(map[string]any{"is_active": true, "updated_at": now}).Error
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to restore tradesperson")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"message": "tradesperson restored"})
 	default:
+		writeError(w, http.StatusNotFound, "not found")
+	}
+}
+
+func HandleHomeownerAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-}
 
-// syncTradespersonStatus re-evaluates the tradesperson profile's verification_status
-// based on their LICENSE documents:
-//   - Any license doc "rejected"  → profile becomes "rejected"
-//   - Any license doc "approved"  → profile becomes "approved"
-//   - Otherwise                   → stays "pending"
-func syncTradespersonStatus(userID uint) {
-	var docs []models.VerificationDocument
-	if err := config.DB.
-		Where("user_id = ? AND document_group = ? AND status != ?", userID, "license", "archived").
-		Find(&docs).Error; err != nil || len(docs) == 0 {
+	id, action, ok := parseAdminActionPath(r.URL.Path, "/api/admin/homeowners/")
+	if !ok {
+		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
 
-	hasApproved := false
-	for _, d := range docs {
-		if d.Status == "rejected" {
-			config.DB.Model(&models.TradespersonProfile{}).
-				Where("user_id = ?", userID).
-				Update("verification_status", "rejected")
-			return
-		}
-		if d.Status == "approved" {
-			hasApproved = true
-		}
+	var profile models.HomeownerProfile
+	if err := config.DB.First(&profile, id).Error; err != nil {
+		writeError(w, http.StatusNotFound, "homeowner not found")
+		return
 	}
 
-	if hasApproved {
-		config.DB.Model(&models.TradespersonProfile{}).
-			Where("user_id = ?", userID).
-			Update("verification_status", "approved")
+	active := action == "restore"
+	if action != "revoke" && action != "restore" {
+		writeError(w, http.StatusNotFound, "not found")
+		return
 	}
+
+	if err := config.DB.Model(&models.User{}).
+		Where("id = ?", profile.UserID).
+		Updates(map[string]any{"is_active": active, "updated_at": time.Now()}).Error; err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update homeowner")
+		return
+	}
+
+	message := "homeowner revoked"
+	if active {
+		message = "homeowner restored"
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": message})
 }
 
-// ListActivity handles GET /api/admin/activity?limit=6
 func ListActivity(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -813,51 +330,283 @@ func ListActivity(w http.ResponseWriter, r *http.Request) {
 	}
 
 	limit := 6
-	if v := r.URL.Query().Get("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			if n > 50 {
-				limit = 50
-			} else {
-				limit = n
-			}
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 50 {
+			limit = parsed
 		}
 	}
 
-	var items []models.ActivityLog
-	if err := config.DB.Order("created_at desc").Limit(limit).Find(&items).Error; err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list activity")
-		return
-	}
+	var docs []models.VerificationDocument
+	_ = config.DB.Preload("User").Order("updated_at desc").Limit(limit * 2).Find(&docs).Error
 
-	rows := make([]map[string]any, 0, len(items))
-	for _, a := range items {
-		rows = append(rows, map[string]any{
-			"id":         a.ID,
-			"title":      a.Title,
-			"sub":        a.Sub,
-			"type":       a.Type,
-			"created_at": a.CreatedAt,
+	var users []models.User
+	_ = config.DB.Order("created_at desc").Limit(limit).Find(&users).Error
+
+	var bookings []models.Booking
+	_ = config.DB.
+		Preload("HomeownerUser").
+		Preload("TradespersonUser").
+		Order("updated_at desc").
+		Limit(limit * 3).
+		Find(&bookings).Error
+
+	entries := make([]map[string]any, 0, limit*2)
+	for _, doc := range docs {
+		title, sub, entryType := formatActivityFromDocument(doc)
+		entries = append(entries, map[string]any{
+			"id":         "doc-" + strconv.FormatUint(uint64(doc.ID), 10),
+			"title":      title,
+			"sub":        sub,
+			"type":       entryType,
+			"created_at": doc.UpdatedAt,
 		})
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"activity": rows})
-}
-
-func logActivity(title, sub, activityType string) error {
-	return config.DB.Create(&models.ActivityLog{
-		Title: title,
-		Sub:   sub,
-		Type:  activityType,
-	}).Error
-}
-
-func verificationTypeLabel(doc models.VerificationDocument) string {
-	switch strings.ToLower(doc.DocumentGroup) {
-	case "license", "tradesperson_license":
-		return "Tradesperson License"
-	case "government_id", "homeowner_id":
-		return "Homeowner ID"
-	default:
-		return "Verification"
+	for _, user := range users {
+		entries = append(entries, map[string]any{
+			"id":         "user-" + strconv.FormatUint(uint64(user.ID), 10),
+			"title":      "New " + titleCase(user.Role) + " registration",
+			"sub":        adminUserDisplayName(user) + " joined the platform.",
+			"type":       "user_registered",
+			"created_at": user.CreatedAt,
+		})
 	}
+
+	for _, booking := range bookings {
+		title, sub, entryType, eventAt := formatActivityFromBooking(booking)
+		entries = append(entries, map[string]any{
+			"id":         "booking-" + strconv.FormatUint(uint64(booking.ID), 10),
+			"title":      title,
+			"sub":        sub,
+			"type":       entryType,
+			"created_at": eventAt,
+		})
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		left, _ := entries[i]["created_at"].(time.Time)
+		right, _ := entries[j]["created_at"].(time.Time)
+		return right.Before(left)
+	})
+
+	if len(entries) > limit {
+		entries = entries[:limit]
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"activity": entries})
+}
+
+// syncTradespersonStatus re-evaluates the tradesperson profile's verification_status
+// based on the current state of all their documents:
+//   - Any doc "rejected"  → profile becomes "rejected"
+//   - All docs "approved" → profile becomes "approved"
+//   - Otherwise           → stays "pending"
+func syncTradespersonStatus(userID uint) {
+	var docs []models.VerificationDocument
+	if err := config.DB.Where("user_id = ?", userID).Find(&docs).Error; err != nil || len(docs) == 0 {
+		return
+	}
+
+	allApproved := true
+	for _, d := range docs {
+		if d.Status == "rejected" {
+			config.DB.Model(&models.TradespersonProfile{}).
+				Where("user_id = ?", userID).
+				Update("verification_status", "rejected")
+			return
+		}
+		if d.Status != "approved" {
+			allApproved = false
+		}
+	}
+
+	if allApproved {
+		config.DB.Model(&models.TradespersonProfile{}).
+			Where("user_id = ?", userID).
+			Update("verification_status", "approved")
+	}
+}
+
+func adminVerificationType(role, documentGroup string) (string, bool) {
+	switch {
+	case role == "homeowner" && documentGroup == "government_id":
+		return "homeowner_id", true
+	case role == "tradesperson" && documentGroup == "license":
+		return "tradesperson_license", true
+	default:
+		return "", false
+	}
+}
+
+func adminUserDisplayName(user models.User, nameParts ...string) string {
+	var firstName, lastName string
+	if len(nameParts) > 0 {
+		firstName = nameParts[0]
+	}
+	if len(nameParts) > 1 {
+		lastName = nameParts[1]
+	}
+	if firstName == "" && lastName == "" {
+		firstName, lastName, _, _, _ = getUserProfileDetails(user.ID, user.Role)
+	}
+	return buildDisplayName(user.FullName, firstName, lastName, user.Email)
+}
+
+func findVerificationDocumentsForUser(userID uint) []models.VerificationDocument {
+	var docs []models.VerificationDocument
+	_ = config.DB.Where("user_id = ?", userID).Order("created_at asc").Find(&docs).Error
+	return docs
+}
+
+func findDocumentByGroup(docs []models.VerificationDocument, group string) *models.VerificationDocument {
+	for i := range docs {
+		if docs[i].DocumentGroup == group {
+			return &docs[i]
+		}
+	}
+	return nil
+}
+
+func documentFilePath(doc *models.VerificationDocument) string {
+	if doc == nil {
+		return ""
+	}
+	return doc.FilePath
+}
+
+func documentReference(prefix string, doc *models.VerificationDocument, fallbackUserID uint) string {
+	if doc != nil && doc.ID > 0 {
+		return prefix + "-" + strconv.FormatUint(uint64(doc.ID), 10)
+	}
+	return prefix + "-" + strconv.FormatUint(uint64(fallbackUserID), 10)
+}
+
+func deriveTradespersonAdminStatus(isActive bool, verificationStatus string) string {
+	switch {
+	case !isActive:
+		return "suspended"
+	case strings.EqualFold(verificationStatus, "approved"):
+		return "verified"
+	case strings.EqualFold(verificationStatus, "rejected"):
+		return "suspended"
+	default:
+		return "pending"
+	}
+}
+
+func deriveHomeownerAdminStatus(isActive bool, idStatus string) string {
+	switch {
+	case !isActive:
+		return "inactive"
+	case strings.EqualFold(idStatus, "pending"):
+		return "pending"
+	case strings.EqualFold(idStatus, "approved"):
+		return "active"
+	default:
+		return "inactive"
+	}
+}
+
+func parseAdminActionPath(path, prefix string) (uint, string, bool) {
+	trimmed := strings.TrimPrefix(path, prefix)
+	parts := strings.Split(strings.Trim(trimmed, "/"), "/")
+	if len(parts) != 2 {
+		return 0, "", false
+	}
+
+	id, err := strconv.ParseUint(parts[0], 10, 64)
+	if err != nil {
+		return 0, "", false
+	}
+
+	return uint(id), parts[1], true
+}
+
+func formatActivityFromDocument(doc models.VerificationDocument) (string, string, string) {
+	displayName := adminUserDisplayName(doc.User)
+	docLabel := "document"
+	if doc.DocumentGroup == "license" {
+		docLabel = "license"
+	} else if doc.DocumentGroup == "government_id" {
+		docLabel = "government ID"
+	}
+
+	switch doc.Status {
+	case "approved":
+		return "Verification approved", displayName + "'s " + docLabel + " was approved.", "verification_approved"
+	case "rejected":
+		return "Verification rejected", displayName + "'s " + docLabel + " was rejected.", "verification_rejected"
+	case "archived":
+		return "Verification archived", displayName + "'s " + docLabel + " was archived.", "verification_archived"
+	default:
+		if doc.UpdatedAt.After(doc.CreatedAt.Add(2 * time.Second)) {
+			return "Verification reset", displayName + "'s verification was returned to pending.", "tradesperson_reverify"
+		}
+		return "Verification submitted", displayName + " uploaded a " + docLabel + ".", "verification_submitted"
+	}
+}
+
+func formatActivityFromBooking(booking models.Booking) (string, string, string, time.Time) {
+	tradespersonName := adminUserDisplayName(booking.TradespersonUser)
+	homeownerName := adminUserDisplayName(booking.HomeownerUser)
+
+	service := strings.TrimSpace(booking.Specialization)
+	if service == "" {
+		service = strings.TrimSpace(booking.Trade)
+	}
+	if service == "" {
+		service = "service request"
+	}
+
+	status := strings.ToLower(strings.TrimSpace(booking.Status))
+	eventAt := booking.UpdatedAt
+	if eventAt.IsZero() {
+		eventAt = booking.CreatedAt
+	}
+
+	switch status {
+	case "accepted":
+		return "Booking accepted",
+			tradespersonName + " accepted " + homeownerName + "'s booking for " + service + ".",
+			"booking_accepted",
+			eventAt
+	case "in progress", "in_progress", "in-progress":
+		if booking.StartedAt != nil && !booking.StartedAt.IsZero() {
+			eventAt = *booking.StartedAt
+		}
+		return "Job started",
+			tradespersonName + " started a job for " + homeownerName + ".",
+			"booking_started",
+			eventAt
+	case "completed":
+		if booking.CompletedAt != nil && !booking.CompletedAt.IsZero() {
+			eventAt = *booking.CompletedAt
+		}
+		return "Job completed",
+			tradespersonName + " completed a job for " + homeownerName + ".",
+			"booking_completed",
+			eventAt
+	case "cancelled", "canceled":
+		return "Booking cancelled",
+			"A booking between " + homeownerName + " and " + tradespersonName + " was cancelled.",
+			"booking_cancelled",
+			eventAt
+	case "under review", "under_review", "under-review", "disputed":
+		return "Booking under review",
+			homeownerName + " reported an issue for a booking with " + tradespersonName + ".",
+			"booking_under_review",
+			eventAt
+	default:
+		return "New booking request",
+			homeownerName + " requested " + service + " from " + tradespersonName + ".",
+			"booking_created",
+			booking.CreatedAt
+	}
+}
+
+func titleCase(value string) string {
+	if value == "" {
+		return ""
+	}
+	return strings.ToUpper(value[:1]) + strings.ToLower(value[1:])
 }

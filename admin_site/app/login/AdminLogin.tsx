@@ -44,7 +44,7 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch(`${apiBase}/api/users/login`, {
+      const res = await fetch(`${apiBase}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -55,9 +55,17 @@ export default function LoginPage() {
         return;
       }
       const data = await res.json();
-      if (data?.token) {
-        localStorage.setItem("admin_token", data.token);
+      if (data?.user?.role !== "admin") {
+        setLoading(false);
+        setError("This portal is only available to admin accounts.");
+        return;
       }
+      if (!data?.token) {
+        setLoading(false);
+        setError("Login response did not include a token.");
+        return;
+      }
+      localStorage.setItem("admin_token", data.token);
       router.push("/dashboard");
     } catch {
       setLoading(false);

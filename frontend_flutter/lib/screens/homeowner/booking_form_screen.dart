@@ -1,5 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../services/api_service.dart';
 import 'booking_store.dart';
 
 class BookingFormScreen extends StatefulWidget {
@@ -33,10 +38,18 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   final _descriptionController = TextEditingController();
   final _addressController = TextEditingController();
   final _budgetController = TextEditingController();
+  late final List<String> _serviceOptions;
+  final Set<String> _selectedServices = <String>{};
 
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
   bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _serviceOptions = _extractServiceOptions();
+  }
 
   @override
   void dispose() {
@@ -47,6 +60,30 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   }
 
   // ── Helpers ─────────────────────────────────────────────────────
+
+  List<String> _extractServiceOptions() {
+    final raw = <dynamic>[
+      if (widget.pro['skills'] is List) ...(widget.pro['skills'] as List),
+      if (widget.pro['services'] is List) ...(widget.pro['services'] as List),
+      if ((widget.pro['specialization'] ?? '').toString().trim().isNotEmpty)
+        widget.pro['specialization'],
+    ];
+
+    final seen = <String>{};
+    final result = <String>[];
+
+    for (final item in raw) {
+      final value = item.toString().trim();
+      if (value.isEmpty) continue;
+
+      final normalized = value.toLowerCase();
+      if (seen.add(normalized)) {
+        result.add(value);
+      }
+    }
+
+    return result;
+  }
 
   String _formatDate(DateTime date) {
     final now = DateTime.now();
@@ -127,6 +164,10 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
 
   Future<void> _confirmBooking() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedServices.isEmpty) {
+      _showError('Please select at least one service needed.');
+      return;
+    }
     if (_selectedDate == null) {
       _showError('Please select a preferred date.');
       return;
@@ -141,22 +182,69 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     // Simulate network delay
     await Future.delayed(const Duration(milliseconds: 800));
 
+    final selectedDateLabel = _formatDate(_selectedDate!);
+    final selectedTimeLabel = _formatTime(_selectedTime!);
+    final offeredBudget = double.tryParse(_budgetController.text.trim()) ?? 0;
+
     final booking = BookingModel(
       id: 'BK-${DateTime.now().millisecondsSinceEpoch}',
       tradespersonName: widget.pro['name'] as String,
       tradespersonAvatar: widget.pro['avatar'] as String,
       trade: widget.pro['trade'] as String,
-      specialization: widget.pro['specialization'] as String,
+      specialization: _selectedServices.join(', '),
       problemDescription: _descriptionController.text.trim(),
       address: _addressController.text.trim(),
-      date: _formatDate(_selectedDate!),
-      time: _formatTime(_selectedTime!),
-      offeredBudget: double.tryParse(_budgetController.text.trim()) ?? 0,
+      date: selectedDateLabel,
+      time: selectedTimeLabel,
+      offeredBudget: offeredBudget,
       status: 'Pending',
       createdAt: DateTime.now(),
     );
 
-    BookingStore.add(booking);
+    var persisted = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token')?.trim() ?? '';
+      final tradespersonUserId = int.tryParse(
+        (widget.pro['userId'] ?? widget.pro['user_id'] ?? '').toString(),
+      );
+
+      if (token.isNotEmpty && (tradespersonUserId ?? 0) > 0) {
+        final urgency = selectedDateLabel == 'Today'
+            ? 'High'
+            : selectedDateLabel == 'Tomorrow'
+            ? 'Medium'
+            : 'Low';
+        final result = await ApiService.createBooking(
+          token: token,
+          tradespersonUserId: tradespersonUserId!,
+          trade: (widget.pro['trade'] ?? '').toString(),
+          specialization: _selectedServices.join(', '),
+          problemDescription: _descriptionController.text.trim(),
+          address: _addressController.text.trim(),
+          date: selectedDateLabel,
+          time: selectedTimeLabel,
+          offeredBudget: offeredBudget,
+          urgency: urgency,
+        );
+
+        final bookingRow = (result['booking'] as Map?)?.cast<String, dynamic>();
+        if (bookingRow != null) {
+          BookingStore.upsertBackendBooking(
+            BookingStore.fromBackendRow(bookingRow),
+          );
+          persisted = true;
+        }
+      }
+    } on HttpException {
+      persisted = false;
+    } catch (_) {
+      persisted = false;
+    }
+
+    if (!persisted) {
+      BookingStore.add(booking);
+    }
 
     if (!mounted) return;
     setState(() => _isSubmitting = false);
@@ -205,6 +293,15 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildTradespersonCard(),
+                      const SizedBox(height: 20),
+                      _buildSectionLabel(
+                        'Service Needed',
+                        Icons.build_circle_rounded,
+                      ),
+                      const SizedBox(height: 6),
+                      _buildServiceHint(),
+                      const SizedBox(height: 12),
+                      _buildServiceSelector(),
                       const SizedBox(height: 24),
                       _buildSectionLabel(
                         'Problem Description',
@@ -555,6 +652,131 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         }
         return null;
       },
+    );
+  }
+
+  Widget _buildServiceHint() {
+    return Row(
+      children: [
+        Icon(
+          Icons.touch_app_rounded,
+          size: 13,
+          color: _textMuted.withValues(alpha: 0.6),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            'Select one or more services from ${widget.pro['name'].toString().split(' ').first}.',
+            style: TextStyle(
+              fontSize: 12,
+              color: _textMuted.withValues(alpha: 0.75),
+              height: 1.4,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildServiceSelector() {
+    if (_serviceOptions.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: _cardWhite,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE5E7EB), width: 1.5),
+        ),
+        child: Text(
+          'No services available.',
+          style: TextStyle(
+            fontSize: 13,
+            color: _textMuted.withValues(alpha: 0.7),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _cardWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Wrap(
+        spacing: 9,
+        runSpacing: 9,
+        children: _serviceOptions.map((service) {
+          final isSelected = _selectedServices.contains(service);
+          return GestureDetector(
+            onTap: () {
+              setState(() {
+                if (isSelected) {
+                  _selectedServices.remove(service);
+                } else {
+                  _selectedServices.add(service);
+                }
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? _primaryBlue
+                    : _primaryBlue.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(
+                  color: isSelected
+                      ? _primaryBlue
+                      : _primaryBlue.withValues(alpha: 0.2),
+                  width: 1.2,
+                ),
+                boxShadow: [
+                  if (isSelected)
+                    BoxShadow(
+                      color: _primaryBlue.withValues(alpha: 0.25),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isSelected) ...[
+                    const Icon(
+                      Icons.check_rounded,
+                      size: 13,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(width: 5),
+                  ],
+                  Text(
+                    service,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: isSelected ? Colors.white : _primaryBlue,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 

@@ -1,16 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'booking_form_screen.dart';
+import '../../services/api_service.dart';
 
 class TradespersonListScreen extends StatefulWidget {
   final String? serviceCategory;
   final bool onDutyOnly;
+  final String? initialTradespersonName;
   final VoidCallback onBookingConfirmed;
+  final void Function(
+    String tradespersonName,
+    String trade,
+    String avatar, [
+    String? tradespersonUserId,
+  ]) onMessageRequested;
 
   const TradespersonListScreen({
     super.key,
     this.serviceCategory,
-    this.onDutyOnly = false, 
+    this.onDutyOnly = false,
+    this.initialTradespersonName,
+    required this.onMessageRequested,
     required this.onBookingConfirmed,
   });
 
@@ -65,150 +76,8 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
     },
   ];
 
-  // ── Sample Tradesperson Data ────────────────────────────────────
-  final List<Map<String, dynamic>> _allPros = [
-    {
-      'id': '1',
-      'name': 'Juan Dela Cruz',
-      'trade': 'Plumbing',
-      'specialization': 'Pipe Repair & Installation',
-      'rating': 4.9,
-      'reviews': 87,
-      'barangay': 'Dayap',
-      'isOnDuty': true,
-      'avatar': 'JD',
-      'avatarColor': Color(0xFF3B82F6),
-      'experience': '8 years',
-      'completedJobs': 214,
-      'responseTime': '~10 mins',
-      'bio':
-          'Certified master plumber specializing in emergency pipe repairs and residential installations. Fast, clean, and reliable.',
-      'skills': [
-        'Pipe Repair',
-        'Leak Detection',
-        'Drain Cleaning',
-        'Water Heater',
-      ],
-    },
-    {
-      'id': '2',
-      'name': 'Maria Santos',
-      'trade': 'Electrical',
-      'specialization': 'Wiring & Panel Upgrades',
-      'rating': 4.8,
-      'reviews': 64,
-      'barangay': 'Hanggan',
-      'isOnDuty': true,
-      'avatar': 'MS',
-      'avatarColor': Color(0xFFF59E0B),
-      'experience': '6 years',
-      'completedJobs': 159,
-      'responseTime': '~15 mins',
-      'bio':
-          'Licensed electrician with expertise in residential rewiring, panel upgrades, and emergency electrical diagnostics.',
-      'skills': ['Rewiring', 'Panel Upgrade', 'Outlet Install', 'Safety Audit'],
-    },
-    {
-      'id': '3',
-      'name': 'Pedro Reyes',
-      'trade': 'HVAC',
-      'specialization': 'AC Maintenance & Repair',
-      'rating': 4.7,
-      'reviews': 41,
-      'barangay': 'Imok',
-      'isOnDuty': true,
-      'avatar': 'PR',
-      'avatarColor': Color(0xFF06B6D4),
-      'experience': '5 years',
-      'completedJobs': 98,
-      'responseTime': '~20 mins',
-      'bio':
-          'HVAC technician focused on air conditioning maintenance, freon recharging, and full unit replacements for homes.',
-      'skills': [
-        'AC Cleaning',
-        'Freon Recharge',
-        'Duct Repair',
-        'Installation',
-      ],
-    },
-    {
-      'id': '4',
-      'name': 'Ramon Flores',
-      'trade': 'Carpentry',
-      'specialization': 'Furniture & Structural Repair',
-      'rating': 4.6,
-      'reviews': 52,
-      'barangay': 'Dayap',
-      'isOnDuty': false,
-      'avatar': 'RF',
-      'avatarColor': Color(0xFF8B5CF6),
-      'experience': '10 years',
-      'completedJobs': 301,
-      'responseTime': '~30 mins',
-      'bio':
-          'Skilled carpenter offering furniture repair, cabinet making, and door/window frame fixes for residential properties.',
-      'skills': ['Cabinet Making', 'Door Repair', 'Flooring', 'Furniture Fix'],
-    },
-    {
-      'id': '5',
-      'name': 'Liza Cruz',
-      'trade': 'Appliance',
-      'specialization': 'Kitchen Appliance Repair',
-      'rating': 4.5,
-      'reviews': 33,
-      'barangay': 'Bangyas',
-      'isOnDuty': true,
-      'avatar': 'LC',
-      'avatarColor': Color(0xFFEC4899),
-      'experience': '4 years',
-      'completedJobs': 77,
-      'responseTime': '~25 mins',
-      'bio':
-          'Appliance repair technician experienced in refrigerators, washing machines, microwaves, and kitchen equipment.',
-      'skills': ['Refrigerator', 'Washing Machine', 'Microwave', 'Oven Repair'],
-    },
-    {
-      'id': '6',
-      'name': 'Carlo Mendoza',
-      'trade': 'Plumbing',
-      'specialization': 'Emergency Leak & Sewage',
-      'rating': 4.4,
-      'reviews': 29,
-      'barangay': 'Lamot',
-      'isOnDuty': false,
-      'avatar': 'CM',
-      'avatarColor': Color(0xFF3B82F6),
-      'experience': '3 years',
-      'completedJobs': 55,
-      'responseTime': '~35 mins',
-      'bio':
-          'Plumber specializing in emergency leak response and sewage line clearing for residential and light commercial units.',
-      'skills': [
-        'Leak Repair',
-        'Sewage Clearing',
-        'Toilet Fix',
-        'Pipe Fitting',
-      ],
-    },
-    {
-      'id': '7',
-      'name': 'Noel Bautista',
-      'trade': 'Electrical',
-      'specialization': 'CCTV & Smart Home Wiring',
-      'rating': 4.9,
-      'reviews': 71,
-      'barangay': 'Hanggan',
-      'isOnDuty': false,
-      'avatar': 'NB',
-      'avatarColor': Color(0xFFF59E0B),
-      'experience': '7 years',
-      'completedJobs': 188,
-      'responseTime': '~20 mins',
-      'bio':
-          'Electrician specializing in smart home wiring, CCTV installation, and structured network cabling for modern homes.',
-      'skills': ['CCTV Install', 'Smart Wiring', 'Intercom', 'Circuit Breaker'],
-    },
-  ];
+  List<Map<String, dynamic>> _allPros = [];
+  bool _isLoadingPros = true;
 
   List<Map<String, dynamic>> get _filteredPros {
     return _allPros.where((pro) {
@@ -262,6 +131,111 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
       vsync: this,
       duration: const Duration(milliseconds: 500),
     )..forward();
+
+    _loadTradespeople();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _openInitialTradespersonProfile();
+    });
+  }
+
+  void _openInitialTradespersonProfile() {
+    final requestedName = widget.initialTradespersonName?.trim();
+    if (requestedName == null || requestedName.isEmpty || !mounted) {
+      return;
+    }
+
+    final normalizedRequested = requestedName.toLowerCase();
+    final match = _allPros.where((pro) {
+      final name = (pro['name'] ?? '').toString().trim().toLowerCase();
+      return name == normalizedRequested;
+    });
+
+    if (match.isEmpty) {
+      return;
+    }
+
+    final pro = match.first;
+    setState(() {
+      _selectedCategory = (pro['trade'] ?? '').toString();
+      _searchQuery = '';
+      _searchController.clear();
+    });
+
+    _showTradespersonSheet(pro);
+  }
+
+  Future<void> _loadTradespeople() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token')?.trim();
+    if (token == null || token.isEmpty) return;
+
+    try {
+      final result = await ApiService.getTradespeople(
+        token,
+      );
+      final rows = (result['tradespeople'] as List? ?? const <dynamic>[])
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .map(_mapBackendTradesperson)
+          .toList();
+
+      if (!mounted) return;
+      setState(() {
+        _allPros = rows;
+        _isLoadingPros = false;
+      });
+      _openInitialTradespersonProfile();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _allPros = [];
+        _isLoadingPros = false;
+      });
+    }
+  }
+
+  Map<String, dynamic> _mapBackendTradesperson(Map<String, dynamic> row) {
+    final name = (row['name'] ?? 'Tradesperson').toString();
+    final trade = (row['trade'] ?? row['specialization'] ?? 'Tradesperson')
+        .toString();
+    final yearsExperience = (row['years_experience'] as num?)?.toInt() ?? 0;
+    final skills = (row['skills'] as List?)
+            ?.map((skill) => skill.toString())
+            .where((skill) => skill.trim().isNotEmpty)
+            .toList() ??
+        <String>[trade];
+
+    return {
+      'id': (row['id'] ?? '').toString(),
+      'userId': (row['user_id'] ?? '').toString(),
+      'name': name,
+      'trade': trade,
+      'specialization': (row['specialization'] ?? trade).toString(),
+      'rating': (row['rating'] as num?)?.toDouble() ?? 0.0,
+      'reviews': (row['reviews'] as num?)?.toInt() ?? 0,
+      'barangay': (row['barangay'] ?? '').toString(),
+      'isOnDuty': row['is_on_duty'] == true,
+      'avatar': _buildAvatar(name),
+      'avatarColor': _categoryColor(trade),
+      'experience': (row['experience_label'] ?? (yearsExperience > 0 ? '$yearsExperience years' : 'New')).toString(),
+      'completedJobs': (row['completed_jobs'] as num?)?.toInt() ?? 0,
+      'responseTime': (row['response_time'] ?? '—').toString(),
+      'bio': (row['bio'] ?? '').toString(),
+      'skills': skills,
+    };
+  }
+
+  String _buildAvatar(String name) {
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return 'TP';
+    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
+        .toUpperCase();
   }
 
   @override
@@ -716,6 +690,9 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
 
   Widget _buildProList() {
     final pros = _filteredPros;
+    if (_isLoadingPros) {
+      return const Center(child: CircularProgressIndicator());
+    }
     if (pros.isEmpty) {
       return Center(
         child: Column(
@@ -1139,6 +1116,7 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
     final isOnDuty = pro['isOnDuty'] as bool;
     final skills = pro['skills'] as List<String>;
     final scrollController = DraggableScrollableController();
+    bool autoScrolledToBook = false;
 
     showModalBottomSheet(
       context: context,
@@ -1151,6 +1129,20 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
           maxChildSize: 0.95,
           controller: scrollController,
           builder: (context, sheetScrollController) {
+            if (scrollToBook && !autoScrolledToBook) {
+              autoScrolledToBook = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!sheetScrollController.hasClients) {
+                  return;
+                }
+                sheetScrollController.animateTo(
+                  sheetScrollController.position.maxScrollExtent,
+                  duration: const Duration(milliseconds: 380),
+                  curve: Curves.easeOutCubic,
+                );
+              });
+            }
+
             return Container(
               decoration: const BoxDecoration(
                 color: _cardWhite,
@@ -1466,7 +1458,8 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
                                         MaterialPageRoute(
                                           builder: (_) => BookingFormScreen(
                                             pro: pro,
-                                            onBookingConfirmed: widget.onBookingConfirmed,
+                                            onBookingConfirmed:
+                                                widget.onBookingConfirmed,
                                           ),
                                         ),
                                       );
@@ -1513,48 +1506,52 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
                             ),
                           ),
 
-                          if (!isOnDuty) ...[
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton(
-                                onPressed: () {
-                                  Navigator.pop(context);
-                                  // TODO: Navigate to messaging screen
-                                },
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: _primaryBlue,
-                                  side: BorderSide(
-                                    color: _primaryBlue.withValues(alpha: 0.3),
-                                    width: 1.5,
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 14,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton(
+                              onPressed: () {
+                                Navigator.pop(context);
+                                Navigator.of(this.context).pop();
+                                widget.onMessageRequested(
+                                  (pro['name'] ?? '').toString(),
+                                  (pro['trade'] ?? '').toString(),
+                                  (pro['avatar'] ?? '').toString(),
+                                  (pro['userId'] ?? '').toString(),
+                                );
+                              },
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: _primaryBlue,
+                                side: BorderSide(
+                                  color: _primaryBlue.withValues(alpha: 0.3),
+                                  width: 1.5,
                                 ),
-                                child: const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.chat_bubble_outline_rounded,
-                                      size: 16,
-                                    ),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      'Send a Message',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ],
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
                                 ),
                               ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.chat_bubble_outline_rounded,
+                                    size: 16,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Send a Message',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ],
+                          ),
                         ],
                       ),
                     ),

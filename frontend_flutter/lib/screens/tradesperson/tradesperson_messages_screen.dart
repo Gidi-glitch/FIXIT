@@ -2,34 +2,35 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/api_service.dart';
-import 'chat_screen.dart';
+import 'tradesperson_chat_screen.dart';
 
-/// Messages Screen for the Fix It Marketplace Homeowner App.
+/// Messages Screen for the Fix It Marketplace Tradesperson App.
 /// Displays a chat list UI similar to Messenger with conversations.
-class MessagesScreen extends StatefulWidget {
-  final String? initialTradespersonName;
-  final String? initialTradespersonUserId;
-  final String? initialTrade;
+class TradespersonMessagesScreen extends StatefulWidget {
+  final String? initialHomeownerName;
+  final String? initialHomeownerUserId;
+  final String? initialService;
   final String? initialAvatar;
   final bool autoOpenChat;
   final int chatRequestId;
 
-  const MessagesScreen({
+  const TradespersonMessagesScreen({
     super.key,
-    this.initialTradespersonName,
-    this.initialTradespersonUserId,
-    this.initialTrade,
+    this.initialHomeownerName,
+    this.initialHomeownerUserId,
+    this.initialService,
     this.initialAvatar,
     this.autoOpenChat = false,
     this.chatRequestId = 0,
   });
 
   @override
-  State<MessagesScreen> createState() => _MessagesScreenState();
+  State<TradespersonMessagesScreen> createState() =>
+      _TradespersonMessagesScreenState();
 }
 
-class _MessagesScreenState extends State<MessagesScreen> {
-  // ── Color Palette ──────────────────────────────────────────────
+class _TradespersonMessagesScreenState
+    extends State<TradespersonMessagesScreen> {
   static const Color _primaryBlue = Color(0xFF1E3A8A);
   static const Color _accentOrange = Color(0xFFF97316);
   static const Color _backgroundGray = Color(0xFFF9FAFB);
@@ -52,7 +53,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
   }
 
   @override
-  void didUpdateWidget(covariant MessagesScreen oldWidget) {
+  void didUpdateWidget(covariant TradespersonMessagesScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
 
     final hasNewChatRequest = widget.chatRequestId != oldWidget.chatRequestId;
@@ -61,15 +62,15 @@ class _MessagesScreenState extends State<MessagesScreen> {
     _hasAutoOpenedChat = false;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _hasAutoOpenedChat) return;
-      _openChatForInitialTradesperson();
+      _openChatForInitialHomeowner();
     });
   }
 
-  Map<String, dynamic>? _findConversationByTradesperson(String name) {
+  Map<String, dynamic>? _findConversationByHomeowner(String name) {
     final normalized = name.trim().toLowerCase();
     if (normalized.isEmpty) return null;
 
-    final requestedUserId = (widget.initialTradespersonUserId ?? '').trim();
+    final requestedUserId = (widget.initialHomeownerUserId ?? '').trim();
 
     for (final conversation in _conversations) {
       final conversationUserId = (conversation['counterpartUserId'] ?? '')
@@ -87,16 +88,16 @@ class _MessagesScreenState extends State<MessagesScreen> {
     return null;
   }
 
-  Future<void> _openChatForInitialTradesperson() async {
-    final name = (widget.initialTradespersonName ?? '').trim();
+  Future<void> _openChatForInitialHomeowner() async {
+    final name = (widget.initialHomeownerName ?? '').trim();
     if (name.isEmpty) return;
 
-    Map<String, dynamic>? targetConversation = _findConversationByTradesperson(
+    Map<String, dynamic>? targetConversation = _findConversationByHomeowner(
       name,
     );
 
     if (targetConversation == null) {
-      final counterpartUserId = (widget.initialTradespersonUserId ?? '').trim();
+      final counterpartUserId = (widget.initialHomeownerUserId ?? '').trim();
       if (_token == null || _token!.isEmpty || counterpartUserId.isEmpty) {
         return;
       }
@@ -111,7 +112,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
               <String, dynamic>{},
           fallbackName: name,
           fallbackAvatar: widget.initialAvatar,
-          fallbackSubtitle: widget.initialTrade,
+          fallbackSubtitle: widget.initialService,
         );
         if (!mounted) return;
         _upsertConversationToTop(conversation);
@@ -128,7 +129,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
   Future<void> _openConversationChat(Map<String, dynamic> conversation) async {
     final result = await Navigator.push<Map<String, dynamic>>(
       context,
-      MaterialPageRoute(builder: (_) => ChatScreen(conversation: conversation)),
+      MaterialPageRoute(
+        builder: (_) => TradespersonChatScreen(conversation: conversation),
+      ),
     );
 
     if (!mounted || result == null) return;
@@ -172,12 +175,12 @@ class _MessagesScreenState extends State<MessagesScreen> {
         : <String, dynamic>{
             'id': updatedId,
             'name': update['name'] ?? 'Conversation',
-            'avatar': update['avatar'] ?? 'TP',
+            'avatar': update['avatar'] ?? 'HO',
             'lastMessage': '',
             'time': '',
             'unreadCount': 0,
             'isOnline': true,
-            'trade': update['trade'] ?? 'Tradesperson',
+            'service': update['service'] ?? 'Homeowner Request',
           };
 
     final merged = <String, dynamic>{...base, ...update};
@@ -197,12 +200,12 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
     return _conversations.where((conversation) {
       final name = (conversation['name'] ?? '').toString().toLowerCase();
-      final trade = (conversation['trade'] ?? '').toString().toLowerCase();
+      final service = (conversation['service'] ?? '').toString().toLowerCase();
       final lastMessage = (conversation['lastMessage'] ?? '')
           .toString()
           .toLowerCase();
       return name.contains(query) ||
-          trade.contains(query) ||
+          service.contains(query) ||
           lastMessage.contains(query);
     }).toList();
   }
@@ -235,7 +238,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
       if (widget.autoOpenChat && !_hasAutoOpenedChat) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || _hasAutoOpenedChat) return;
-          _openChatForInitialTradesperson();
+          _openChatForInitialHomeowner();
         });
       }
     } catch (_) {
@@ -256,7 +259,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
     final name = (row['name'] ?? fallbackName ?? 'Conversation').toString();
     final avatar = (row['avatar'] ?? fallbackAvatar ?? _initialsFromName(name))
         .toString();
-    final trade = (row['trade'] ?? fallbackSubtitle ?? 'Tradesperson')
+    final service = (row['service'] ?? fallbackSubtitle ?? 'Homeowner')
         .toString();
 
     return {
@@ -268,7 +271,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
       'time': _formatConversationTime((row['last_message_at'] ?? '').toString()),
       'unreadCount': (row['unread_count'] as num?)?.toInt() ?? 0,
       'isOnline': row['is_online'] == true,
-      'trade': trade,
+      'service': service,
     };
   }
 
@@ -296,7 +299,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
         .split(RegExp(r'\s+'))
         .where((part) => part.isNotEmpty)
         .toList();
-    if (parts.isEmpty) return 'TP';
+    if (parts.isEmpty) return 'HO';
     if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
     return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
         .toUpperCase();
@@ -316,13 +319,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── App Bar ─────────────────────────────────────────────
             _buildAppBar(),
-
-            // ── Search Bar ──────────────────────────────────────────
             _buildSearchBar(),
-
-            // ── Messages List ───────────────────────────────────────
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
@@ -472,7 +470,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           child: Row(
             children: [
-              // ── Avatar with Online Indicator ──────────────────────
               Stack(
                 children: [
                   Container(
@@ -480,7 +477,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                     height: 56,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: conversation['trade'] == 'Support'
+                        colors: conversation['service'] == 'Support'
                             ? [_accentOrange, const Color(0xFFFB923C)]
                             : [_primaryBlue, const Color(0xFF3B82F6)],
                         begin: Alignment.topLeft,
@@ -516,8 +513,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
                 ],
               ),
               const SizedBox(width: 14),
-
-              // ── Message Content ───────────────────────────────────
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

@@ -2,12 +2,14 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"fixit-backend/config"
 	"fixit-backend/models"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -63,7 +65,23 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		// Extract claims
 		claims, ok := token.Claims.(jwt.MapClaims)
 		if !ok {
-			http.Error(w, "Invalid token claims", http.StatusUnauthorized)
+			writeAuthError(w, http.StatusUnauthorized, "Invalid token claims")
+			return
+		}
+
+		userID, ok := claims["user_id"].(float64)
+		if !ok {
+			writeAuthError(w, http.StatusUnauthorized, "Invalid token claims")
+			return
+		}
+
+		var user models.User
+		if err := config.DB.First(&user, uint(userID)).Error; err != nil {
+			writeAuthError(w, http.StatusUnauthorized, "User not found")
+			return
+		}
+		if !user.IsActive {
+			writeAuthError(w, http.StatusForbidden, "Your account has been suspended or banned. Please contact support.")
 			return
 		}
 
@@ -85,10 +103,16 @@ func AdminOnly(next http.Handler) http.Handler {
 
 		role, _ := claims["role"].(string)
 		if role != "admin" {
-			http.Error(w, "Forbidden: admin access required", http.StatusForbidden)
+			writeAuthError(w, http.StatusForbidden, "Forbidden: admin access required")
 			return
 		}
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func writeAuthError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": message})
 }

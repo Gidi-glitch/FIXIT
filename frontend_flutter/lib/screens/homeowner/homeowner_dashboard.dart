@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'bookings_screen.dart';
+import 'booking_details_screen.dart';
+import 'booking_store.dart';
 import 'messages_screen.dart';
 import 'profile_screen.dart';
+import '../../services/api_service.dart';
 import 'tradesperson_list_screen.dart';
 
 /// Homeowner Dashboard for the Fix It Marketplace Android app.
@@ -20,6 +24,16 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
     with SingleTickerProviderStateMixin {
   int _currentNavIndex = 0;
   final _searchController = TextEditingController();
+  String _searchQuery = '';
+  String _fullName = 'Gideon Alcantara';
+  String _firstName = 'Gideon';
+  String _barangay = '';
+  String? _profileImagePath;
+  String? _messageTradespersonName;
+  String? _messageTrade;
+  String? _messageAvatar;
+  String? _messageTradespersonUserId;
+  int _messageChatRequestId = 0;
 
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
@@ -63,56 +77,9 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
     },
   ];
 
-  final List<Map<String, dynamic>> _availablePros = [
-    {
-      'name': 'Juan Dela Cruz',
-      'trade': 'Plumber',
-      'rating': 4.9,
-      'barangay': 'Dayap',
-      'isOnDuty': true,
-      'avatar': 'JD',
-    },
-    {
-      'name': 'Maria Santos',
-      'trade': 'Electrician',
-      'rating': 4.8,
-      'barangay': 'Hanggan',
-      'isOnDuty': true,
-      'avatar': 'MS',
-    },
-    {
-      'name': 'Pedro Reyes',
-      'trade': 'HVAC Tech',
-      'rating': 4.7,
-      'barangay': 'Imok',
-      'isOnDuty': true,
-      'avatar': 'PR',
-    },
-  ];
+  List<Map<String, dynamic>> _availablePros = [];
 
-  final List<Map<String, dynamic>> _myBookings = [
-    {
-      'service': 'Pipe Leak Repair',
-      'tradesperson': 'Juan Dela Cruz',
-      'date': 'Today, 2:00 PM',
-      'status': 'In Progress',
-      'statusColor': const Color(0xFF3B82F6),
-    },
-    {
-      'service': 'Electrical Wiring Check',
-      'tradesperson': 'Maria Santos',
-      'date': 'Tomorrow, 9:00 AM',
-      'status': 'Accepted',
-      'statusColor': const Color(0xFF10B981),
-    },
-    {
-      'service': 'AC Maintenance',
-      'tradesperson': 'Pedro Reyes',
-      'date': 'Mar 25, 10:00 AM',
-      'status': 'Pending',
-      'statusColor': const Color(0xFFF59E0B),
-    },
-  ];
+  List<BookingModel> get _myBookings => BookingStore.all.take(3).toList();
 
   @override
   void initState() {
@@ -126,6 +93,101 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
       curve: Curves.easeOut,
     );
     _fadeController.forward();
+    _loadProfileData();
+    _loadAvailablePros();
+    _syncBookings();
+  }
+
+  Future<void> _syncBookings() async {
+    await BookingStore.syncFromBackend();
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  void _handleBookingConfirmed() {
+    setState(() => _currentNavIndex = 1);
+    _syncBookings();
+  }
+
+  Future<void> _loadProfileData() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final token = prefs.getString('token')?.trim();
+    if (token != null && token.isNotEmpty) {
+      try {
+        final result = await ApiService.getProfile(token);
+        final user =
+            (result['user'] as Map?)?.cast<String, dynamic>() ??
+            <String, dynamic>{};
+        final firstNameFromApi = (user['first_name'] ?? '').toString().trim();
+        final lastNameFromApi = (user['last_name'] ?? '').toString().trim();
+        final fullNameFromApi = '$firstNameFromApi $lastNameFromApi'.trim();
+        final profileImageUrl = (user['profile_image_url'] ?? '')
+            .toString()
+            .trim();
+        final barangayFromApi = (user['barangay'] ?? '').toString().trim();
+
+        if (firstNameFromApi.isNotEmpty) {
+          await prefs.setString('first_name', firstNameFromApi);
+        }
+        if (lastNameFromApi.isNotEmpty) {
+          await prefs.setString('last_name', lastNameFromApi);
+        }
+        if (fullNameFromApi.isNotEmpty) {
+          await prefs.setString('full_name', fullNameFromApi);
+        }
+        if (profileImageUrl.isNotEmpty) {
+          await prefs.setString('profile_image_url', profileImageUrl);
+        } else {
+          await prefs.remove('profile_image_url');
+        }
+        if (barangayFromApi.isNotEmpty) {
+          await prefs.setString('barangay', barangayFromApi);
+        }
+        final userId = (user['id'] ?? '').toString().trim();
+        if (userId.isNotEmpty) {
+          await prefs.setString('user_id', userId);
+        }
+      } catch (_) {
+        // Fallback to cached values.
+      }
+    }
+
+    final firstName = prefs.getString('first_name')?.trim();
+    final lastName = prefs.getString('last_name')?.trim();
+    final fullNameFromPrefs = prefs.getString('full_name')?.trim();
+    final fullName = fullNameFromPrefs?.isNotEmpty == true
+        ? fullNameFromPrefs!
+        : '${firstName ?? ''} ${lastName ?? ''}'.trim();
+
+    if (!mounted) return;
+    setState(() {
+      _firstName = (firstName?.isNotEmpty == true)
+          ? firstName!
+          : (fullName.isNotEmpty ? fullName.split(' ').first : 'Gideon');
+      _fullName = fullName.isNotEmpty ? fullName : 'Gideon Alcantara';
+      _barangay = prefs.getString('barangay')?.trim() ?? '';
+      _profileImagePath = prefs.getString('profile_image_url');
+    });
+  }
+
+  String get _locationLabel {
+    if (_barangay.trim().isEmpty) {
+      return 'Calauan, Laguna';
+    }
+    return '${_barangay.trim()}, Calauan, Laguna';
+  }
+
+  String get _initials {
+    final parts = _fullName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return 'GA';
+    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
+        .toUpperCase();
   }
 
   @override
@@ -142,6 +204,120 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
     return 'Good evening';
   }
 
+  List<Map<String, dynamic>> get _filteredServiceCategories {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return _serviceCategories;
+
+    return _serviceCategories.where((category) {
+      final name = (category['name'] as String).toLowerCase();
+      return name.contains(query);
+    }).toList();
+  }
+
+  List<Map<String, dynamic>> get _filteredAvailablePros {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return _availablePros;
+
+    return _availablePros.where((pro) {
+      final name = (pro['name'] as String).toLowerCase();
+      final trade = (pro['trade'] as String).toLowerCase();
+      final barangay = (pro['barangay'] as String).toLowerCase();
+      return name.contains(query) ||
+          trade.contains(query) ||
+          barangay.contains(query);
+    }).toList();
+  }
+
+  List<BookingModel> get _filteredBookings {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return _myBookings;
+
+    return _myBookings.where((booking) {
+      final service = booking.specialization.toLowerCase();
+      final tradesperson = booking.tradespersonName.toLowerCase();
+      final date = booking.date.toLowerCase();
+      final time = booking.time.toLowerCase();
+      final status = booking.status.toLowerCase();
+      return service.contains(query) ||
+          tradesperson.contains(query) ||
+          date.contains(query) ||
+          time.contains(query) ||
+          status.contains(query);
+    }).toList();
+  }
+
+  Color _bookingStatusColor(String status) {
+    switch (status) {
+      case 'In Progress':
+        return const Color(0xFF3B82F6);
+      case 'Accepted':
+      case 'Completed':
+        return const Color(0xFF10B981);
+      case 'Pending':
+      case 'Under Review':
+        return const Color(0xFFF59E0B);
+      case 'Disputed':
+      case 'Cancelled':
+        return const Color(0xFFEF4444);
+      default:
+        return _textMuted;
+    }
+  }
+
+  Future<void> _loadAvailablePros() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token')?.trim();
+    if (token == null || token.isEmpty) {
+      return;
+    }
+
+    try {
+      final result = await ApiService.getTradespeople(token);
+      final rows = (result['tradespeople'] as List? ?? const <dynamic>[])
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .map(
+            (row) => <String, dynamic>{
+              'name': (row['name'] ?? 'Tradesperson').toString(),
+              'trade': (row['trade'] ?? row['specialization'] ?? 'Tradesperson')
+                  .toString(),
+              'rating': (row['rating'] as num?)?.toDouble() ?? 0.0,
+              'barangay': (row['barangay'] ?? '').toString(),
+              'isOnDuty': row['is_on_duty'] == true,
+              'avatar': _buildInitials((row['name'] ?? '').toString()),
+              'userId': (row['user_id'] ?? '').toString(),
+            },
+          )
+          .toList();
+
+      if (!mounted) return;
+      setState(() {
+        _availablePros = rows;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _availablePros = [];
+      });
+    }
+  }
+
+  void _openMessagesForTradesperson(
+    String name,
+    String trade,
+    String avatar, [
+    String? userId,
+  ]) {
+    setState(() {
+      _messageTradespersonName = name.trim();
+      _messageTrade = trade.trim();
+      _messageAvatar = avatar.trim();
+      _messageTradespersonUserId = userId?.trim();
+      _messageChatRequestId++;
+      _currentNavIndex = 2;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -155,14 +331,35 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
           index: _currentNavIndex,
           children: [
             _buildHomeContent(),
-            const BookingsScreen(),
-            const MessagesScreen(),
-            const ProfileScreen(),
+            BookingsScreen(onMessageRequested: _openMessagesForTradesperson),
+            MessagesScreen(
+              initialTradespersonName: _messageTradespersonName,
+              initialTrade: _messageTrade,
+              initialAvatar: _messageAvatar,
+              initialTradespersonUserId: _messageTradespersonUserId,
+              autoOpenChat: _messageChatRequestId > 0,
+              chatRequestId: _messageChatRequestId,
+            ),
+            ProfileScreen(onMessageRequested: _openMessagesForTradesperson),
           ],
         ),
         bottomNavigationBar: _buildBottomNavigation(),
       ),
     );
+  }
+
+  String _buildInitials(String name) {
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return 'TP';
+    if (parts.length == 1) {
+      return parts.first.substring(0, 1).toUpperCase();
+    }
+    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
+        .toUpperCase();
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -219,7 +416,7 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${_getGreeting()}, Gideon',
+                  '${_getGreeting()}, $_firstName',
                   style: const TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w800,
@@ -247,7 +444,7 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        'Dayap, Calauan',
+                        _locationLabel,
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -318,15 +515,33 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                 ),
               ],
             ),
-            child: const Center(
-              child: Text(
-                'GA',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: _profileImagePath != null && _profileImagePath!.isNotEmpty
+                  ? Image.network(
+                      _profileImagePath!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Center(
+                        child: Text(
+                          _initials,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    )
+                  : Center(
+                      child: Text(
+                        _initials,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
             ),
           ),
         ],
@@ -411,8 +626,9 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                     context,
                     MaterialPageRoute(
                       builder: (_) => TradespersonListScreen(
-                        onBookingConfirmed: () =>
-                            setState(() => _currentNavIndex = 1),
+                        onDutyOnly: true,
+                        onMessageRequested: _openMessagesForTradesperson,
+                        onBookingConfirmed: _handleBookingConfirmed,
                       ),
                     ),
                   ),
@@ -448,8 +664,8 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                     context,
                     MaterialPageRoute(
                       builder: (_) => TradespersonListScreen(
-                        onBookingConfirmed: () =>
-                            setState(() => _currentNavIndex = 1),
+                        onMessageRequested: _openMessagesForTradesperson,
+                        onBookingConfirmed: _handleBookingConfirmed,
                       ),
                     ),
                   ),
@@ -504,6 +720,7 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
       ),
       child: TextField(
         controller: _searchController,
+        onChanged: (value) => setState(() => _searchQuery = value),
         style: const TextStyle(
           fontSize: 15,
           color: _textDark,
@@ -521,18 +738,31 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
             color: _textMuted,
             size: 22,
           ),
-          suffixIcon: Container(
-            margin: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: _primaryBlue.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(
-              Icons.tune_rounded,
-              color: _primaryBlue,
-              size: 20,
-            ),
-          ),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+                  tooltip: 'Clear search',
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: _textMuted,
+                    size: 20,
+                  ),
+                )
+              : Container(
+                  margin: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _primaryBlue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.tune_rounded,
+                    color: _primaryBlue,
+                    size: 20,
+                  ),
+                ),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
@@ -548,6 +778,8 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildServiceCategories() {
+    final visibleCategories = _filteredServiceCategories;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -563,69 +795,82 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
             ),
           ),
         ),
-        SizedBox(
-          height: 110,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: _serviceCategories.length,
-            itemBuilder: (context, index) {
-              final category = _serviceCategories[index];
-              return GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => TradespersonListScreen(
-                      serviceCategory: category['name'] as String,
-                      onBookingConfirmed: () =>
-                          setState(() => _currentNavIndex = 1),
+        if (visibleCategories.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              'No matching service categories found.',
+              style: TextStyle(
+                fontSize: 13,
+                color: _textMuted,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          )
+        else
+          SizedBox(
+            height: 110,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: visibleCategories.length,
+              itemBuilder: (context, index) {
+                final category = visibleCategories[index];
+                return GestureDetector(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TradespersonListScreen(
+                        serviceCategory: category['name'] as String,
+                        onMessageRequested: _openMessagesForTradesperson,
+                        onBookingConfirmed: _handleBookingConfirmed,
+                      ),
                     ),
                   ),
-                ),
-                child: Container(
-                  width: 85,
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: (category['color'] as Color).withValues(
-                            alpha: 0.12,
-                          ),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
+                  child: Container(
+                    width: 85,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
                             color: (category['color'] as Color).withValues(
-                              alpha: 0.2,
+                              alpha: 0.12,
                             ),
-                            width: 1.5,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: (category['color'] as Color).withValues(
+                                alpha: 0.2,
+                              ),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Icon(
+                            category['icon'] as IconData,
+                            color: category['color'] as Color,
+                            size: 28,
                           ),
                         ),
-                        child: Icon(
-                          category['icon'] as IconData,
-                          color: category['color'] as Color,
-                          size: 28,
+                        const SizedBox(height: 10),
+                        Text(
+                          category['name'] as String,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _textDark,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        category['name'] as String,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: _textDark,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
-        ),
       ],
     );
   }
@@ -635,6 +880,8 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildAvailableNowSection() {
+    final visiblePros = _filteredAvailablePros;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -658,8 +905,8 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                   MaterialPageRoute(
                     builder: (_) => TradespersonListScreen(
                       onDutyOnly: true,
-                      onBookingConfirmed: () =>
-                          setState(() => _currentNavIndex = 1),
+                      onMessageRequested: _openMessagesForTradesperson,
+                      onBookingConfirmed: _handleBookingConfirmed,
                     ),
                   ),
                 ),
@@ -688,147 +935,177 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
             ],
           ),
         ),
-        SizedBox(
-          height: 160,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: _availablePros.length,
-            itemBuilder: (context, index) {
-              final pro = _availablePros[index];
-              return Container(
-                width: 160,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: _cardWhite,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
+        if (visiblePros.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              'No matching professionals found.',
+              style: TextStyle(
+                fontSize: 13,
+                color: _textMuted,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          )
+        else
+          SizedBox(
+            height: 160,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: visiblePros.length,
+              itemBuilder: (context, index) {
+                final pro = visiblePros[index];
+                return GestureDetector(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TradespersonListScreen(
+                        onDutyOnly: true,
+                        initialTradespersonName: (pro['name'] ?? '').toString(),
+                        onMessageRequested: _openMessagesForTradesperson,
+                        onBookingConfirmed: _handleBookingConfirmed,
+                      ),
                     ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [_primaryBlue, Color(0xFF3B82F6)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Center(
-                            child: Text(
-                              pro['avatar'] as String,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _successGreen.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Row(
-                            children: [
-                              Icon(Icons.circle, color: _successGreen, size: 6),
-                              SizedBox(width: 4),
-                              Text(
-                                'On-duty',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: _successGreen,
-                                ),
-                              ),
-                            ],
-                          ),
+                  ),
+                  child: Container(
+                    width: 160,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: _cardWhite,
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    Text(
-                      pro['name'] as String,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: _textDark,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      pro['trade'] as String,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: _textMuted,
-                      ),
-                    ),
-                    const Spacer(),
-                    Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(
-                          Icons.star_rounded,
-                          color: _warningYellow,
-                          size: 16,
+                        Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [_primaryBlue, Color(0xFF3B82F6)],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  pro['avatar'] as String,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _successGreen.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(
+                                    Icons.circle,
+                                    color: _successGreen,
+                                    size: 6,
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'On-duty',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: _successGreen,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(height: 12),
                         Text(
-                          '${pro['rating']}',
+                          pro['name'] as String,
                           style: const TextStyle(
-                            fontSize: 12,
+                            fontSize: 14,
                             fontWeight: FontWeight.w700,
                             color: _textDark,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          pro['trade'] as String,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: _textMuted,
+                          ),
                         ),
                         const Spacer(),
-                        Icon(
-                          Icons.location_on_outlined,
-                          color: _textMuted.withValues(alpha: 0.7),
-                          size: 14,
-                        ),
-                        const SizedBox(width: 2),
-                        Flexible(
-                          child: Text(
-                            pro['barangay'] as String,
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w500,
-                              color: _textMuted.withValues(alpha: 0.8),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.star_rounded,
+                              color: _warningYellow,
+                              size: 16,
                             ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${pro['rating']}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: _textDark,
+                              ),
+                            ),
+                            const Spacer(),
+                            Icon(
+                              Icons.location_on_outlined,
+                              color: _textMuted.withValues(alpha: 0.7),
+                              size: 14,
+                            ),
+                            const SizedBox(width: 2),
+                            Flexible(
+                              child: Text(
+                                pro['barangay'] as String,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                  color: _textMuted.withValues(alpha: 0.8),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
-                ),
-              );
-            },
+                  ),
+                );
+              },
+            ),
           ),
-        ),
       ],
     );
   }
@@ -838,6 +1115,8 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildMyBookingsSection() {
+    final visibleBookings = _filteredBookings;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -856,7 +1135,7 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                 ),
               ),
               TextButton(
-                onPressed: () {},
+                onPressed: () => setState(() => _currentNavIndex = 1),
                 style: TextButton.styleFrom(
                   foregroundColor: _primaryBlue,
                   padding: const EdgeInsets.symmetric(
@@ -882,113 +1161,152 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
             ],
           ),
         ),
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          itemCount: _myBookings.length,
-          itemBuilder: (context, index) {
-            final booking = _myBookings[index];
-            return Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: _cardWhite,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+        if (visibleBookings.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              'No matching bookings found.',
+              style: TextStyle(
+                fontSize: 13,
+                color: _textMuted,
+                fontWeight: FontWeight.w500,
               ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      color: (booking['statusColor'] as Color).withValues(
-                        alpha: 0.12,
+            ),
+          )
+        else
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            itemCount: visibleBookings.length,
+            itemBuilder: (context, index) {
+              final booking = visibleBookings[index];
+              final statusColor = _bookingStatusColor(booking.status);
+              return InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () async {
+                  final result = await Navigator.push<Map<String, dynamic>>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => BookingDetailsScreen(booking: booking),
+                    ),
+                  );
+
+                  if (!mounted) return;
+
+                  if (result?['openMessage'] == true) {
+                    final name = (result?['tradespersonName'] ?? '')
+                        .toString()
+                        .trim();
+                    final trade = (result?['trade'] ?? '').toString().trim();
+                    final avatar = (result?['avatar'] ?? '').toString().trim();
+                    if (name.isNotEmpty) {
+                      _openMessagesForTradesperson(name, trade, avatar);
+                      return;
+                    }
+                  }
+
+                  setState(() {
+                    _currentNavIndex = 1;
+                  });
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _cardWhite,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
                       ),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(
-                      Icons.build_rounded,
-                      color: booking['statusColor'] as Color,
-                      size: 24,
-                    ),
+                    ],
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          booking['service'] as String,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: _textDark,
-                          ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(14),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          booking['tradesperson'] as String,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: _textMuted,
-                          ),
+                        child: Icon(
+                          Icons.build_rounded,
+                          color: statusColor,
+                          size: 24,
                         ),
-                        const SizedBox(height: 4),
-                        Row(
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(
-                              Icons.access_time_rounded,
-                              size: 12,
-                              color: _textMuted.withValues(alpha: 0.7),
-                            ),
-                            const SizedBox(width: 4),
                             Text(
-                              booking['date'] as String,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                                color: _textMuted.withValues(alpha: 0.8),
+                              booking.specialization,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: _textDark,
                               ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              booking.tradespersonName,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: _textMuted,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.access_time_rounded,
+                                  size: 12,
+                                  color: _textMuted.withValues(alpha: 0.7),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${booking.date}, ${booking.time}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                    color: _textMuted.withValues(alpha: 0.8),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: (booking['statusColor'] as Color).withValues(
-                        alpha: 0.12,
                       ),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      booking['status'] as String,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: booking['statusColor'] as Color,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          booking.status,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: statusColor,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
-              ),
-            );
-          },
-        ),
+                ),
+              );
+            },
+          ),
       ],
     );
   }
@@ -1029,7 +1347,12 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isActive = _currentNavIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _currentNavIndex = index),
+      onTap: () {
+        setState(() => _currentNavIndex = index);
+        if (index == 0 || index == 3) {
+          _loadProfileData();
+        }
+      },
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),

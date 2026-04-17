@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"fixit-backend/models"
-	"fixit-backend/services"
 
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -40,12 +41,57 @@ func ConnectDB() {
 		&models.HomeownerProfile{},
 		&models.TradespersonProfile{},
 		&models.VerificationDocument{},
-		&models.ActivityLog{},
+		&models.UserProfilePhoto{},
+		&models.Conversation{},
+		&models.ChatMessage{},
+		&models.Booking{},
 	); err != nil {
 		log.Fatal("❌ Failed to migrate database:", err)
 	}
 
-	if err := services.BackfillHomeownerStatusID(db); err != nil {
-		log.Printf("⚠️ Failed to backfill homeowner status_id: %v", err)
+	seedAdminUser(db)
+}
+
+func seedAdminUser(db *gorm.DB) {
+	email := strings.ToLower(strings.TrimSpace(os.Getenv("ADMIN_EMAIL")))
+	password := strings.TrimSpace(os.Getenv("ADMIN_PASSWORD"))
+	fullName := strings.TrimSpace(os.Getenv("ADMIN_FULL_NAME"))
+
+	if email == "" || password == "" {
+		return
 	}
+
+	var existing models.User
+	err := db.Where("email = ?", email).First(&existing).Error
+	if err == nil {
+		if existing.Role != "admin" {
+			log.Printf("⚠️ Existing user %s is not an admin; skipping admin bootstrap", email)
+		}
+		return
+	}
+	if err != nil && err != gorm.ErrRecordNotFound {
+		log.Printf("⚠️ Failed to check admin bootstrap user: %v", err)
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		log.Printf("⚠️ Failed to hash ADMIN_PASSWORD: %v", err)
+		return
+	}
+
+	admin := models.User{
+		Email:        email,
+		FullName:     fullName,
+		PasswordHash: string(hashedPassword),
+		Role:         "admin",
+		IsActive:     true,
+	}
+
+	if err := db.Create(&admin).Error; err != nil {
+		log.Printf("⚠️ Failed to create bootstrap admin user: %v", err)
+		return
+	}
+
+	log.Printf("✅ Bootstrapped admin user: %s", email)
 }

@@ -9,9 +9,8 @@ class ApiService {
   /*static const String baseUrl =
       "http://10.0.2.2:8080";*/ // Use 10.0.2.2 for Android emulator
 
-
   static const String _emulatorUrl = "http://10.0.2.2:8080";
-  static const String _physicalUrl = "http://192.168.1.6:8080";
+  static const String _physicalUrl = "http://192.168.1.10:8080";
 
   static String baseUrl = _emulatorUrl; // safe default
 
@@ -135,6 +134,216 @@ class ApiService {
     return _decodeResponse(response);
   }
 
+  static Future<Map<String, dynamic>> uploadProfileImage({
+    required String token,
+    required File image,
+  }) async {
+    final request =
+        http.MultipartRequest('POST', Uri.parse('$baseUrl/api/profile/photo'))
+          ..headers['Authorization'] = 'Bearer $token'
+          ..files.add(
+            await http.MultipartFile.fromPath('profile_image', image.path),
+          );
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    return _decodeResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> updateProfile({
+    required String token,
+    required Map<String, dynamic> data,
+  }) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/api/profile/me'),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": 'Bearer $token',
+      },
+      body: jsonEncode(data),
+    );
+
+    return _decodeResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> changePassword({
+    required String token,
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/auth/change-password'),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": 'Bearer $token',
+      },
+      body: jsonEncode({
+        'current_password': currentPassword,
+        'new_password': newPassword,
+      }),
+    );
+
+    return _decodeResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> getTradespeople(
+    String token, {
+    String? search,
+    String? category,
+    bool onDutyOnly = false,
+  }) async {
+    final query = <String, String>{};
+    if (search != null && search.trim().isNotEmpty) {
+      query['search'] = search.trim();
+    }
+    if (category != null && category.trim().isNotEmpty) {
+      query['category'] = category.trim();
+    }
+    if (onDutyOnly) {
+      query['on_duty'] = 'true';
+    }
+
+    final uri = Uri.parse(
+      '$baseUrl/api/tradespeople',
+    ).replace(queryParameters: query.isEmpty ? null : query);
+
+    final response = await http.get(uri, headers: _authorizedHeaders(token));
+
+    return _decodeResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> getBookings(
+    String token, {
+    String? status,
+  }) async {
+    final query = <String, String>{};
+    if (status != null && status.trim().isNotEmpty) {
+      query['status'] = status.trim();
+    }
+
+    final uri = Uri.parse(
+      '$baseUrl/api/bookings',
+    ).replace(queryParameters: query.isEmpty ? null : query);
+
+    final response = await http.get(uri, headers: _authorizedHeaders(token));
+
+    return _decodeResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> createBooking({
+    required String token,
+    required int tradespersonUserId,
+    required String trade,
+    required String specialization,
+    required String problemDescription,
+    required String address,
+    required String date,
+    required String time,
+    required double offeredBudget,
+    String urgency = 'Medium',
+    String barangay = '',
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/bookings'),
+      headers: _authorizedHeaders(token),
+      body: jsonEncode({
+        'tradesperson_user_id': tradespersonUserId,
+        'trade': trade,
+        'specialization': specialization,
+        'problem_description': problemDescription,
+        'address': address,
+        'barangay': barangay,
+        'date': date,
+        'time': time,
+        'offered_budget': offeredBudget,
+        'urgency': urgency,
+      }),
+    );
+
+    return _decodeResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> updateBookingStatus({
+    required String token,
+    required int bookingId,
+    required String status,
+  }) async {
+    final response = await http.patch(
+      Uri.parse('$baseUrl/api/bookings/$bookingId/status'),
+      headers: _authorizedHeaders(token),
+      body: jsonEncode({'status': status}),
+    );
+
+    return _decodeResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> getConversations(String token) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/conversations'),
+      headers: _authorizedHeaders(token),
+    );
+
+    return _decodeResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> ensureConversation({
+    required String token,
+    required String counterpartUserId,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/conversations'),
+      headers: _authorizedHeaders(token),
+      body: jsonEncode({
+        'counterpart_user_id': int.tryParse(counterpartUserId) ?? 0,
+      }),
+    );
+
+    return _decodeResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> getConversationMessages({
+    required String token,
+    required String conversationId,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/conversations/$conversationId/messages'),
+      headers: _authorizedHeaders(token),
+    );
+
+    return _decodeResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> sendConversationMessage({
+    required String token,
+    required String conversationId,
+    required String text,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/conversations/$conversationId/messages'),
+      headers: _authorizedHeaders(token),
+      body: jsonEncode({'text': text}),
+    );
+
+    return _decodeResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> deleteConversation({
+    required String token,
+    required String conversationId,
+  }) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/api/conversations/$conversationId'),
+      headers: _authorizedHeaders(token),
+    );
+
+    return _decodeResponse(response);
+  }
+
+  static Map<String, String> _authorizedHeaders(String token) => {
+    "Content-Type": "application/json",
+    "Authorization": 'Bearer $token',
+  };
+
   static Map<String, dynamic> _decodeResponse(http.Response response) {
     final responseBody = response.body.isNotEmpty
         ? jsonDecode(response.body) as Map<String, dynamic>
@@ -186,5 +395,4 @@ class ApiService {
     );
     _decodeResponse(response);
   }
-
 }
