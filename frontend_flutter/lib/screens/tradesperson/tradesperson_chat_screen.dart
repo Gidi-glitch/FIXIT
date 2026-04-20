@@ -315,7 +315,9 @@ class _TradespersonChatScreenState extends State<TradespersonChatScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Live chat currently supports text messages only.'),
+          content: const Text(
+            'Live chat currently supports text messages only.',
+          ),
           behavior: SnackBarBehavior.floating,
           backgroundColor: _accentOrange,
         ),
@@ -646,7 +648,8 @@ class _TradespersonChatScreenState extends State<TradespersonChatScreen> {
 
   Future<void> _pickFileOrImageAttachment() async {
     try {
-      final result = await FilePicker.pickFiles(
+      final filePicker = FilePicker.platform;
+      final result = await filePicker.pickFiles(
         type: FileType.any,
         allowMultiple: false,
       );

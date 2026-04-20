@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 // ─────────────────────────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────────────────────────
-type Page = "dashboard" | "verification" | "tradesmen" | "homeowners" | "ratings" | "reports" | "profile" | "settings";
+type Page = "dashboard" | "verification" | "tradesmen" | "homeowners" | "ratings" | "reports" | "settings";
 type ToastType = "success" | "error" | "info";
 type ReportTab = "all" | "homeowner" | "tradesman";
 
@@ -258,6 +258,20 @@ const isSameDay = (left: Date, right: Date) =>
 
 const formatHourLabel = (hour: number) =>
   new Intl.DateTimeFormat("en-US", { hour: "numeric" }).format(new Date(2025, 0, 1, hour));
+
+const ROWS_PER_PAGE = 6;
+
+const pageCountFor = (totalItems: number, pageSize = ROWS_PER_PAGE) =>
+  Math.max(1, Math.ceil(totalItems / pageSize));
+
+const paginateItems = <T,>(
+  items: T[],
+  page: number,
+  pageSize = ROWS_PER_PAGE
+) => {
+  const start = (page - 1) * pageSize;
+  return items.slice(start, start + pageSize);
+};
 
 const parseDashboardDate = (value?: string) => {
   if (!value) return null;
@@ -564,6 +578,14 @@ const averageRating = (reviews: TradesmanReview[]) => {
 
 const formatRatingValue = (value: number) => value.toFixed(1);
 
+const formatReportId = (value: string) => {
+  const digits = (value.match(/\d+/g) ?? []).join("");
+  if (!digits) return "RPRT-000";
+  const number = Number.parseInt(digits, 10);
+  if (Number.isNaN(number)) return "RPRT-000";
+  return `RPRT-${String(number).padStart(3, "0")}`;
+};
+
 const activityDot = (type: string) => {
   switch (type) {
     case "verification_approved":
@@ -829,6 +851,126 @@ const Btn = ({
   );
 };
 
+const ActionIconButton = ({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) => {
+  const [hov, setHov] = useState(false);
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        width: 34,
+        height: 34,
+        borderRadius: 10,
+        border: "1.5px solid var(--info-border)",
+        background: hov ? "var(--info-solid)" : "var(--info-bg)",
+        color: hov ? "var(--on-solid)" : "var(--info-text)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: "pointer",
+        transition: "all .2s ease",
+      }}
+    >
+      {icon}
+    </button>
+  );
+};
+
+const TablePagination = ({
+  page,
+  totalItems,
+  onPageChange,
+  itemLabel = "items",
+}: {
+  page: number;
+  totalItems: number;
+  onPageChange: (nextPage: number) => void;
+  itemLabel?: string;
+}) => {
+  const totalPages = pageCountFor(totalItems);
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const from = totalItems === 0 ? 0 : (safePage - 1) * ROWS_PER_PAGE + 1;
+  const to = totalItems === 0 ? 0 : Math.min(safePage * ROWS_PER_PAGE, totalItems);
+
+  const jumpTo = (target: number) => {
+    if (target < 1 || target > totalPages || target === safePage) return;
+    onPageChange(target);
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        padding: "12px 24px 18px",
+        borderTop: "1px solid var(--border)",
+        background: "var(--surface)",
+      }}
+    >
+      <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
+        Showing {from}-{to} of {totalItems} {itemLabel}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <button
+          type="button"
+          onClick={() => jumpTo(safePage - 1)}
+          disabled={safePage <= 1}
+          style={{
+            padding: "7px 10px",
+            borderRadius: 8,
+            border: "1px solid var(--border)",
+            background: "var(--surface-2)",
+            color: "var(--text)",
+            fontFamily: "inherit",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: safePage <= 1 ? "not-allowed" : "pointer",
+            opacity: safePage <= 1 ? 0.5 : 1,
+          }}
+        >
+          Prev
+        </button>
+        <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>
+          Page {safePage} / {totalPages}
+        </div>
+        <button
+          type="button"
+          onClick={() => jumpTo(safePage + 1)}
+          disabled={safePage >= totalPages}
+          style={{
+            padding: "7px 10px",
+            borderRadius: 8,
+            border: "1px solid var(--border)",
+            background: "var(--surface-2)",
+            color: "var(--text)",
+            fontFamily: "inherit",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: safePage >= totalPages ? "not-allowed" : "pointer",
+            opacity: safePage >= totalPages ? 0.5 : 1,
+          }}
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // Card wrapper
 const Card = ({ children, style = {} }: { children: ReactNode; style?: React.CSSProperties }) => (
   <div style={{
@@ -993,13 +1135,34 @@ const Modal = ({
           </div>
         )}
         {rows.map((r, i) => (
-          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "11px 0", borderBottom: i < rows.length - 1 ? "1px solid var(--border)" : "none" }}>
+          <div
+            key={i}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(110px, 40%) minmax(0, 1fr)",
+              alignItems: "start",
+              columnGap: 14,
+              padding: "11px 0",
+              borderBottom: i < rows.length - 1 ? "1px solid var(--border)" : "none",
+            }}
+          >
             <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>{r.label}</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: r.highlight ? "var(--success-solid)" : "var(--text)" }}>{r.value}</span>
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: r.highlight ? "var(--success-solid)" : "var(--text)",
+                textAlign: "right",
+                overflowWrap: "anywhere",
+                wordBreak: "break-word",
+              }}
+            >
+              {r.value}
+            </span>
           </div>
         ))}
         {actions && (
-          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
             {actions}
           </div>
         )}
@@ -2412,6 +2575,7 @@ const icons = {
   flag:    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22V4"/><path d="M4 4h11l-1.5 4L15 12H4"/></svg>,
   settings:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
   star:    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.1 8.6 22 9.3 17 14.1 18.3 21 12 17.4 5.7 21 7 14.1 2 9.3 8.9 8.6 12 2"/></svg>,
+  pencil:  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>,
   menu:    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>,
   logout:  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
   bell:    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
@@ -2470,7 +2634,7 @@ export default function DashboardPage() {
   const [searchReports, setSearchReports] = useState("");
   const [searchRatings, setSearchRatings] = useState("");
   const [searchDashboard, setSearchDashboard] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarHovered, setSidebarHovered] = useState(false);
   const [selectedRatingsTradesmanId, setSelectedRatingsTradesmanId] = useState("");
   const [selectedReviewStarFilter, setSelectedReviewStarFilter] = useState("");
   const [showArchivedOnly, setShowArchivedOnly] = useState(false);
@@ -2480,6 +2644,11 @@ export default function DashboardPage() {
   const [ratingsFilters, setRatingsFilters] = useState<string[]>(["", ""]);
   const [reportStatusFilter, setReportStatusFilter] = useState("");
   const [reportTab, setReportTab] = useState<ReportTab>("all");
+  const [verificationPage, setVerificationPage] = useState(1);
+  const [tradesmenPage, setTradesmenPage] = useState(1);
+  const [homeownersPage, setHomeownersPage] = useState(1);
+  const [reportsPage, setReportsPage] = useState(1);
+  const [ratingsPage, setRatingsPage] = useState(1);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [requestAnalyticsBookings, setRequestAnalyticsBookings] = useState<RequestAnalyticsBooking[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
@@ -2832,6 +3001,18 @@ export default function DashboardPage() {
     return matchesSearch && matchesCategory && matchesMinimumRating;
   });
 
+  const verificationPageCount = pageCountFor(filteredVerifications.length);
+  const tradesmenPageCount = pageCountFor(filteredTradesmen.length);
+  const homeownersPageCount = pageCountFor(filteredHomeowners.length);
+  const reportsPageCount = pageCountFor(filteredReports.length);
+  const ratingsPageCount = pageCountFor(filteredTradesmanRatings.length);
+
+  const pagedVerifications = paginateItems(filteredVerifications, verificationPage);
+  const pagedTradesmen = paginateItems(filteredTradesmen, tradesmenPage);
+  const pagedHomeowners = paginateItems(filteredHomeowners, homeownersPage);
+  const pagedReports = paginateItems(filteredReports, reportsPage);
+  const pagedTradesmanRatings = paginateItems(filteredTradesmanRatings, ratingsPage);
+
   const selectedTradesmanRating =
     filteredTradesmanRatings.find(({ tradesman }) => tradesman.id === selectedRatingsTradesmanId);
 
@@ -2847,6 +3028,56 @@ export default function DashboardPage() {
   useEffect(() => {
     setSelectedReviewStarFilter("");
   }, [selectedRatingsTradesmanId]);
+
+  useEffect(() => {
+    setVerificationPage(1);
+  }, [searchVerification, showArchivedOnly, verificationFilters]);
+
+  useEffect(() => {
+    setTradesmenPage(1);
+  }, [searchTradesmen, tradesmenFilters]);
+
+  useEffect(() => {
+    setHomeownersPage(1);
+  }, [searchHomeowners, homeownerFilters]);
+
+  useEffect(() => {
+    setReportsPage(1);
+  }, [searchReports, reportStatusFilter, reportTab]);
+
+  useEffect(() => {
+    setRatingsPage(1);
+  }, [searchRatings, ratingsFilters]);
+
+  useEffect(() => {
+    if (verificationPage > verificationPageCount) {
+      setVerificationPage(verificationPageCount);
+    }
+  }, [verificationPage, verificationPageCount]);
+
+  useEffect(() => {
+    if (tradesmenPage > tradesmenPageCount) {
+      setTradesmenPage(tradesmenPageCount);
+    }
+  }, [tradesmenPage, tradesmenPageCount]);
+
+  useEffect(() => {
+    if (homeownersPage > homeownersPageCount) {
+      setHomeownersPage(homeownersPageCount);
+    }
+  }, [homeownersPage, homeownersPageCount]);
+
+  useEffect(() => {
+    if (reportsPage > reportsPageCount) {
+      setReportsPage(reportsPageCount);
+    }
+  }, [reportsPage, reportsPageCount]);
+
+  useEffect(() => {
+    if (ratingsPage > ratingsPageCount) {
+      setRatingsPage(ratingsPageCount);
+    }
+  }, [ratingsPage, ratingsPageCount]);
 
   const filteredDashboardVerifications = verifications.filter((v) => {
     const statusLabel = toTitle(v.status);
@@ -3453,17 +3684,90 @@ export default function DashboardPage() {
   };
 
   // Modal helpers
-  const openHOModal = (h: Homeowner) => {
+  const closeInfoModal = () => setModal((prev) => ({ ...prev, open: false }));
+
+  const findVerificationForUser = (
+    userRefs: string[],
+    type: Verification["type"]
+  ) => {
+    const normalizedRefs = userRefs.map((value) => value.trim()).filter(Boolean);
+    if (normalizedRefs.length === 0) return undefined;
+
+    const matches = verifications.filter((verification) => {
+      if (verification.type !== type) return false;
+      const targetUserId = String(verification.userId ?? "").trim();
+      return normalizedRefs.includes(targetUserId);
+    });
+
+    if (matches.length === 0) return undefined;
+    return (
+      matches.find((verification) => verification.status === "pending") ??
+      matches[0]
+    );
+  };
+
+  const openHOModal = (
+    h: Homeowner,
+    verificationOverride?: Verification,
+    source: "account" | "verification" = "account"
+  ) => {
+    const matchedVerification =
+      verificationOverride ??
+      findVerificationForUser(
+        [String(h.userId ?? ""), String(h.id ?? "")],
+        "homeowner_id"
+      );
+    const isVerificationFlow = source === "verification";
+    const isPendingVerification = isVerificationFlow && matchedVerification?.status === "pending";
+    const isApprovedVerification = isVerificationFlow && matchedVerification?.status === "approved";
+    const canRevokeAccount = source === "account" && h.status === "Active" && h.idStatus === "Approved";
+    const canRevoke = isApprovedVerification || canRevokeAccount;
+
+    const handleRevoke = () => {
+      closeInfoModal();
+      if (isApprovedVerification && matchedVerification) {
+        openConfirm({
+          title: `Revoke ${h.name}?`,
+          message: "This will remove this approved verification and require a new submission.",
+          confirmLabel: "Revoke",
+          onConfirm: () => archiveVerification(matchedVerification.id),
+        });
+        return;
+      }
+      openConfirm({
+        title: `Revoke ${h.name}?`,
+        message: "This will suspend the homeowner account and block app login.",
+        confirmLabel: "Revoke",
+        onConfirm: () => revokeHomeowner(h.id, h.name),
+      });
+    };
+
     setModal({
       open: true,
       title: "Homeowner Details",
       hero: (
-        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "2px 0 6px" }}>
-          <Avatar initials={h.initials} color={h.color} size={52} />
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text)" }}>{h.name}</div>
-            <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 3, overflowWrap: "anywhere", wordBreak: "break-word" }}>{h.email}</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "2px 0 6px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0, flex: 1 }}>
+            <Avatar initials={h.initials} color={h.color} size={52} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text)" }}>{h.name}</div>
+              <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 3, overflowWrap: "anywhere", wordBreak: "break-word" }}>{h.email}</div>
+              <div style={{ marginTop: 10 }}>
+                <Btn
+                  variant="view"
+                  onClick={() => openDocumentModal(`${h.name} · Homeowner ID`, h.idImageUrl)}
+                  disabled={!h.idImageUrl}
+                >
+                  {icons.license} View ID
+                </Btn>
+              </div>
+            </div>
           </div>
+          {canRevoke && (
+            <Btn variant="reject" onClick={handleRevoke}>
+              {icons.x} Revoke
+            </Btn>
+          )}
         </div>
       ),
       rows: [
@@ -3476,13 +3780,30 @@ export default function DashboardPage() {
         { label: "ID Image", value: h.idImageUrl ? "Uploaded" : "Not uploaded", highlight: Boolean(h.idImageUrl) },
       ],
       actions: (
-        <Btn
-          variant="view"
-          onClick={() => openDocumentModal(`${h.name} · Homeowner ID`, h.idImageUrl)}
-          disabled={!h.idImageUrl}
-        >
-          {icons.license} View Uploaded ID
-        </Btn>
+        <>
+          {isPendingVerification && matchedVerification && (
+            <>
+              <Btn
+                variant="approve"
+                onClick={() => {
+                  closeInfoModal();
+                  reviewVerification(matchedVerification.id, "approved");
+                }}
+              >
+                {icons.check} Approve
+              </Btn>
+              <Btn
+                variant="reject"
+                onClick={() => {
+                  closeInfoModal();
+                  reviewVerification(matchedVerification.id, "rejected");
+                }}
+              >
+                {icons.x} Reject
+              </Btn>
+            </>
+          )}
+        </>
       ),
     });
   };
@@ -3521,17 +3842,68 @@ export default function DashboardPage() {
       return { ...m, open: false, imageUrl: "", contentType: "" };
     });
   };
-  const openTMModal = (t: Tradesman) => {
+  const openTMModal = (
+    t: Tradesman,
+    verificationOverride?: Verification,
+    source: "account" | "verification" = "account"
+  ) => {
+    const matchedVerification =
+      verificationOverride ??
+      findVerificationForUser(
+        [String(t.userId ?? ""), String(t.id ?? "")],
+        "tradesperson_license"
+      );
+    const isVerificationFlow = source === "verification";
+    const isPendingVerification = isVerificationFlow && matchedVerification?.status === "pending";
+    const isApprovedVerification = isVerificationFlow && matchedVerification?.status === "approved";
+    const canRevokeAccount = source === "account" && t.status === "Verified";
+    const canRevoke = isApprovedVerification || canRevokeAccount;
+
+    const handleRevoke = () => {
+      closeInfoModal();
+      if (isApprovedVerification && matchedVerification) {
+        openConfirm({
+          title: `Revoke ${t.name}?`,
+          message: "This will remove this approved verification and require a new submission.",
+          confirmLabel: "Revoke",
+          onConfirm: () => archiveVerification(matchedVerification.id),
+        });
+        return;
+      }
+      openConfirm({
+        title: `Revoke ${t.name}?`,
+        message: "This will suspend the tradesman account and block app login.",
+        confirmLabel: "Revoke",
+        onConfirm: () => revokeTradesman(t.id, t.name),
+      });
+    };
+
     setModal({
       open: true,
       title: "Tradesman Details",
       hero: (
-        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "2px 0 6px" }}>
-          <Avatar initials={t.initials} color={t.color} size={52} />
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text)" }}>{t.name}</div>
-            <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 3, overflowWrap: "anywhere", wordBreak: "break-word" }}>{t.email}</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "2px 0 6px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0, flex: 1 }}>
+            <Avatar initials={t.initials} color={t.color} size={52} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text)" }}>{t.name}</div>
+              <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 3, overflowWrap: "anywhere", wordBreak: "break-word" }}>{t.email}</div>
+              <div style={{ marginTop: 10 }}>
+                <Btn
+                  variant="view"
+                  onClick={() => openDocumentModal(`${t.name} · Government ID`, t.governmentIdUrl ?? "")}
+                  disabled={!t.governmentIdUrl}
+                >
+                  {icons.license} View ID
+                </Btn>
+              </div>
+            </div>
           </div>
+          {canRevoke && (
+            <Btn variant="reject" onClick={handleRevoke}>
+              {icons.x} Revoke
+            </Btn>
+          )}
         </div>
       ),
       rows: [
@@ -3546,18 +3918,33 @@ export default function DashboardPage() {
         <>
           <Btn
             variant="view"
-            onClick={() => openDocumentModal(`${t.name} · Government ID`, t.governmentIdUrl ?? "")}
-            disabled={!t.governmentIdUrl}
-          >
-            {icons.license} View Gov ID
-          </Btn>
-          <Btn
-            variant="view"
             onClick={() => openDocumentModal(`${t.name} · License/Cert`, t.credentialUrl)}
             disabled={!t.credentialUrl}
           >
             {icons.license} View License/Cert
           </Btn>
+          {isPendingVerification && matchedVerification && (
+            <>
+              <Btn
+                variant="approve"
+                onClick={() => {
+                  closeInfoModal();
+                  reviewVerification(matchedVerification.id, "approved");
+                }}
+              >
+                {icons.check} Approve
+              </Btn>
+              <Btn
+                variant="reject"
+                onClick={() => {
+                  closeInfoModal();
+                  reviewVerification(matchedVerification.id, "rejected");
+                }}
+              >
+                {icons.x} Reject
+              </Btn>
+            </>
+          )}
         </>
       ),
     });
@@ -3567,17 +3954,21 @@ export default function DashboardPage() {
     if (v.type === "homeowner_id") {
       const homeowner = homeowners.find((h) => h.userId === userId || h.id === userId);
       if (homeowner) {
-        openHOModal(homeowner);
+        openHOModal(homeowner, v, "verification");
         return;
       }
     }
     if (v.type === "tradesperson_license") {
       const tradesman = tradesmen.find((t) => t.userId === userId || t.id === userId);
       if (tradesman) {
-        openTMModal(tradesman);
+        openTMModal(tradesman, v, "verification");
         return;
       }
     }
+
+    const canReview = v.status === "pending";
+    const canRevoke = v.status === "approved";
+    const canRestore = v.status === "archived";
 
     setModal({
       open: true,
@@ -3590,12 +3981,68 @@ export default function DashboardPage() {
         { label: "Document", value: v.documentUrl ? "Uploaded" : "Missing", highlight: Boolean(v.documentUrl) },
       ],
       actions: (
-        <Btn
-          variant="view"
-          onClick={() => openDocumentModal(`User #${v.userId}`, v.documentUrl || `${apiBase}/api/admin/documents/${v.id}/file`)}
-        >
-          {icons.license} View Uploaded Document
-        </Btn>
+        <>
+          <Btn
+            variant="view"
+            onClick={() =>
+              openDocumentModal(
+                `User #${v.userId}`,
+                v.documentUrl || `${apiBase}/api/admin/documents/${v.id}/file`
+              )
+            }
+          >
+            {icons.license} View ID
+          </Btn>
+          {canReview && (
+            <>
+              <Btn
+                variant="approve"
+                onClick={() => {
+                  closeInfoModal();
+                  reviewVerification(v.id, "approved");
+                }}
+              >
+                {icons.check} Approve
+              </Btn>
+              <Btn
+                variant="reject"
+                onClick={() => {
+                  closeInfoModal();
+                  reviewVerification(v.id, "rejected");
+                }}
+              >
+                {icons.x} Reject
+              </Btn>
+            </>
+          )}
+          {canRevoke && (
+            <Btn
+              variant="reject"
+              onClick={() => {
+                closeInfoModal();
+                openConfirm({
+                  title: `Revoke User #${v.userId}?`,
+                  message: "This will remove this approved verification and require a new submission.",
+                  confirmLabel: "Revoke",
+                  onConfirm: () => archiveVerification(v.id),
+                });
+              }}
+            >
+              {icons.x} Revoke
+            </Btn>
+          )}
+          {canRestore && (
+            <Btn
+              variant="approve"
+              onClick={() => {
+                closeInfoModal();
+                restoreVerification(v.id);
+              }}
+            >
+              {icons.check} Restore
+            </Btn>
+          )}
+        </>
       ),
     });
   };
@@ -3717,8 +4164,15 @@ export default function DashboardPage() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("admin_token");
-    router.push("/login");
+    openConfirm({
+      title: "Sign out of admin portal?",
+      message: "You will need to sign in again to access your admin dashboard.",
+      confirmLabel: "Sign Out",
+      onConfirm: () => {
+        localStorage.removeItem("admin_token");
+        router.push("/login");
+      },
+    });
   };
 
   // page titles
@@ -3729,10 +4183,12 @@ export default function DashboardPage() {
     homeowners:   "Homeowners",
     ratings:      "Ratings",
     reports:      "Reports",
-    profile:      "Profile",
     settings:     "Settings",
   };
-  const sidebarWidth = sidebarOpen ? 260 : 84;
+  const sidebarCollapsedWidth = 84;
+  const sidebarExpandedWidth = 260;
+  const sidebarOpen = sidebarHovered;
+  const sidebarWidth = sidebarOpen ? sidebarExpandedWidth : sidebarCollapsedWidth;
 
   // ── PAGES ──────────────────────────────────────────────────────
 
@@ -3811,7 +4267,7 @@ export default function DashboardPage() {
         <Table>
           <thead><tr><Th>User</Th><Th>Type</Th><Th>Submitted</Th><Th>Status</Th><Th>Actions</Th></tr></thead>
           <tbody>
-            {filteredVerifications.map((v) => {
+            {pagedVerifications.map((v) => {
               const userName = getVerificationUserName(v);
               return (
                 <tr key={v.id}
@@ -3826,31 +4282,23 @@ export default function DashboardPage() {
                   <Td>{v.createdAt ? new Date(v.createdAt).toLocaleDateString() : "—"}</Td>
                   <Td><Badge status={toTitle(v.status)} /></Td>
                   <Td>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      {v.status === "pending" ? (
-                        <>
-                          <Btn variant="approve" onClick={() => reviewVerification(v.id, "approved")}>{icons.check} Approve</Btn>
-                          <Btn variant="reject"  onClick={() => reviewVerification(v.id, "rejected")}>{icons.x} Reject</Btn>
-                          <Btn variant="view" onClick={() => openVerificationDetails(v)}>{icons.license} View Details</Btn>
-                        </>
-                      ) : (
-                        <>
-                          <Btn disabled>{icons.check} {toTitle(v.status)}</Btn>
-                          <Btn variant="view" onClick={() => openVerificationDetails(v)}>{icons.license} View Details</Btn>
-                        </>
-                      )}
-                      {v.status === "archived" ? (
-                        <Btn variant="approve" onClick={() => restoreVerification(v.id)}>{icons.check} Restore</Btn>
-                      ) : (
-                        <Btn variant="reject" onClick={() => archiveVerification(v.id)}>{icons.x} Archive</Btn>
-                      )}
-                    </div>
+                    <ActionIconButton
+                      icon={icons.pencil}
+                      label={`Open actions for ${userName || `User #${v.userId}`}`}
+                      onClick={() => openVerificationDetails(v)}
+                    />
                   </Td>
                 </tr>
               );
             })}
           </tbody>
         </Table>
+        <TablePagination
+          page={verificationPage}
+          totalItems={filteredVerifications.length}
+          onPageChange={setVerificationPage}
+          itemLabel="users"
+        />
       </Card>
     </div>
   );
@@ -3874,7 +4322,7 @@ export default function DashboardPage() {
         <Table>
           <thead><tr><Th>Tradesman</Th><Th>Category</Th><Th>License</Th><Th>Joined</Th><Th>Jobs Done</Th><Th>Status</Th><Th>Actions</Th></tr></thead>
           <tbody>
-            {filteredTradesmen.map((t) => (
+            {pagedTradesmen.map((t) => (
               <tr key={t.id}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "var(--row-hover)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
@@ -3891,31 +4339,22 @@ export default function DashboardPage() {
                 <Td>{t.jobs}</Td>
                 <Td><Badge status={t.status} /></Td>
                 <Td>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <Btn variant="view" onClick={() => openTMModal(t)}>View Details</Btn>
-                    {t.status === "Verified" ? (
-                      <Btn
-                        variant="reject"
-                        onClick={() =>
-                          openConfirm({
-                            title: `Revoke ${t.name}?`,
-                            message: "This will suspend the tradesman account and block app login.",
-                            confirmLabel: "Revoke",
-                            onConfirm: () => revokeTradesman(t.id, t.name),
-                          })
-                        }
-                      >
-                        {icons.x} Revoke
-                      </Btn>
-                    ) : (
-                      <Btn variant="approve" onClick={() => restoreTradesman(t.id, t.name)}>{icons.check} Restore</Btn>
-                    )}
-                  </div>
+                  <ActionIconButton
+                    icon={icons.pencil}
+                    label={`Open actions for ${t.name}`}
+                    onClick={() => openTMModal(t)}
+                  />
                 </Td>
               </tr>
             ))}
           </tbody>
         </Table>
+        <TablePagination
+          page={tradesmenPage}
+          totalItems={filteredTradesmen.length}
+          onPageChange={setTradesmenPage}
+          itemLabel="tradesmen"
+        />
       </Card>
     </div>
   );
@@ -4050,7 +4489,7 @@ export default function DashboardPage() {
             </thead>
             <tbody>
               {filteredTradesmanRatings.length > 0 ? (
-                filteredTradesmanRatings.map(({ tradesman, reviews, average, recommendationRate }) => {
+                pagedTradesmanRatings.map(({ tradesman, reviews, average, recommendationRate }) => {
                   const active = selectedTradesmanRating?.tradesman.id === tradesman.id;
                   return (
                     <Fragment key={tradesman.id}>
@@ -4214,6 +4653,12 @@ export default function DashboardPage() {
               )}
             </tbody>
           </Table>
+          <TablePagination
+            page={ratingsPage}
+            totalItems={filteredTradesmanRatings.length}
+            onPageChange={setRatingsPage}
+            itemLabel="tradesmen"
+          />
         </Card>
       </div>
     );
@@ -4245,13 +4690,14 @@ export default function DashboardPage() {
           })}
         />
         <Table>
-          <thead><tr><Th>Homeowner</Th><Th>Location</Th><Th>Registered</Th><Th>ID No.</Th><Th>ID Status</Th><Th>Jobs Posted</Th><Th>Status</Th><Th>Actions</Th></tr></thead>
+          <thead><tr><Th>ID No.</Th><Th>Homeowner</Th><Th>Location</Th><Th>Registered</Th><Th>Jobs Posted</Th><Th>Status</Th><Th>Actions</Th></tr></thead>
           <tbody>
-            {filteredHomeowners.map((h) => (
+            {pagedHomeowners.map((h) => (
               <tr key={h.id}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "var(--row-hover)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 style={{ transition: "background .15s" }}>
+                <Td><span style={{ fontFamily: "monospace", fontSize: 12 }}>{h.idNumber}</span></Td>
                 <Td>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 13 }}>{h.name}</div>
@@ -4260,36 +4706,25 @@ export default function DashboardPage() {
                 </Td>
                 <Td>{h.location}</Td>
                 <Td>{h.registered}</Td>
-                <Td><span style={{ fontFamily: "monospace", fontSize: 12 }}>{h.idNumber}</span></Td>
-                <Td><Badge status={h.idStatus} /></Td>
                 <Td>{h.jobs}</Td>
                 <Td><Badge status={h.status} /></Td>
                 <Td>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <Btn variant="view" onClick={() => openHOModal(h)}>View Details</Btn>
-                    {h.status === "Active" ? (
-                      <Btn
-                        variant="reject"
-                        onClick={() =>
-                          openConfirm({
-                            title: `Revoke ${h.name}?`,
-                            message: "This will suspend the homeowner account and block app login.",
-                            confirmLabel: "Revoke",
-                            onConfirm: () => revokeHomeowner(h.id, h.name),
-                          })
-                        }
-                      >
-                        {icons.x} Revoke
-                      </Btn>
-                    ) : (
-                      <Btn variant="approve" onClick={() => restoreHomeowner(h.id, h.name)}>{icons.check} Restore</Btn>
-                    )}
-                  </div>
+                  <ActionIconButton
+                    icon={icons.pencil}
+                    label={`Open actions for ${h.name}`}
+                    onClick={() => openHOModal(h)}
+                  />
                 </Td>
               </tr>
             ))}
           </tbody>
         </Table>
+        <TablePagination
+          page={homeownersPage}
+          totalItems={filteredHomeowners.length}
+          onPageChange={setHomeownersPage}
+          itemLabel="homeowners"
+        />
       </Card>
     </div>
   );
@@ -4361,7 +4796,7 @@ export default function DashboardPage() {
           <Table>
             <thead><tr><Th>Reported User</Th><Th>Type</Th><Th>Reporter</Th><Th>Reason</Th><Th>Submitted</Th><Th>Status</Th><Th>Actions</Th></tr></thead>
             <tbody>
-              {filteredReports.map((report) => (
+              {pagedReports.map((report) => (
                 <tr
                   key={report.id}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--row-hover)")}
@@ -4402,7 +4837,7 @@ export default function DashboardPage() {
                           open: true,
                           title: `${report.targetName} · ${report.targetType} Report`,
                           rows: [
-                            { label: "Report ID", value: report.id },
+                            { label: "Report ID", value: formatReportId(report.id) },
                             { label: "Reported User", value: report.targetName },
                             { label: "Reported Email", value: report.targetEmail },
                             { label: "Reporter", value: `${report.reporterName} (${report.reporterRole})` },
@@ -4426,6 +4861,12 @@ export default function DashboardPage() {
               )}
             </tbody>
           </Table>
+          <TablePagination
+            page={reportsPage}
+            totalItems={filteredReports.length}
+            onPageChange={setReportsPage}
+            itemLabel="reports"
+          />
         </Card>
       </div>
     );
@@ -4434,9 +4875,31 @@ export default function DashboardPage() {
   const PageSettings = () => {
     const adminEmail = adminProfile?.email ?? "admin@fixit.com";
     const adminName = adminProfile?.fullName?.trim() || adminDisplayNameFromEmail(adminEmail);
+    const adminRole = humanizeRole(adminProfile?.role);
 
     return (
       <div style={{ display: "grid", gap: 20, animation: "fadeUp .35s ease both" }}>
+        <Card>
+          <CardHead
+            title="Account Details"
+            subtitle="View the active admin account"
+          />
+          <div style={{ padding: 24, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 20 }}>
+            {[
+              ["Full Name", adminName],
+              ["Role", adminRole],
+              ["Email", adminEmail],
+              ["Account Status", adminProfile?.isActive ? "Active" : "Inactive"],
+              ["Last Updated", formatDateTime(adminProfile?.updatedAt)],
+            ].map(([l, v]) => (
+              <div key={l}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>{l}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", overflowWrap: "anywhere" }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
         <Card>
           <CardHead title="Settings" subtitle="Personalize your admin experience" />
           <div style={{ padding: 24 }}>
@@ -4481,43 +4944,16 @@ export default function DashboardPage() {
     );
   };
 
-  const PageProfile = () => {
-    const adminEmail = adminProfile?.email ?? "admin@fixit.com";
-    const adminName = adminProfile?.fullName?.trim() || adminDisplayNameFromEmail(adminEmail);
-    const adminRole = humanizeRole(adminProfile?.role);
-
-    return (
-      <div style={{ animation: "fadeUp .35s ease both" }}>
-        <Card style={{ marginBottom: 20 }}>
-          <CardHead
-            title="Account Details"
-            subtitle="View the active admin account"
-          />
-          <div style={{ padding: 24, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-            {[
-              ["Full Name", adminName],
-              ["Role", adminRole],
-              ["Email", adminEmail],
-              ["Account Status", adminProfile?.isActive ? "Active" : "Inactive"],
-              ["Last Updated", formatDateTime(adminProfile?.updatedAt)],
-            ].map(([l, v]) => (
-              <div key={l}>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>{l}</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", overflowWrap: "anywhere" }}>{v}</div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-    );
-  };
-
   // ── RENDER ─────────────────────────────────────────────────────
   return (
     <div style={{ ...themeVars, display: "flex", minHeight: "100vh", fontFamily: "'Plus Jakarta Sans', sans-serif", background: "var(--bg)", color: "var(--text)" }}>
 
       {/* SIDEBAR */}
       <nav
+        onMouseEnter={() => setSidebarHovered(true)}
+        onMouseLeave={() => {
+          setSidebarHovered(false);
+        }}
         style={{
           width: sidebarWidth,
           flexShrink: 0,
@@ -4559,7 +4995,6 @@ export default function DashboardPage() {
             { icon: icons.star,     label: "Ratings",       page: "ratings" as Page, badge: totalRatingsCount },
             { icon: icons.flag,     label: "Reports",       page: "reports" as Page, badge: openReportsCount },
             { label: "System" },
-            { icon: icons.user,     label: "Profile",       page: "profile" as Page },
             { icon: icons.settings, label: "Settings",      page: "settings" as Page },
           ].map((item, i) =>
             !item.icon ? (
@@ -4596,42 +5031,10 @@ export default function DashboardPage() {
       </nav>
 
       {/* MAIN */}
-      <div style={{ marginLeft: sidebarWidth, flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh", transition: "margin-left .24s ease" }}>
+      <div style={{ marginLeft: sidebarCollapsedWidth, flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }}>
         {/* Topbar */}
         <div style={{ background: "var(--surface)", height: 99, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 32px", position: "sticky", top: 0, zIndex: 40, boxShadow: "var(--shadow)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <button
-              type="button"
-              onClick={() => setSidebarOpen((prev) => !prev)}
-              aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-              aria-pressed={sidebarOpen}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 10,
-                border: "1.5px solid var(--border)",
-                background: sidebarOpen ? "var(--accent-soft)" : "var(--surface-2)",
-                color: sidebarOpen ? "var(--accent)" : "var(--muted)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                transition: "all .2s ease",
-                flexShrink: 0,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "var(--accent)";
-                e.currentTarget.style.background = "var(--accent-soft)";
-                e.currentTarget.style.color = "var(--accent)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "var(--border)";
-                e.currentTarget.style.background = sidebarOpen ? "var(--accent-soft)" : "var(--surface-2)";
-                e.currentTarget.style.color = sidebarOpen ? "var(--accent)" : "var(--muted)";
-              }}
-            >
-              {icons.menu}
-            </button>
             <div>
               <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text)", letterSpacing: -0.3 }}>{pageTitles[activePage]}</div>
               <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, marginTop: 1 }}>Fix It Marketplace › Admin Portal › {pageTitles[activePage]}</div>
@@ -4707,7 +5110,7 @@ export default function DashboardPage() {
               )}
             </div>
             {/* Avatar */}
-            <div onClick={() => setActivePage("profile")}
+            <div onClick={() => setActivePage("settings")}
               style={{ width: 38, height: 38, borderRadius: 9, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "var(--on-solid)", cursor: "pointer" }}>
               AD
             </div>
@@ -4722,7 +5125,6 @@ export default function DashboardPage() {
           {activePage === "homeowners"   && PageHomeowners()}
           {activePage === "ratings"      && PageRatings()}
           {activePage === "reports"      && PageReports()}
-          {activePage === "profile"      && PageProfile()}
           {activePage === "settings"     && PageSettings()}
         </div>
       </div>

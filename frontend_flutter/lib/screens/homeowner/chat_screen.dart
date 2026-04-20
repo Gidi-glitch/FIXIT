@@ -484,6 +484,7 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
+    if (!mounted) return;
     Navigator.of(context).pop({'deletedConversationId': _conversationId});
   }
 
@@ -646,7 +647,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _pickFileOrImageAttachment() async {
     try {
-      final result = await FilePicker.pickFiles(
+      final result = await FilePicker.platform.pickFiles(
         type: FileType.any,
         allowMultiple: false,
       );
@@ -1043,10 +1044,12 @@ class _ChatScreenState extends State<ChatScreen> {
       value: SystemUiOverlayStyle.light.copyWith(
         statusBarColor: Colors.transparent,
       ),
-      child: WillPopScope(
-        onWillPop: () async {
-          _closeChatWithResult();
-          return false;
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop) {
+            _closeChatWithResult();
+          }
         },
         child: Scaffold(
           backgroundColor: _backgroundGray,

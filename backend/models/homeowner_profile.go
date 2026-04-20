@@ -8,6 +8,8 @@ type HomeownerProfile struct {
 	FirstName string `json:"first_name" gorm:"not null"`
 	LastName  string `json:"last_name" gorm:"not null"`
 	Phone     string `json:"phone" gorm:"not null"`
+	Gender    string `json:"gender"`
+	Bio       string `json:"bio"`
 	Barangay  string `json:"barangay" gorm:"not null"`
 	StatusID  string `json:"status_id" gorm:"not null;default:pending"`
 

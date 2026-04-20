@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"fixit-backend/config"
@@ -11,12 +12,30 @@ import (
 	"github.com/joho/godotenv"
 )
 
+func loadEnv() {
+	candidates := []string{
+		".env",
+		"backend/.env",
+		"services/.env",
+		"backend/services/.env",
+	}
+
+	for _, path := range candidates {
+		if _, err := os.Stat(path); err != nil {
+			continue
+		}
+		if err := godotenv.Load(path); err == nil {
+			log.Printf("✅ Loaded environment from %s", path)
+			return
+		}
+	}
+
+	log.Println("⚠️ No .env file found in expected paths; using process environment variables")
+}
+
 func main() {
 
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
+	loadEnv()
 
 	config.ConnectDB()
 

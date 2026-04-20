@@ -87,7 +87,7 @@ export default function LoginPage() {
         alignItems: "center",
         justifyContent: "center",
         padding: "60px 80px",
-        maxWidth: 560,
+        maxWidth: 700,
       }}>
         {/* Logo row */}
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 32, alignSelf: "flex-start" }}>
