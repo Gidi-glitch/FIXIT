@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../login_screen.dart';
 import '../../services/api_service.dart';
+import 'booking_store.dart';
 import 'settings/edit_profile_screen.dart';
 import 'settings/help_support_screen.dart';
 import 'settings/my_addresses_screen.dart';
@@ -40,15 +41,63 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _barangay = '';
   String? _profileImagePath;
   bool _isUploadingPhoto = false;
+  int _totalBookings = 0;
+  int _completedBookings = 0;
+  double _averageGivenRating = 0;
 
   @override
   void initState() {
     super.initState();
+    BookingStore.notifier.addListener(_onBookingStoreChanged);
+    _applyStatsFromBookings(BookingStore.all);
     _loadProfileData();
+  }
+
+  @override
+  void dispose() {
+    BookingStore.notifier.removeListener(_onBookingStoreChanged);
+    super.dispose();
+  }
+
+  void _onBookingStoreChanged() {
+    if (!mounted) return;
+    _applyStatsFromBookings(BookingStore.all);
+  }
+
+  void _applyStatsFromBookings(List<BookingModel> bookings) {
+    var totalBookings = bookings.length;
+    var completedBookings = 0;
+    var ratingSum = 0.0;
+    var ratingCount = 0;
+
+    for (final booking in bookings) {
+      if (booking.status.toLowerCase() == 'completed') {
+        completedBookings += 1;
+      }
+
+      final rating = booking.reviewRating;
+      if (rating != null && rating > 0) {
+        ratingSum += rating;
+        ratingCount += 1;
+      }
+    }
+
+    final averageGivenRating = ratingCount > 0 ? ratingSum / ratingCount : 0.0;
+
+    if (!mounted) return;
+    setState(() {
+      _totalBookings = totalBookings;
+      _completedBookings = completedBookings;
+      _averageGivenRating = averageGivenRating;
+    });
   }
 
   Future<void> _loadProfileData() async {
     final prefs = await SharedPreferences.getInstance();
+
+    var totalBookings = _totalBookings;
+    var completedBookings = _completedBookings;
+    var averageGivenRating = _averageGivenRating;
 
     final token = prefs.getString('token')?.trim();
     if (token != null && token.isNotEmpty) {
@@ -85,6 +134,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
       } catch (_) {
         // Fallback to cached values if backend request fails.
       }
+
+      try {
+        final result = await ApiService.getHomeownerBookings(token: token);
+        final rawRows = result['bookings'];
+        final rows = rawRows is List
+            ? rawRows
+                  .whereType<Map>()
+                  .map((e) => e.cast<String, dynamic>())
+                  .toList()
+            : <Map<String, dynamic>>[];
+
+        BookingStore.setAllFromApi(rows);
+
+        totalBookings = BookingStore.all.length;
+        completedBookings = BookingStore.all
+            .where((b) => b.status.toLowerCase() == 'completed')
+            .length;
+        final ratedBookings = BookingStore.all
+            .where((b) => (b.reviewRating ?? 0) > 0)
+            .toList();
+        final ratingSum = ratedBookings.fold<double>(
+          0,
+          (sum, b) => sum + (b.reviewRating ?? 0),
+        );
+        averageGivenRating = ratedBookings.isNotEmpty
+            ? ratingSum / ratedBookings.length
+            : 0;
+      } catch (_) {
+        // Keep previous stats if bookings request fails.
+      }
     }
 
     final firstName = prefs.getString('first_name')?.trim();
@@ -100,6 +179,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _displayName = fullName.isNotEmpty ? fullName : 'Gideon Alcantara';
       _barangay = prefs.getString('barangay')?.trim() ?? '';
       _profileImagePath = prefs.getString('profile_image_url');
+      _totalBookings = totalBookings;
+      _completedBookings = completedBookings;
+      _averageGivenRating = averageGivenRating;
     });
   }
 
@@ -222,7 +304,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  Future<void> _logout(BuildContext context) async {
+  Future<void> _logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('token');
     await prefs.remove('role');
@@ -232,7 +314,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await prefs.remove('barangay');
     await prefs.remove('profile_image_url');
 
-    if (!context.mounted) return;
+    if (!mounted) return;
 
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const UserLoginScreen()),
@@ -358,7 +440,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
 
     if (shouldLogout == true) {
-      await _logout(context);
+      await _logout();
     }
   }
 
@@ -478,7 +560,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ? Image.network(
                       _profileImagePath!,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Center(
+                      errorBuilder: (context, error, stackTrace) => Center(
                         child: Text(
                           _initials,
                           style: const TextStyle(
@@ -585,7 +667,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Expanded(
             child: _buildStatCard(
               icon: Icons.calendar_today_rounded,
-              value: '12',
+              value: _totalBookings.toString(),
               label: 'Bookings',
               color: _primaryBlue,
             ),
@@ -594,7 +676,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Expanded(
             child: _buildStatCard(
               icon: Icons.check_circle_outline_rounded,
-              value: '10',
+              value: _completedBookings.toString(),
               label: 'Completed',
               color: const Color(0xFF10B981),
             ),
@@ -603,7 +685,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Expanded(
             child: _buildStatCard(
               icon: Icons.star_outline_rounded,
-              value: '4.8',
+              value: _averageGivenRating.toStringAsFixed(1),
               label: 'Avg. Rating',
               color: _accentOrange,
             ),

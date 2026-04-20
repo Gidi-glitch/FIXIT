@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../services/api_service.dart';
 import 'chat_screen.dart';
 
 /// Messages Screen for the Fix It Marketplace Homeowner App.
@@ -37,11 +40,14 @@ class _MessagesScreenState extends State<MessagesScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   bool _hasAutoOpenedChat = false;
+  bool _isLoading = true;
+  String? _loadError;
 
   @override
   void initState() {
     super.initState();
-    _conversations = _sampleConversations();
+    _conversations = [];
+    _loadConversations();
 
     if (widget.autoOpenChat) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -94,7 +100,109 @@ class _MessagesScreenState extends State<MessagesScreen> {
       'trade': (widget.initialTrade ?? '').trim().isNotEmpty
           ? widget.initialTrade!.trim()
           : 'Tradesperson',
+      'service': (widget.initialTrade ?? '').trim().isNotEmpty
+          ? widget.initialTrade!.trim()
+          : 'Tradesperson',
     };
+  }
+
+  Future<void> _loadConversations() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token') ?? '';
+      if (token.trim().isEmpty) {
+        throw Exception('Authentication required. Please log in again.');
+      }
+
+      final response = await ApiService.getConversations(token: token);
+      final rawList = (response['conversations'] as List?) ?? const [];
+      final loaded = rawList
+          .whereType<Map>()
+          .map(
+            (row) => _normalizeConversation(
+              row.cast<String, dynamic>(),
+              fallbackTrade: 'Tradesperson',
+            ),
+          )
+          .toList();
+
+      if (!mounted) return;
+      setState(() {
+        _conversations = loaded;
+        _isLoading = false;
+      });
+
+      if (widget.autoOpenChat && !_hasAutoOpenedChat) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _hasAutoOpenedChat) return;
+          _openChatForInitialTradesperson();
+        });
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _loadError = error.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  Map<String, dynamic> _normalizeConversation(
+    Map<String, dynamic> row, {
+    required String fallbackTrade,
+  }) {
+    final name = (row['name'] ?? '').toString().trim();
+    final trade = (row['trade'] ?? row['service'] ?? '').toString().trim();
+
+    return {
+      'id': (row['id'] ?? '').toString(),
+      'name': name.isNotEmpty ? name : 'Conversation',
+      'avatar': (row['avatar'] ?? '').toString().trim().isNotEmpty
+          ? (row['avatar'] ?? '').toString().trim()
+          : _fallbackAvatar(name),
+      'lastMessage':
+          (row['lastMessage'] ?? row['last_message'] ?? '')
+              .toString()
+              .trim()
+              .isNotEmpty
+          ? (row['lastMessage'] ?? row['last_message']).toString().trim()
+          : 'Start your conversation',
+      'time': (row['time'] ?? '').toString().trim(),
+      'unreadCount': _asInt(row['unreadCount'] ?? row['unread_count']),
+      'isOnline': _asBool(row['isOnline'] ?? row['is_online']),
+      'trade': trade.isNotEmpty ? trade : fallbackTrade,
+      'service': trade.isNotEmpty ? trade : fallbackTrade,
+    };
+  }
+
+  String _fallbackAvatar(String name) {
+    final parts = name
+        .split(RegExp(r'\s+'))
+        .where((part) => part.trim().isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return 'TP';
+    if (parts.length == 1) {
+      return parts.first.substring(0, 1).toUpperCase();
+    }
+    return (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();
+  }
+
+  int _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  bool _asBool(dynamic value) {
+    if (value is bool) return value;
+    final raw = (value ?? '').toString().trim().toLowerCase();
+    return raw == '1' || raw == 'true' || raw == 'yes';
   }
 
   Future<void> _openChatForInitialTradesperson() async {
@@ -184,73 +292,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
     });
   }
 
-  // ── Sample Messages Data ───────────────────────────────────────
-  List<Map<String, dynamic>> _sampleConversations() => [
-    {
-      'id': '1',
-      'name': 'Juan Dela Cruz',
-      'avatar': 'JD',
-      'lastMessage': 'I\'m on my way now. Will be there in 15 minutes.',
-      'time': '2 min ago',
-      'unreadCount': 2,
-      'isOnline': true,
-      'trade': 'Plumber',
-    },
-    {
-      'id': '2',
-      'name': 'Maria Santos',
-      'avatar': 'MS',
-      'lastMessage': 'Sure, I can check the wiring tomorrow morning.',
-      'time': '1 hour ago',
-      'unreadCount': 0,
-      'isOnline': true,
-      'trade': 'Electrician',
-    },
-    {
-      'id': '3',
-      'name': 'Pedro Reyes',
-      'avatar': 'PR',
-      'lastMessage':
-          'The AC unit needs a new compressor. I\'ll send you a quote.',
-      'time': '3 hours ago',
-      'unreadCount': 1,
-      'isOnline': false,
-      'trade': 'HVAC Technician',
-    },
-    {
-      'id': '4',
-      'name': 'Jose Garcia',
-      'avatar': 'JG',
-      'lastMessage': 'Thank you for the review! Happy to help anytime.',
-      'time': 'Yesterday',
-      'unreadCount': 0,
-      'isOnline': false,
-      'trade': 'Plumber',
-    },
-    {
-      'id': '5',
-      'name': 'Antonio Cruz',
-      'avatar': 'AC',
-      'lastMessage':
-          'The cabinet is all fixed now. Let me know if you need anything else.',
-      'time': 'Mar 18',
-      'unreadCount': 0,
-      'isOnline': false,
-      'trade': 'Carpenter',
-    },
-    {
-      'id': '6',
-      'name': 'Fix It Support',
-      'avatar': 'FI',
-      'lastMessage':
-          'Welcome to Fix It Marketplace! How can we help you today?',
-      'time': 'Mar 15',
-      'unreadCount': 0,
-      'isOnline': true,
-      'trade': 'Support',
-    },
-  ];
-
   List<Map<String, dynamic>> get _filteredConversations {
     final query = _searchQuery.trim().toLowerCase();
     if (query.isEmpty) return _conversations;
@@ -288,22 +329,73 @@ class _MessagesScreenState extends State<MessagesScreen> {
             _buildSearchBar(),
 
             // ── Messages List ───────────────────────────────────────
-            Expanded(
-              child: ListView.builder(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(0, 8, 0, 100),
-                itemCount: _filteredConversations.length,
-                itemBuilder: (context, index) {
-                  return _buildMessageTile(
-                    context,
-                    _filteredConversations[index],
-                  );
-                },
-              ),
-            ),
+            Expanded(child: _buildConversationListBody()),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildConversationListBody() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: _primaryBlue),
+      );
+    }
+
+    if (_loadError != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.chat_bubble_outline_rounded,
+                size: 40,
+                color: _textMuted,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _loadError!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: _textMuted,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: _loadConversations,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_filteredConversations.isEmpty) {
+      return const Center(
+        child: Text(
+          'No conversations yet.',
+          style: TextStyle(
+            fontSize: 14,
+            color: _textMuted,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 100),
+      itemCount: _filteredConversations.length,
+      itemBuilder: (context, index) {
+        return _buildMessageTile(context, _filteredConversations[index]);
+      },
     );
   }
 
@@ -411,8 +503,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
     BuildContext context,
     Map<String, dynamic> conversation,
   ) {
-    final hasUnread = (conversation['unreadCount'] as int) > 0;
-    final isOnline = conversation['isOnline'] as bool;
+    final hasUnread = _asInt(conversation['unreadCount']) > 0;
+    final isOnline = _asBool(conversation['isOnline']);
 
     return Material(
       color: hasUnread
@@ -442,7 +534,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                     ),
                     child: Center(
                       child: Text(
-                        conversation['avatar'] as String,
+                        (conversation['avatar'] ?? 'TP').toString(),
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
@@ -478,7 +570,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            conversation['name'] as String,
+                            (conversation['name'] ?? 'Conversation').toString(),
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: hasUnread
@@ -491,7 +583,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                           ),
                         ),
                         Text(
-                          conversation['time'] as String,
+                          (conversation['time'] ?? '').toString(),
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: hasUnread
@@ -507,7 +599,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            conversation['lastMessage'] as String,
+                            (conversation['lastMessage'] ?? '').toString(),
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: hasUnread

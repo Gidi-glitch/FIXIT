@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../services/api_service.dart';
 import 'booking_store.dart';
 import 'booking_details_screen.dart';
 
@@ -32,6 +35,8 @@ class _BookingsScreenState extends State<BookingsScreen>
   bool get wantKeepAlive => true;
 
   String _activeFilter = 'All';
+  bool _isLoading = true;
+  String? _errorMessage;
   final List<String> _filters = [
     'All',
     'Pending',
@@ -71,6 +76,52 @@ class _BookingsScreenState extends State<BookingsScreen>
     return all.where((b) => b.status == _activeFilter).toList();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    BookingStore.notifier.addListener(_onStoreChanged);
+    _refreshBookings();
+  }
+
+  @override
+  void dispose() {
+    BookingStore.notifier.removeListener(_onStoreChanged);
+    super.dispose();
+  }
+
+  void _onStoreChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _refreshBookings() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token')?.trim();
+      if (token == null || token.isEmpty) {
+        throw Exception('Session expired. Please log in again.');
+      }
+
+      final response = await ApiService.getHomeownerBookings(token: token);
+      final rows = (response['bookings'] as List?) ?? const [];
+      BookingStore.setAllFromApi(rows);
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════
   //  BUILD
   // ═══════════════════════════════════════════════════════════════
@@ -89,7 +140,11 @@ class _BookingsScreenState extends State<BookingsScreen>
             _buildAppBar(),
             _buildFilterTabs(),
             Expanded(
-              child: bookings.isEmpty
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _errorMessage != null
+                  ? _buildErrorState()
+                  : bookings.isEmpty
                   ? _buildEmptyState()
                   : ListView.builder(
                       physics: const BouncingScrollPhysics(),
@@ -169,7 +224,7 @@ class _BookingsScreenState extends State<BookingsScreen>
               ],
             ),
             child: IconButton(
-              onPressed: () => setState(() {}),
+              onPressed: _refreshBookings,
               icon: const Icon(
                 Icons.refresh_rounded,
                 color: _textDark,
@@ -315,6 +370,39 @@ class _BookingsScreenState extends State<BookingsScreen>
     );
   }
 
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.wifi_off_rounded, size: 36, color: _textMuted),
+            const SizedBox(height: 10),
+            Text(
+              _errorMessage ?? 'Failed to load bookings.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                color: _textMuted,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 14),
+            ElevatedButton(
+              onPressed: _refreshBookings,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryBlue,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ═══════════════════════════════════════════════════════════════
   //  BOOKING CARD
   // ═══════════════════════════════════════════════════════════════
@@ -322,6 +410,8 @@ class _BookingsScreenState extends State<BookingsScreen>
   Widget _buildBookingCard(BookingModel booking) {
     final color = _statusColor(booking.status);
     final isCompleted = booking.status == 'Completed';
+    final tradespersonProfileImageUrl =
+        (booking.tradespersonProfileImageUrl ?? '').trim();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -386,15 +476,34 @@ class _BookingsScreenState extends State<BookingsScreen>
                           ),
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: Center(
-                          child: Text(
-                            booking.tradespersonAvatar,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: tradespersonProfileImageUrl.isNotEmpty
+                              ? Image.network(
+                                  tradespersonProfileImageUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      Center(
+                                        child: Text(
+                                          booking.tradespersonAvatar,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                )
+                              : Center(
+                                  child: Text(
+                                    booking.tradespersonAvatar,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
                         ),
                       ),
                     ),

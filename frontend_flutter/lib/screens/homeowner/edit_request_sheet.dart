@@ -56,7 +56,7 @@ class EditRequestSheet extends StatefulWidget {
   /// Called after `BookingStore.updateBookingDetails` succeeds and the
   /// sheet is popped. Use this to refresh the parent's local state and
   /// show a success SnackBar.
-  final VoidCallback onSaved;
+  final Future<void> Function() onSaved;
 
   @override
   State<EditRequestSheet> createState() => _EditRequestSheetState();
@@ -95,81 +95,6 @@ class _EditRequestSheetState extends State<EditRequestSheet>
 
   bool _isSaving = false;
 
-  static const Map<String, List<String>> _profileSkillsByName = {
-    'Juan Dela Cruz': [
-      'Pipe Repair & Installation',
-      'Pipe Repair',
-      'Leak Detection',
-      'Drain Cleaning',
-      'Water Heater',
-    ],
-    'Maria Santos': [
-      'Wiring & Panel Upgrades',
-      'Rewiring',
-      'Panel Upgrade',
-      'Outlet Install',
-      'Safety Audit',
-    ],
-    'Pedro Reyes': [
-      'AC Maintenance & Repair',
-      'AC Cleaning',
-      'Freon Recharge',
-      'Duct Repair',
-      'Installation',
-    ],
-    'Ramon Flores': [
-      'Furniture & Structural Repair',
-      'Cabinet Making',
-      'Door Repair',
-      'Flooring',
-      'Furniture Fix',
-    ],
-    'Liza Cruz': [
-      'Kitchen Appliance Repair',
-      'Refrigerator',
-      'Washing Machine',
-      'Microwave',
-      'Oven Repair',
-    ],
-    'Carlo Mendoza': [
-      'Emergency Leak & Sewage',
-      'Leak Repair',
-      'Sewage Clearing',
-      'Toilet Fix',
-      'Pipe Fitting',
-    ],
-    'Noel Bautista': [
-      'CCTV & Smart Home Wiring',
-      'CCTV Install',
-      'Smart Wiring',
-      'Intercom',
-      'Circuit Breaker',
-    ],
-  };
-
-  static const Map<String, List<String>> _tradeServiceFallback = {
-    'plumbing': [
-      'Pipe Repair',
-      'Leak Detection',
-      'Drain Cleaning',
-      'Water Heater',
-    ],
-    'electrical': [
-      'Rewiring',
-      'Panel Upgrade',
-      'Outlet Install',
-      'Safety Audit',
-    ],
-    'hvac': ['AC Cleaning', 'Freon Recharge', 'Duct Repair', 'Installation'],
-    'carpentry': ['Cabinet Making', 'Door Repair', 'Flooring', 'Furniture Fix'],
-    'appliance': [
-      'Refrigerator',
-      'Washing Machine',
-      'Microwave',
-      'Oven Repair',
-    ],
-  };
-
   // ── Lifecycle ──────────────────────────────────────────────────
 
   @override
@@ -202,6 +127,10 @@ class _EditRequestSheetState extends State<EditRequestSheet>
       }
     }
 
+    if (_selectedServices.isEmpty && _serviceOptions.isNotEmpty) {
+      _selectedServices.add(_serviceOptions.first);
+    }
+
     _descriptionCtrl = TextEditingController(
       text: widget.booking.problemDescription,
     );
@@ -221,14 +150,7 @@ class _EditRequestSheetState extends State<EditRequestSheet>
   }
 
   List<String> _extractServiceOptions() {
-    final fromName =
-        _profileSkillsByName[widget.booking.tradespersonName] ?? const [];
-
-    final tradeKey = widget.booking.trade.toLowerCase();
-    final fromTrade = _tradeServiceFallback.entries
-        .where((entry) => tradeKey.contains(entry.key))
-        .expand((entry) => entry.value)
-        .toList();
+    final trade = widget.booking.trade.trim();
 
     final fromCurrent = widget.booking.specialization
         .split(',')
@@ -236,7 +158,7 @@ class _EditRequestSheetState extends State<EditRequestSheet>
         .where((e) => e.isNotEmpty)
         .toList();
 
-    final raw = <String>[...fromCurrent, ...fromName, ...fromTrade];
+    final raw = <String>[if (trade.isNotEmpty) trade, ...fromCurrent];
 
     final seen = <String>{};
     final deduped = <String>[];
@@ -246,6 +168,11 @@ class _EditRequestSheetState extends State<EditRequestSheet>
         deduped.add(value);
       }
     }
+
+    if (deduped.isEmpty && trade.isNotEmpty) {
+      return [trade];
+    }
+
     return deduped;
   }
 
@@ -440,7 +367,7 @@ class _EditRequestSheetState extends State<EditRequestSheet>
     if (!mounted) return;
     setState(() => _isSaving = false);
     Navigator.pop(context);
-    widget.onSaved();
+    await widget.onSaved();
   }
 
   // ═══════════════════════════════════════════════════════════════

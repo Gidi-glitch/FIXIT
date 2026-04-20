@@ -37,9 +37,15 @@ func ConnectDB() {
 	if err := db.AutoMigrate(
 		&models.User{},
 		&models.HomeownerProfile{},
+		&models.HomeownerAddress{},
 		&models.TradespersonProfile{},
 		&models.VerificationDocument{},
 		&models.UserProfilePhoto{},
+		&models.Booking{},
+		&models.Conversation{},
+		&models.ConversationMessage{},
+		&models.BookingReview{},
+		&models.BookingIssue{},
 	); err != nil {
 		log.Fatal("❌ Failed to migrate database:", err)
 	}

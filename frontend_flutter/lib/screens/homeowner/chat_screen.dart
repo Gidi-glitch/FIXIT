@@ -1,13 +1,16 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/attachment_saver.dart';
-import '../../shared/chat_store.dart';
+import '../../services/api_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final Map<String, dynamic> conversation;
@@ -36,12 +39,17 @@ class _ChatScreenState extends State<ChatScreen> {
   Map<String, dynamic>? _pendingAttachment;
   final Map<String, double> _imageAspectRatios = {};
   bool _hasConversationChanges = false;
+  bool _isSending = false;
+  String _authToken = '';
+  int? _conversationIdInt;
+  final Map<String, String> _downloadedAttachmentPaths = {};
 
-  // ── Sample conversation data keyed by conversation id ──────────
-  // In production this comes from your Go backend via API.
   late List<Map<String, dynamic>> _messages;
 
   String get _conversationId {
+    if (_conversationIdInt != null) {
+      return _conversationIdInt.toString();
+    }
     final id = (widget.conversation['id'] ?? '').toString().trim();
     if (id.isNotEmpty) return id;
     return (widget.conversation['name'] ?? 'chat').toString().trim();
@@ -78,6 +86,7 @@ class _ChatScreenState extends State<ChatScreen> {
       'time': latest != null
           ? (latest['time'] ?? '').toString()
           : (widget.conversation['time'] ?? '').toString(),
+      'unreadCount': 0,
     };
   }
 
@@ -96,19 +105,75 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _messages = <Map<String, dynamic>>[];
-    _loadMessages();
+    _initializeChat();
     _messageController.addListener(() {
       final hasText = _messageController.text.trim().isNotEmpty;
       if (hasText != _hasText) setState(() => _hasText = hasText);
     });
   }
 
+  Future<void> _initializeChat() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _authToken = (prefs.getString('token') ?? '').trim();
+
+      if (_authToken.isEmpty) {
+        throw Exception('Authentication required. Please log in again.');
+      }
+
+      _conversationIdInt = int.tryParse(
+        (widget.conversation['id'] ?? '').toString().trim(),
+      );
+
+      _conversationIdInt ??= await _findConversationIdByName(_authToken);
+      await _loadMessages();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: _accentOrange,
+        ),
+      );
+    }
+  }
+
+  Future<int?> _findConversationIdByName(String token) async {
+    final targetName = (widget.conversation['name'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    if (targetName.isEmpty) return null;
+
+    final response = await ApiService.getConversations(token: token);
+    final rows = (response['conversations'] as List?) ?? const [];
+    for (final row in rows.whereType<Map>()) {
+      final entry = row.cast<String, dynamic>();
+      final name = (entry['name'] ?? '').toString().trim().toLowerCase();
+      if (name != targetName) continue;
+      final id = int.tryParse((entry['id'] ?? '').toString());
+      if (id != null) return id;
+    }
+    return null;
+  }
+
   Future<void> _loadMessages() async {
-    final seeded = _sampleMessages(_conversationId);
-    final loaded = await ChatStore.loadMessages(
-      _conversationId,
-      seedMessages: seeded,
+    if (_authToken.isEmpty || _conversationIdInt == null) {
+      if (!mounted) return;
+      setState(() => _messages = <Map<String, dynamic>>[]);
+      return;
+    }
+
+    final response = await ApiService.getConversationMessages(
+      token: _authToken,
+      conversationId: _conversationIdInt!,
     );
+    final rawMessages = (response['messages'] as List?) ?? const [];
+    final loaded = rawMessages
+        .whereType<Map>()
+        .map((entry) => _normalizeMessage(entry.cast<String, dynamic>()))
+        .toList();
 
     if (!mounted) return;
     setState(() {
@@ -118,158 +183,102 @@ class _ChatScreenState extends State<ChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
   }
 
+  Map<String, dynamic> _normalizeMessage(Map<String, dynamic> row) {
+    final sender = (row['sender'] ?? 'other').toString().trim().toLowerCase();
+    final text = (row['text'] ?? '').toString();
+    final sentAtIso = (row['sentAtIso'] ?? row['sent_at_iso'] ?? '')
+        .toString()
+        .trim();
+    final isAttachment = _asBool(row['isAttachment'] ?? row['is_attachment']);
+    final attachmentType =
+        (row['attachmentType'] ?? row['attachment_type'] ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
+
+    return {
+      'id': (row['id'] ?? '').toString(),
+      'sender': sender == 'me' ? 'me' : 'other',
+      'text': text,
+      'time': _messageTimeLabel(row, sentAtIso),
+      'sentAtIso': sentAtIso,
+      'isAttachment': isAttachment,
+      'attachmentType': attachmentType.isNotEmpty
+          ? attachmentType
+          : (isAttachment ? 'file' : ''),
+      'attachmentName':
+          (row['attachmentName'] ?? row['attachment_name'] ?? text).toString(),
+      'attachmentPath': (row['attachmentPath'] ?? row['attachment_path'] ?? '')
+          .toString(),
+    };
+  }
+
+  String _messageTimeLabel(Map<String, dynamic> row, String sentAtIso) {
+    final existing = (row['time'] ?? '').toString().trim();
+    if (existing.isNotEmpty) return existing;
+
+    final parsed = DateTime.tryParse(sentAtIso);
+    if (parsed == null) return '';
+
+    final local = parsed.toLocal();
+    final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
+    final minute = local.minute.toString().padLeft(2, '0');
+    final period = local.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $period';
+  }
+
+  bool _asBool(dynamic value) {
+    if (value is bool) return value;
+    final raw = (value ?? '').toString().trim().toLowerCase();
+    return raw == '1' || raw == 'true' || raw == 'yes';
+  }
+
+  bool _isRemotePath(String path) {
+    final normalized = path.trim().toLowerCase();
+    return normalized.startsWith('http://') ||
+        normalized.startsWith('https://');
+  }
+
+  Future<String?> _resolveAttachmentSourcePath(
+    String sourcePath,
+    String fileName,
+  ) async {
+    final normalized = sourcePath.trim();
+    if (normalized.isEmpty) return null;
+
+    if (!_isRemotePath(normalized)) {
+      return File(normalized).existsSync() ? normalized : null;
+    }
+
+    final cachedPath = _downloadedAttachmentPaths[normalized];
+    if (cachedPath != null && File(cachedPath).existsSync()) {
+      return cachedPath;
+    }
+
+    final response = await http.get(Uri.parse(normalized));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      return null;
+    }
+
+    final tempDir = await getTemporaryDirectory();
+    final safeName = _extractFileName(
+      fileName,
+      fallback: 'attachment',
+    ).replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final localPath =
+        '${tempDir.path}/fixit_${DateTime.now().millisecondsSinceEpoch}_$safeName';
+
+    final file = File(localPath);
+    await file.writeAsBytes(response.bodyBytes, flush: true);
+    _downloadedAttachmentPaths[normalized] = localPath;
+    return localPath;
+  }
+
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
-  }
-
-  List<Map<String, dynamic>> _sampleMessages(String conversationId) {
-    final Map<String, List<Map<String, dynamic>>> data = {
-      '1': [
-        _msg(
-          'pro',
-          'Hello! I received your booking request for the pipe leak repair.',
-          '10:02 AM',
-        ),
-        _msg(
-          'me',
-          'Hi Juan! Yes, the leak is under the kitchen sink. It\'s been dripping since last night.',
-          '10:04 AM',
-        ),
-        _msg(
-          'pro',
-          'Got it. Can you send me a photo of the area so I can prepare the right tools?',
-          '10:05 AM',
-        ),
-        _msg('me', 'Sure, let me take one now.', '10:06 AM'),
-        _msg('pro', 'No worries, take your time.', '10:07 AM'),
-        _msg('me', '[Photo attached]', '10:09 AM', isAttachment: true),
-        _msg(
-          'pro',
-          'Looks like a worn-out pipe joint. I have the parts. I\'m on my way now. Will be there in 15 minutes.',
-          '10:11 AM',
-        ),
-      ],
-      '2': [
-        _msg(
-          'me',
-          'Hi Maria, I need someone to check the wiring in my living room. Some outlets stopped working.',
-          '8:30 AM',
-        ),
-        _msg(
-          'pro',
-          'Hello! I can help with that. Is it just one outlet or multiple?',
-          '8:32 AM',
-        ),
-        _msg(
-          'me',
-          'Around 3 outlets on the same wall. The circuit breaker seems fine.',
-          '8:35 AM',
-        ),
-        _msg(
-          'pro',
-          'Probably a loose wire somewhere. Sure, I can check the wiring tomorrow morning.',
-          '8:40 AM',
-        ),
-        _msg('me', 'That would be great, thank you!', '8:41 AM'),
-      ],
-      '3': [
-        _msg(
-          'me',
-          'Hi Pedro, the AC in my bedroom has been making a loud noise and barely cools.',
-          '9:00 AM',
-        ),
-        _msg('pro', 'Hi! How old is the unit approximately?', '9:05 AM'),
-        _msg('me', 'Around 5 years old. Samsung inverter.', '9:06 AM'),
-        _msg(
-          'pro',
-          'I see. Based on the symptoms, it might be the compressor or low refrigerant. I need to inspect it in person.',
-          '9:10 AM',
-        ),
-        _msg('me', 'Okay, when can you come?', '9:12 AM'),
-        _msg(
-          'pro',
-          'The AC unit needs a new compressor. I\'ll send you a quote.',
-          '11:00 AM',
-        ),
-      ],
-      '4': [
-        _msg(
-          'pro',
-          'Hi! Just finished installing your faucet. Everything is working properly now.',
-          'Yesterday',
-        ),
-        _msg(
-          'me',
-          'Thank you so much Jose! Quick and clean work.',
-          'Yesterday',
-        ),
-        _msg('me', 'I left a 5-star review for you.', 'Yesterday'),
-        _msg(
-          'pro',
-          'Thank you for the review! Happy to help anytime.',
-          'Yesterday',
-        ),
-      ],
-      '5': [
-        _msg(
-          'pro',
-          'The cabinet door is fixed and all hinges are reinforced. Good as new!',
-          'Mar 18',
-        ),
-        _msg('me', 'Wow it looks perfect! How much do I owe you?', 'Mar 18'),
-        _msg('pro', '₱350 as agreed. You can pay via GCash or cash.', 'Mar 18'),
-        _msg('me', 'Sent via GCash. Thanks Antonio!', 'Mar 18'),
-        _msg(
-          'pro',
-          'The cabinet is all fixed now. Let me know if you need anything else.',
-          'Mar 18',
-        ),
-      ],
-      '6': [
-        _msg(
-          'pro',
-          'Welcome to Fix It Marketplace! How can we help you today?',
-          'Mar 15',
-        ),
-        _msg(
-          'me',
-          'Hi! I just signed up. How does the verification work for tradespeople?',
-          'Mar 15',
-        ),
-        _msg(
-          'pro',
-          'Great question! Every tradesperson submits a valid government ID and trade license. Our team reviews them within 24 hours before they can accept bookings.',
-          'Mar 15',
-        ),
-        _msg('me', 'That\'s reassuring. Thanks!', 'Mar 15'),
-        _msg(
-          'pro',
-          'Anytime! Feel free to message us for any concerns. 😊',
-          'Mar 15',
-        ),
-      ],
-    };
-    return data[conversationId] ?? [];
-  }
-
-  Map<String, dynamic> _msg(
-    String sender,
-    String text,
-    String time, {
-    bool isAttachment = false,
-    String? sentAtIso,
-  }) {
-    return {
-      'sender': sender,
-      'text': text,
-      'time': time,
-      'isAttachment': isAttachment,
-      if (sentAtIso != null && sentAtIso.trim().isNotEmpty)
-        'sentAtIso': sentAtIso,
-    };
   }
 
   bool get _showConversationStartDivider {
@@ -402,65 +411,106 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _sendMessage() async {
+    if (_isSending) return;
+
     final text = _messageController.text.trim();
     if (text.isEmpty && _pendingAttachment == null) return;
 
-    final pending = _pendingAttachment;
-    String? persistedAttachmentPath;
-    final sentAtIso = DateTime.now().toIso8601String();
-
-    if (pending != null) {
-      final originalPath = (pending['attachmentPath'] ?? '').toString().trim();
-      final originalName = (pending['attachmentName'] ?? 'attachment')
-          .toString()
-          .trim();
-
-      if (originalPath.isNotEmpty && File(originalPath).existsSync()) {
-        try {
-          persistedAttachmentPath = await ChatStore.persistAttachment(
-            conversationId: _conversationId,
-            sourcePath: originalPath,
-            fileName: originalName,
-          );
-        } catch (_) {
-          persistedAttachmentPath = originalPath;
-        }
-      }
+    if (_authToken.isEmpty || _conversationIdInt == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Conversation is not ready yet. Please try again.',
+          ),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: _accentOrange,
+        ),
+      );
+      return;
     }
 
-    if (!mounted) return;
+    final pending = _pendingAttachment;
+    final appended = <Map<String, dynamic>>[];
+    _isSending = true;
 
-    setState(() {
+    try {
       if (pending != null) {
-        _messages.add({
-          'sender': 'me',
-          'text': pending['attachmentName'] as String,
-          'time': _currentTime(),
-          'sentAtIso': sentAtIso,
-          'isAttachment': true,
-          'attachmentType': pending['attachmentType'],
-          'attachmentName': pending['attachmentName'],
-          'attachmentPath':
-              persistedAttachmentPath ?? pending['attachmentPath'],
-        });
-        _pendingAttachment = null;
-        _hasConversationChanges = true;
+        final originalPath = (pending['attachmentPath'] ?? '')
+            .toString()
+            .trim();
+        final originalName = (pending['attachmentName'] ?? 'attachment')
+            .toString()
+            .trim();
+
+        if (originalPath.isNotEmpty) {
+          final attachmentResponse =
+              await ApiService.sendConversationAttachment(
+                token: _authToken,
+                conversationId: _conversationIdInt!,
+                filePath: originalPath,
+                filename: originalName,
+              );
+
+          final rawAttachment = (attachmentResponse['chat_message'] as Map?)
+              ?.cast<String, dynamic>();
+          if (rawAttachment != null) {
+            appended.add(_normalizeMessage(rawAttachment));
+          }
+        }
       }
+
       if (text.isNotEmpty) {
-        _messages.add(_msg('me', text, _currentTime(), sentAtIso: sentAtIso));
-        _hasConversationChanges = true;
+        final messageResponse = await ApiService.sendConversationMessage(
+          token: _authToken,
+          conversationId: _conversationIdInt!,
+          text: text,
+        );
+
+        final rawMessage = (messageResponse['chat_message'] as Map?)
+            ?.cast<String, dynamic>();
+        if (rawMessage != null) {
+          appended.add(_normalizeMessage(rawMessage));
+        }
       }
-      _messageController.clear();
-    });
 
-    await ChatStore.saveMessages(_conversationId, _messages);
+      if (!mounted) return;
 
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _scrollToBottom(animated: true),
-    );
+      setState(() {
+        if (appended.isNotEmpty) {
+          _messages.addAll(appended);
+          _hasConversationChanges = true;
+        }
+        if (pending != null) {
+          _pendingAttachment = null;
+        }
+        _messageController.clear();
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _scrollToBottom(animated: true),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Could not send message right now.'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: _accentOrange,
+        ),
+      );
+    } finally {
+      _isSending = false;
+      if (mounted && pending == null && text.isNotEmpty && appended.isEmpty) {
+        _messageController.clear();
+      }
+    }
   }
 
   Future<void> _promptDeleteConversation() async {
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+
     final shouldDelete = await showDialog<bool>(
       context: context,
       barrierDismissible: true,
@@ -566,9 +616,27 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (shouldDelete != true || !mounted) return;
 
-    await ChatStore.clearConversation(_conversationId);
+    if (_authToken.isNotEmpty && _conversationIdInt != null) {
+      try {
+        await ApiService.deleteConversation(
+          token: _authToken,
+          conversationId: _conversationIdInt!,
+        );
+      } catch (error) {
+        if (!mounted) return;
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(error.toString().replaceFirst('Exception: ', '')),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: _accentOrange,
+          ),
+        );
+        return;
+      }
+    }
 
-    Navigator.of(context).pop({'deletedConversationId': _conversationId});
+    if (!mounted) return;
+    navigator.pop({'deletedConversationId': _conversationId});
   }
 
   Future<void> _openAttachmentSheet() async {
@@ -785,7 +853,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _showImagePreview(Map<String, dynamic> msg) async {
     final path = (msg['attachmentPath'] ?? '').toString().trim();
-    if (path.isEmpty || !File(path).existsSync()) {
+    final hasLocalFile = path.isNotEmpty && File(path).existsSync();
+    final hasRemoteFile = _isRemotePath(path);
+    if (path.isEmpty || (!hasLocalFile && !hasRemoteFile)) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -812,7 +882,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: InteractiveViewer(
                   minScale: 0.8,
                   maxScale: 4,
-                  child: Image.file(File(path), fit: BoxFit.contain),
+                  child: hasRemoteFile
+                      ? Image.network(path, fit: BoxFit.contain)
+                      : Image.file(File(path), fit: BoxFit.contain),
                 ),
               ),
               Positioned(
@@ -877,7 +949,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final fileName = (msg['attachmentName'] ?? 'attachment').toString();
     final type = (msg['attachmentType'] ?? 'file').toString();
 
-    if (sourcePath.isEmpty || !File(sourcePath).existsSync()) {
+    final localPath = await _resolveAttachmentSourcePath(sourcePath, fileName);
+    if (localPath == null || !File(localPath).existsSync()) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -891,9 +964,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       if (type == 'image') {
-        await _attachmentSaver.saveImageToGallery(sourcePath, fileName);
+        await _attachmentSaver.saveImageToGallery(localPath, fileName);
       } else {
-        await _attachmentSaver.saveFileToDownloads(sourcePath, fileName);
+        await _attachmentSaver.saveFileToDownloads(localPath, fileName);
       }
 
       if (!mounted) return;
@@ -1096,14 +1169,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return last.isNotEmpty ? last : fallback;
   }
 
-  String _currentTime() {
-    final now = TimeOfDay.now();
-    final hour = now.hourOfPeriod == 0 ? 12 : now.hourOfPeriod;
-    final minute = now.minute.toString().padLeft(2, '0');
-    final period = now.period == DayPeriod.am ? 'AM' : 'PM';
-    return '$hour:$minute $period';
-  }
-
   // ═══════════════════════════════════════════════════════════════
   //  BUILD
   // ═══════════════════════════════════════════════════════════════
@@ -1117,10 +1182,11 @@ class _ChatScreenState extends State<ChatScreen> {
       value: SystemUiOverlayStyle.light.copyWith(
         statusBarColor: Colors.transparent,
       ),
-      child: WillPopScope(
-        onWillPop: () async {
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
           _closeChatWithResult();
-          return false;
         },
         child: Scaffold(
           backgroundColor: _backgroundGray,
@@ -1520,8 +1586,11 @@ class _ChatScreenState extends State<ChatScreen> {
         .toString();
     final isImage = type == 'image';
     final path = (msg['attachmentPath'] ?? '').toString().trim();
+    final isRemoteImage = isImage && _isRemotePath(path);
     final hasImagePreview =
-        isImage && path.isNotEmpty && File(path).existsSync();
+        isImage &&
+        path.isNotEmpty &&
+        (isRemoteImage || File(path).existsSync());
 
     if (isImage) {
       _cacheImageAspectRatio(path);
@@ -1546,7 +1615,9 @@ class _ChatScreenState extends State<ChatScreen> {
         child: AspectRatio(
           aspectRatio: imageRatio.toDouble(),
           child: hasImagePreview
-              ? Image.file(File(path), fit: BoxFit.cover)
+              ? (isRemoteImage
+                    ? Image.network(path, fit: BoxFit.cover)
+                    : Image.file(File(path), fit: BoxFit.cover))
               : Icon(
                   Icons.image_rounded,
                   size: 34,
@@ -1582,7 +1653,9 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           clipBehavior: Clip.antiAlias,
           child: hasImagePreview
-              ? Image.file(File(path), fit: BoxFit.cover)
+              ? (isRemoteImage
+                    ? Image.network(path, fit: BoxFit.cover)
+                    : Image.file(File(path), fit: BoxFit.cover))
               : Icon(
                   isImage
                       ? Icons.image_rounded

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../services/api_service.dart';
 import 'booking_store.dart';
 
 /// Review Screen - A mandatory overlay that appears when a booking is completed.
@@ -26,6 +29,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
     'Quick',
   ];
   final Set<String> _selectedTags = {};
+  bool _isSubmitting = false;
 
   // ── Color Palette ──────────────────────────────────────────────
   static const Color _primaryBlue = Color(0xFF1E3A8A);
@@ -73,7 +77,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
     super.dispose();
   }
 
-  void _submitReview() {
+  Future<void> _submitReview() async {
     if (_rating == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -84,23 +88,52 @@ class _ReviewScreenState extends State<ReviewScreen> {
       return;
     }
 
-    // Submit review to store
-    BookingStore.submitReview(
-      widget.booking.id,
-      _rating,
-      _commentController.text.trim(),
-      _selectedTags.toList(),
-    );
+    setState(() => _isSubmitting = true);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Thank you for your review!'),
-        duration: Duration(seconds: 2),
-        backgroundColor: _successGreen,
-      ),
-    );
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token')?.trim();
+      if (token == null || token.isEmpty) {
+        throw Exception('Session expired. Please log in again.');
+      }
 
-    Navigator.pop(context);
+      await ApiService.submitBookingReview(
+        token: token,
+        bookingId: widget.booking.id,
+        rating: _rating,
+        comment: _commentController.text.trim(),
+        tags: _selectedTags.toList(),
+      );
+
+      BookingStore.submitReview(
+        widget.booking.id,
+        _rating,
+        _commentController.text.trim(),
+        _selectedTags.toList(),
+      );
+
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Thank you for your review!'),
+          duration: Duration(seconds: 2),
+          backgroundColor: _successGreen,
+        ),
+      );
+
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   @override
@@ -502,7 +535,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: _submitReview,
+        onPressed: _isSubmitting ? null : _submitReview,
         style: ElevatedButton.styleFrom(
           backgroundColor: _accentOrange,
           foregroundColor: Colors.white,
@@ -512,10 +545,19 @@ class _ReviewScreenState extends State<ReviewScreen> {
           ),
           elevation: 2,
         ),
-        child: const Text(
-          'Submit Review',
-          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-        ),
+        child: _isSubmitting
+            ? const SizedBox(
+                height: 18,
+                width: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : const Text(
+                'Submit Review',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
       ),
     );
   }

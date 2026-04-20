@@ -105,9 +105,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         final user =
             (result['user'] as Map?)?.cast<String, dynamic>() ??
             <String, dynamic>{};
+        final profile =
+            (result['profile'] as Map?)?.cast<String, dynamic>() ??
+            <String, dynamic>{};
 
         // Persist to cache
-        _cacheFromMap(prefs, user);
+        _cacheFromMap(prefs, user, profile);
       } catch (_) {
         // Silently fall through to cached values.
       }
@@ -131,25 +134,27 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     });
   }
 
-  void _cacheFromMap(SharedPreferences prefs, Map<String, dynamic> user) {
-    void set(String key, dynamic val) {
-      final s = (val ?? '').toString().trim();
-      if (s.isNotEmpty) prefs.setString(key, s);
-    }
+  void _cacheFromMap(
+    SharedPreferences prefs,
+    Map<String, dynamic> user,
+    Map<String, dynamic> profile,
+  ) {
+    _syncStringPref(prefs, 'first_name', user['first_name']);
+    _syncStringPref(prefs, 'last_name', user['last_name']);
+    _syncStringPref(prefs, 'phone', profile['phone'] ?? user['phone']);
+    _syncStringPref(prefs, 'email', user['email']);
+    _syncStringPref(prefs, 'bio', user['bio'] ?? profile['bio']);
+    _syncStringPref(prefs, 'gender', user['gender'] ?? profile['gender']);
+    _syncStringPref(prefs, 'profile_image_url', user['profile_image_url']);
+  }
 
-    set('first_name', user['first_name']);
-    set('last_name', user['last_name']);
-    set('phone', user['phone']);
-    set('email', user['email']);
-    set('bio', user['bio']);
-    set('gender', user['gender']);
-
-    final imageUrl = (user['profile_image_url'] ?? '').toString().trim();
-    if (imageUrl.isNotEmpty) {
-      prefs.setString('profile_image_url', imageUrl);
-    } else {
-      prefs.remove('profile_image_url');
+  void _syncStringPref(SharedPreferences prefs, String key, dynamic value) {
+    final normalized = (value ?? '').toString().trim();
+    if (normalized.isEmpty) {
+      prefs.remove(key);
+      return;
     }
+    prefs.setString(key, normalized);
   }
 
   // ── Avatar helpers ─────────────────────────────────────────────
@@ -349,16 +354,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       // 4. Persist to local cache
       payload.forEach((key, value) {
-        if ((value as String).isNotEmpty) {
-          prefs.setString(key, value);
-        }
+        _syncStringPref(prefs, key, value);
       });
 
       // Rebuild full_name cache
       final fullName =
           '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'
               .trim();
-      if (fullName.isNotEmpty) await prefs.setString('full_name', fullName);
+      _syncStringPref(prefs, 'full_name', fullName);
 
       if (!mounted) return;
 
@@ -1014,7 +1017,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         _buildFieldLabel('Gender'),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: _selectedGender,
+          initialValue: _selectedGender,
           items: _genders
               .map(
                 (g) => DropdownMenuItem(

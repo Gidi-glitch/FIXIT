@@ -285,7 +285,21 @@ func UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusBadRequest, "barangay cannot be empty")
 				return
 			}
+
+			serviceAreas := syncServiceAreasWithNewHomeBarangay(
+				profile.ServiceAreas,
+				profile.ServiceBarangay,
+				barangay,
+			)
+
+			encodedAreas, err := json.Marshal(serviceAreas)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to update service area")
+				return
+			}
+
 			updates["service_barangay"] = barangay
+			updates["service_areas"] = string(encodedAreas)
 		}
 		if req.Bio != nil {
 			updates["bio"] = strings.TrimSpace(*req.Bio)
@@ -307,6 +321,51 @@ func UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	GetMyProfile(w, r)
+}
+
+func syncServiceAreasWithNewHomeBarangay(
+	rawServiceAreas string,
+	previousBarangay string,
+	newBarangay string,
+) []string {
+	previousBarangay = strings.TrimSpace(previousBarangay)
+	newBarangay = strings.TrimSpace(newBarangay)
+
+	serviceAreas := decodeStringList(rawServiceAreas)
+	if len(serviceAreas) == 0 && previousBarangay != "" {
+		serviceAreas = []string{previousBarangay}
+	}
+
+	replaced := false
+	if previousBarangay != "" {
+		for i, area := range serviceAreas {
+			if strings.EqualFold(strings.TrimSpace(area), previousBarangay) {
+				serviceAreas[i] = newBarangay
+				replaced = true
+			}
+		}
+	}
+
+	if !replaced && newBarangay != "" {
+		serviceAreas = append(serviceAreas, newBarangay)
+	}
+
+	serviceAreas = cleanUniqueStrings(serviceAreas)
+
+	if newBarangay != "" {
+		hasNewBarangay := false
+		for _, area := range serviceAreas {
+			if strings.EqualFold(strings.TrimSpace(area), newBarangay) {
+				hasNewBarangay = true
+				break
+			}
+		}
+		if !hasNewBarangay {
+			serviceAreas = append(serviceAreas, newBarangay)
+		}
+	}
+
+	return cleanUniqueStrings(serviceAreas)
 }
 
 func UploadProfilePhoto(w http.ResponseWriter, r *http.Request) {

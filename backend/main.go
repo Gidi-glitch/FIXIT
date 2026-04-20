@@ -21,6 +21,7 @@ func main() {
 
 	routes.RegisterAuthRoutes()
 	routes.RegisterProfileRoutes()
+	routes.RegisterBookingRoutes()
 	routes.RegisterAdminRoutes()
 	http.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 

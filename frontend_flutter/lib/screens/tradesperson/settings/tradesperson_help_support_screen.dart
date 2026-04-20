@@ -183,7 +183,7 @@ class _TradespersonHelpSupportScreenState
         const SizedBox(height: 16),
         _fieldLabel('Category'), const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: _reportCategory, onChanged: (v) => setState(() => _reportCategory = v!),
+          initialValue: _reportCategory, onChanged: (v) => setState(() => _reportCategory = v!),
           dropdownColor: _cardWhite, isExpanded: true,
           decoration: _inputDec('Select category', Icons.category_outlined),
           items: _reportCategories.map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _textDark)))).toList(),

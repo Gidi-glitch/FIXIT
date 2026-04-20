@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../services/api_service.dart';
 import 'tradesperson_work_store.dart';
 import 'job_details_screen.dart';
 
@@ -33,6 +35,8 @@ class _JobsScreenState extends State<JobsScreen>
   static const Color _infoBlue = Color(0xFF3B82F6);
 
   bool _isSyncingAcceptedJob = false;
+  bool _isLoading = true;
+  String? _errorMessage;
   int _handledMutationToken = 0;
 
   @override
@@ -43,6 +47,7 @@ class _JobsScreenState extends State<JobsScreen>
     super.initState();
     _handledMutationToken = TradespersonWorkStore.mutationToken;
     TradespersonWorkStore.notifier.addListener(_handleStoreChanged);
+    _refreshJobs();
   }
 
   @override
@@ -103,6 +108,38 @@ class _JobsScreenState extends State<JobsScreen>
 
   List<Map<String, dynamic>> get _jobs => TradespersonWorkStore.jobs;
 
+  Future<String> _readToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token')?.trim() ?? '';
+    if (token.isEmpty) {
+      throw Exception('Session expired. Please log in again.');
+    }
+    return token;
+  }
+
+  Future<void> _refreshJobs() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final token = await _readToken();
+      final response = await ApiService.getTradespersonJobs(token: token);
+      final rows = (response['jobs'] as List?) ?? const [];
+      TradespersonWorkStore.setJobsFromApi(rows);
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
   // ── Status helpers ─────────────────────────────────────────────
   Color _statusColor(String status) => switch (status) {
     'In Progress' => _infoBlue,
@@ -147,17 +184,41 @@ class _JobsScreenState extends State<JobsScreen>
     final confirmed = await _showStartJobDialog(job);
     if (confirmed != true || !mounted) return;
 
-    final success = TradespersonWorkStore.startJobById(job['id'] as String);
-    if (!mounted) return;
+    try {
+      final token = await _readToken();
+      final bookingId = (job['bookingId'] as int?) ?? 0;
+      if (bookingId <= 0) {
+        throw Exception('Invalid job id.');
+      }
 
-    if (success) {
-      _showSnack(
-        'Job started! Head to ${job['homeowner'].toString().split(' ').first}\'s place.',
-        _infoBlue,
-        icon: Icons.handyman_rounded,
+      final response = await ApiService.startJob(
+        token: token,
+        jobId: bookingId,
       );
-    } else {
-      _showBlockedSnack();
+      final jobRow = (response['job'] as Map?)?.cast<String, dynamic>();
+      final success = TradespersonWorkStore.startJobByApiResult(
+        (job['id'] ?? '').toString(),
+        jobRow,
+      );
+
+      if (!mounted) return;
+      if (success) {
+        _showSnack(
+          'Job started! Head to ${job['homeowner'].toString().split(' ').first}\'s place.',
+          _infoBlue,
+          icon: Icons.handyman_rounded,
+        );
+      } else {
+        _showBlockedSnack();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final message = e.toString().replaceFirst('Exception: ', '');
+      if (message.toLowerCase().contains('in progress')) {
+        _showBlockedSnack();
+        return;
+      }
+      _showSnack(message, _errorRed, icon: Icons.error_outline_rounded);
     }
   }
 
@@ -391,14 +452,36 @@ class _JobsScreenState extends State<JobsScreen>
           ),
         ),
       ),
-    ).then((confirmed) {
+    ).then((confirmed) async {
       if (confirmed == true) {
-        TradespersonWorkStore.markJobAsComplete(job['id'] as String);
-        _showSnack(
-          'Job marked as complete. Homeowner has been notified.',
-          _successGreen,
-          icon: Icons.task_alt_rounded,
-        );
+        try {
+          final token = await _readToken();
+          final bookingId = (job['bookingId'] as int?) ?? 0;
+          if (bookingId <= 0) {
+            throw Exception('Invalid job id.');
+          }
+
+          final response = await ApiService.completeJob(
+            token: token,
+            jobId: bookingId,
+          );
+          final jobRow = (response['job'] as Map?)?.cast<String, dynamic>();
+          TradespersonWorkStore.completeJobByApiResult(
+            (job['id'] ?? '').toString(),
+            jobRow,
+          );
+
+          if (!mounted) return;
+          _showSnack(
+            'Job marked as complete. Homeowner has been notified.',
+            _successGreen,
+            icon: Icons.task_alt_rounded,
+          );
+        } catch (e) {
+          if (!mounted) return;
+          final message = e.toString().replaceFirst('Exception: ', '');
+          _showSnack(message, _errorRed, icon: Icons.error_outline_rounded);
+        }
       }
     });
   }
@@ -458,6 +541,10 @@ class _JobsScreenState extends State<JobsScreen>
                 switchOutCurve: Curves.easeIn,
                 child: _isSyncingAcceptedJob
                     ? _buildJobsSyncState()
+                    : _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _errorMessage != null
+                    ? _buildErrorState()
                     : jobs.isEmpty
                     ? _buildEmptyState()
                     : ListView.builder(
@@ -540,6 +627,63 @@ class _JobsScreenState extends State<JobsScreen>
     );
   }
 
+  Widget _buildErrorState() {
+    return Center(
+      key: const ValueKey('jobs-error'),
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.wifi_off_rounded,
+              size: 54,
+              color: _textMuted.withValues(alpha: 0.7),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Failed to load jobs',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: _textDark,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _errorMessage ?? 'Please try again.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: _textMuted.withValues(alpha: 0.85),
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 18),
+            ElevatedButton(
+              onPressed: _refreshJobs,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryBlue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Retry',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ═══════════════════════════════════════════════════════════════
   //  APP BAR
   // ═══════════════════════════════════════════════════════════════
@@ -591,7 +735,7 @@ class _JobsScreenState extends State<JobsScreen>
               ],
             ),
             child: IconButton(
-              onPressed: () => setState(() {}),
+              onPressed: _refreshJobs,
               icon: const Icon(
                 Icons.refresh_rounded,
                 color: _textDark,
@@ -693,6 +837,9 @@ class _JobsScreenState extends State<JobsScreen>
   Widget _buildJobCard(Map<String, dynamic> job) {
     final status = job['status'] as String;
     final statusColor = _statusColor(status);
+    final homeownerProfileImageUrl = (job['homeownerProfileImageUrl'] ?? '')
+        .toString()
+        .trim();
     final isCompleted = status == 'Completed';
     final isCancelled = status == 'Cancelled';
     final isInProgress = status == 'In Progress';
@@ -751,15 +898,34 @@ class _JobsScreenState extends State<JobsScreen>
                         ),
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      child: Center(
-                        child: Text(
-                          job['avatar'] as String,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: homeownerProfileImageUrl.isNotEmpty
+                            ? Image.network(
+                                homeownerProfileImageUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    Center(
+                                      child: Text(
+                                        job['avatar'] as String,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                              )
+                            : Center(
+                                child: Text(
+                                  job['avatar'] as String,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
                       ),
                     ),
                     const SizedBox(width: 12),

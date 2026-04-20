@@ -11,6 +11,11 @@ type TradespersonProfile struct {
 	TradeCategory      string `json:"trade_category" gorm:"not null"`
 	YearsExperience    int    `json:"years_experience" gorm:"not null"`
 	ServiceBarangay    string `json:"service_barangay" gorm:"not null"`
+	ServiceAreas       string `json:"service_areas" gorm:"type:text"`
+	Specializations    string `json:"specializations" gorm:"type:text"`
+	ExperienceLevel    string `json:"experience_level"`
+	RateRange          string `json:"rate_range"`
+	IsOnDuty           bool   `json:"is_on_duty" gorm:"not null;default:true"`
 	Gender             string `json:"gender"`
 	Bio                string `json:"bio"`
 	VerificationStatus string `json:"verification_status" gorm:"not null;default:pending"`

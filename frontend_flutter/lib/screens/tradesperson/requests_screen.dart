@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../services/api_service.dart';
 import 'tradesperson_work_store.dart';
 
 /// Requests Screen for the Fix It Marketplace Tradesperson App.
@@ -40,6 +42,7 @@ class _RequestsScreenState extends State<RequestsScreen>
   void initState() {
     super.initState();
     TradespersonWorkStore.notifier.addListener(_handleStoreChanged);
+    _refreshRequests();
   }
 
   @override
@@ -54,9 +57,43 @@ class _RequestsScreenState extends State<RequestsScreen>
   }
 
   String _activeFilter = 'All';
+  bool _isLoading = true;
+  String? _errorMessage;
   final List<String> _filters = ['All', 'High', 'Medium', 'Low'];
 
   List<Map<String, dynamic>> get _requests => TradespersonWorkStore.requests;
+
+  Future<String> _readToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token')?.trim() ?? '';
+    if (token.isEmpty) {
+      throw Exception('Session expired. Please log in again.');
+    }
+    return token;
+  }
+
+  Future<void> _refreshRequests() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final token = await _readToken();
+      final response = await ApiService.getIncomingRequests(token: token);
+      final rows = (response['requests'] as List?) ?? const [];
+      TradespersonWorkStore.setRequestsFromApi(rows);
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
 
   // ── Urgency helpers ────────────────────────────────────────────
   Color _urgencyColor(String urgency) {
@@ -91,21 +128,58 @@ class _RequestsScreenState extends State<RequestsScreen>
   }
 
   // ── Accept / Decline Actions ───────────────────────────────────
-  void _acceptRequest(Map<String, dynamic> request) {
-    TradespersonWorkStore.acceptRequestById(request['id'] as String);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Request from ${request['homeowner']} accepted!',
-          style: const TextStyle(fontWeight: FontWeight.w600),
+  Future<void> _acceptRequest(Map<String, dynamic> request) async {
+    try {
+      final token = await _readToken();
+      final requestId = (request['bookingId'] as int?) ?? 0;
+      if (requestId <= 0) {
+        throw Exception('Invalid request id.');
+      }
+
+      final response = await ApiService.acceptRequest(
+        token: token,
+        requestId: requestId,
+      );
+
+      final jobRow = (response['job'] as Map?)?.cast<String, dynamic>();
+      TradespersonWorkStore.acceptRequestByApiResult(
+        (request['id'] ?? '').toString(),
+        jobRow,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Request from ${request['homeowner']} accepted!',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: _successGreen,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
         ),
-        backgroundColor: _successGreen,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
-      ),
-    );
-    widget.onNavigateToJobs();
+      );
+      widget.onNavigateToJobs();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: _errorRed,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    }
   }
 
   void _declineRequest(Map<String, dynamic> request) {
@@ -219,23 +293,52 @@ class _RequestsScreenState extends State<RequestsScreen>
           ),
         ),
       ),
-    ).then((confirmed) {
+    ).then((confirmed) async {
       if (confirmed == true) {
-        TradespersonWorkStore.declineRequestById(request['id'] as String);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              'Request declined.',
-              style: TextStyle(fontWeight: FontWeight.w600),
+        try {
+          final token = await _readToken();
+          final requestId = (request['bookingId'] as int?) ?? 0;
+          if (requestId <= 0) {
+            throw Exception('Invalid request id.');
+          }
+
+          await ApiService.declineRequest(token: token, requestId: requestId);
+          TradespersonWorkStore.declineRequestById(
+            (request['id'] ?? '').toString(),
+          );
+
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'Request declined.',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              backgroundColor: _textMuted,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.all(16),
             ),
-            backgroundColor: _textMuted,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+          );
+        } catch (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                e.toString().replaceFirst('Exception: ', ''),
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              backgroundColor: _errorRed,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.all(16),
             ),
-            margin: const EdgeInsets.all(16),
-          ),
-        );
+          );
+        }
       }
     });
   }
@@ -267,7 +370,11 @@ class _RequestsScreenState extends State<RequestsScreen>
             _buildAppBar(),
             _buildFilterTabs(),
             Expanded(
-              child: requests.isEmpty
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _errorMessage != null
+                  ? _buildErrorState()
+                  : requests.isEmpty
                   ? _buildEmptyState()
                   : ListView.builder(
                       physics: const BouncingScrollPhysics(),
@@ -344,7 +451,7 @@ class _RequestsScreenState extends State<RequestsScreen>
               ],
             ),
             child: IconButton(
-              onPressed: () => setState(() {}),
+              onPressed: _refreshRequests,
               icon: const Icon(
                 Icons.refresh_rounded,
                 color: _textDark,
@@ -446,6 +553,9 @@ class _RequestsScreenState extends State<RequestsScreen>
   Widget _buildRequestCard(Map<String, dynamic> request) {
     final urgencyColor = _urgencyColor(request['urgency'] as String);
     final isNew = request['isNew'] == true;
+    final homeownerProfileImageUrl = (request['homeownerProfileImageUrl'] ?? '')
+        .toString()
+        .trim();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -486,15 +596,34 @@ class _RequestsScreenState extends State<RequestsScreen>
                     ),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Center(
-                    child: Text(
-                      request['avatar'] as String,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: homeownerProfileImageUrl.isNotEmpty
+                        ? Image.network(
+                            homeownerProfileImageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Center(
+                                  child: Text(
+                                    request['avatar'] as String,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                          )
+                        : Center(
+                            child: Text(
+                              request['avatar'] as String,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -795,6 +924,66 @@ class _RequestsScreenState extends State<RequestsScreen>
   }
 
   // ═══════════════════════════════════════════════════════════════
+  //  ERROR STATE
+  // ═══════════════════════════════════════════════════════════════
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.wifi_off_rounded,
+              size: 54,
+              color: _textMuted.withValues(alpha: 0.7),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Failed to load requests',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: _textDark,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _errorMessage ?? 'Please try again.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: _textMuted.withValues(alpha: 0.85),
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 18),
+            ElevatedButton(
+              onPressed: _refreshRequests,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryBlue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Retry',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   //  EMPTY STATE
   // ═══════════════════════════════════════════════════════════════
 
@@ -822,7 +1011,7 @@ class _RequestsScreenState extends State<RequestsScreen>
             Text(
               _activeFilter == 'All'
                   ? 'No Requests Yet'
-                  : 'No ${_activeFilter} Requests',
+                  : 'No $_activeFilter Requests',
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,

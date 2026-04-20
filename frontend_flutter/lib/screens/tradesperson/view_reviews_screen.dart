@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../services/api_service.dart';
 
 /// View Reviews Screen for the Fix It Marketplace Tradesperson App.
 ///
@@ -23,6 +26,7 @@ class _ReviewEntry {
   final String id;
   final String homeownerName;
   final String homeownerAvatar;
+  final String? homeownerProfileImageUrl;
   final double rating;
   final String? comment;
   final List<String> tags;
@@ -34,6 +38,7 @@ class _ReviewEntry {
     required this.id,
     required this.homeownerName,
     required this.homeownerAvatar,
+    this.homeownerProfileImageUrl,
     required this.rating,
     this.comment,
     required this.tags,
@@ -71,6 +76,8 @@ class _ViewReviewsScreenState extends State<ViewReviewsScreen> {
   int? _starFilter; // null = All, 1-5 = specific star
   String _sort = 'Recent'; // 'Recent' | 'Highest' | 'Lowest'
   String? _tagFilter; // null = no tag filter
+  bool _isLoading = true;
+  String? _errorMessage;
 
   // ── Sample review data ──────────────────────────────────────────
   // In production, replace with: TradespersonWorkStore.reviews or API call.
@@ -215,6 +222,99 @@ class _ViewReviewsScreenState extends State<ViewReviewsScreen> {
     ),
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _loadReviews();
+  }
+
+  Future<String> _readToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token')?.trim() ?? '';
+    if (token.isEmpty) {
+      throw Exception('Session expired. Please log in again.');
+    }
+    return token;
+  }
+
+  String _toApiSort(String value) {
+    switch (value) {
+      case 'Highest':
+        return 'highest';
+      case 'Lowest':
+        return 'lowest';
+      default:
+        return 'recent';
+    }
+  }
+
+  Future<void> _loadReviews() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final token = await _readToken();
+      final response = await ApiService.getMyTradespersonReviews(
+        token: token,
+        sort: _toApiSort(_sort),
+      );
+
+      final rows = (response['reviews'] as List?) ?? const [];
+      final loaded = rows.whereType<Map>().map((raw) {
+        final row = raw.cast<String, dynamic>();
+        final tags = ((row['tags'] as List?) ?? const [])
+            .map((e) => e.toString().trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+
+        final ratingRaw = row['rating'];
+        final rating = ratingRaw is num
+            ? ratingRaw.toDouble()
+            : double.tryParse(ratingRaw.toString()) ?? 0;
+
+        final createdAt =
+            DateTime.tryParse((row['created_at'] ?? '').toString()) ??
+            DateTime.now();
+
+        final homeownerName = (row['homeowner_name'] ?? 'Homeowner').toString();
+        final avatar = (row['homeowner_avatar'] ?? '').toString().trim();
+
+        return _ReviewEntry(
+          id: (row['id'] ?? '').toString(),
+          homeownerName: homeownerName,
+          homeownerAvatar: avatar.isEmpty ? 'HO' : avatar,
+          homeownerProfileImageUrl: (row['homeowner_profile_image_url'] ?? '')
+              .toString()
+              .trim(),
+          rating: rating,
+          comment: (row['comment'] ?? '').toString().trim().isEmpty
+              ? null
+              : (row['comment'] ?? '').toString().trim(),
+          tags: tags,
+          service: (row['service'] ?? row['trade'] ?? 'Service').toString(),
+          barangay: (row['barangay'] ?? '').toString(),
+          date: createdAt,
+        );
+      }).toList();
+
+      if (!mounted) return;
+      setState(() {
+        _allReviews
+          ..clear()
+          ..addAll(loaded);
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
   // ── Derived data ────────────────────────────────────────────────
 
   List<_ReviewEntry> get _filtered {
@@ -274,10 +374,12 @@ class _ViewReviewsScreenState extends State<ViewReviewsScreen> {
     if (diff.inDays == 0) return 'Today';
     if (diff.inDays == 1) return 'Yesterday';
     if (diff.inDays < 7) return '${diff.inDays} days ago';
-    if (diff.inDays < 30)
+    if (diff.inDays < 30) {
       return '${(diff.inDays / 7).floor()} week${(diff.inDays / 7).floor() > 1 ? 's' : ''} ago';
-    if (diff.inDays < 365)
+    }
+    if (diff.inDays < 365) {
       return '${(diff.inDays / 30).floor()} month${(diff.inDays / 30).floor() > 1 ? 's' : ''} ago';
+    }
     return '${(diff.inDays / 365).floor()} year${(diff.inDays / 365).floor() > 1 ? 's' : ''} ago';
   }
 
@@ -287,6 +389,51 @@ class _ViewReviewsScreenState extends State<ViewReviewsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (_errorMessage != null) {
+      return Scaffold(
+        backgroundColor: _backgroundGray,
+        appBar: AppBar(
+          title: const Text('My Reviews'),
+          backgroundColor: _primaryBlue,
+          foregroundColor: Colors.white,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.error_outline_rounded,
+                  color: _errorRed,
+                  size: 40,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _errorMessage!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: _textMuted.withValues(alpha: 0.85)),
+                ),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: _loadReviews,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primaryBlue,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final reviews = _filtered;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -581,6 +728,7 @@ class _ViewReviewsScreenState extends State<ViewReviewsScreen> {
                   onTap: () {
                     setState(() => _sort = label);
                     Navigator.pop(context);
+                    _loadReviews();
                   },
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
@@ -1046,6 +1194,8 @@ class _ViewReviewsScreenState extends State<ViewReviewsScreen> {
   Widget _buildReviewCard(_ReviewEntry review) {
     final starInt = review.rating.round();
     final ratingColor = _ratingColor(review.rating);
+    final homeownerProfileImageUrl = (review.homeownerProfileImageUrl ?? '')
+        .trim();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -1089,15 +1239,34 @@ class _ViewReviewsScreenState extends State<ViewReviewsScreen> {
                     ),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Center(
-                    child: Text(
-                      review.homeownerAvatar,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: homeownerProfileImageUrl.isNotEmpty
+                        ? Image.network(
+                            homeownerProfileImageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Center(
+                                  child: Text(
+                                    review.homeownerAvatar,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                          )
+                        : Center(
+                            child: Text(
+                              review.homeownerAvatar,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(width: 12),

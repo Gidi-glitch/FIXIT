@@ -590,7 +590,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                 _fieldLabel('Category'),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value: _reportCategory,
+                  initialValue: _reportCategory,
                   items: _reportCategories
                       .map(
                         (c) => DropdownMenuItem(

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../services/api_service.dart';
+
 /// My Addresses Screen for the Fix It Marketplace Homeowner App.
 ///
 /// Lets the homeowner manage one or more service addresses.
@@ -55,6 +57,30 @@ class _AddressEntry {
     isPrimary: j['isPrimary'] as bool? ?? false,
   );
 
+  factory _AddressEntry.fromApi(Map<String, dynamic> j) => _AddressEntry(
+    id: (j['id'] ?? '').toString(),
+    label: (j['label'] ?? '').toString().trim(),
+    unit: (j['unit'] ?? '').toString().trim(),
+    street: (j['street'] ?? '').toString().trim(),
+    barangay: (j['barangay'] ?? '').toString().trim(),
+    isPrimary: j['is_primary'] == true || j['isPrimary'] == true,
+  );
+
+  Map<String, dynamic> toApiPayload({bool includePrimary = true}) {
+    final payload = <String, dynamic>{
+      'label': label,
+      'unit': unit,
+      'street': street,
+      'barangay': barangay,
+      'municipality': municipality,
+      'province': province,
+    };
+    if (includePrimary) {
+      payload['is_primary'] = isPrimary;
+    }
+    return payload;
+  }
+
   String get fullAddress {
     final parts = <String>[
       if (unit.trim().isNotEmpty) unit.trim(),
@@ -82,15 +108,31 @@ class _MyAddressesScreenState extends State<MyAddressesScreen> {
 
   static const String _prefsKey = 'saved_addresses';
 
-  static const List<String> _barangays = ['Balayhangin', 'Bangyas', 'Dayap',
-  'Hanggan', 'Imok', 'Kanluran', 'Lamot 1', 'Lamot 2','Limao', 'Mabacan','Masiit', 
-  'Paliparan', 'Perez', 'Prinza', 'San Isidro', 'Santo Tomas','Silangan'
+  static const List<String> _barangays = [
+    'Balayhangin',
+    'Bangyas',
+    'Dayap',
+    'Hanggan',
+    'Imok',
+    'Kanluran',
+    'Lamot 1',
+    'Lamot 2',
+    'Limao',
+    'Mabacan',
+    'Masiit',
+    'Paliparan',
+    'Perez',
+    'Prinza',
+    'San Isidro',
+    'Santo Tomas',
+    'Silangan',
   ];
 
   static const List<String> _labelOptions = ['Home', 'Work', 'Other'];
 
   List<_AddressEntry> _addresses = [];
   bool _isLoading = true;
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -101,68 +143,194 @@ class _MyAddressesScreenState extends State<MyAddressesScreen> {
   // ── Persistence ─────────────────────────────────────────────────
 
   Future<void> _load() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_prefsKey);
-    if (raw != null && raw.isNotEmpty) {
-      try {
-        final list = jsonDecode(raw) as List;
-        _addresses = list
-            .map((e) => _AddressEntry.fromJson(e as Map<String, dynamic>))
-            .toList();
-      } catch (_) {
-        _addresses = [];
-      }
+    final token = prefs.getString('token')?.trim() ?? '';
+
+    if (token.isEmpty) {
+      _addresses = _readLocalAddresses(prefs);
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      return;
     }
 
-    // Seed from existing profile barangay if no addresses saved yet
-    if (_addresses.isEmpty) {
-      final barangay = prefs.getString('barangay')?.trim() ?? '';
-      _addresses = [
-        _AddressEntry(
-          id: 'addr_${DateTime.now().millisecondsSinceEpoch}',
-          label: 'Home',
-          unit: '',
-          street: '',
-          barangay: _barangays.contains(barangay) ? barangay : '',
-          isPrimary: true,
-        ),
-      ];
+    try {
+      await _fetchAddressesFromBackend(token);
+
+      if (_addresses.isEmpty) {
+        final local = _readLocalAddresses(prefs);
+        if (local.isNotEmpty) {
+          await _migrateLocalAddressesToBackend(
+            prefs: prefs,
+            token: token,
+            localAddresses: local,
+          );
+          await _fetchAddressesFromBackend(token);
+        }
+      }
+
+      await _cachePrimaryBarangay();
+    } catch (_) {
+      _addresses = _readLocalAddresses(prefs);
+      if (mounted) {
+        _showSnack(
+          'Unable to reach server. Showing saved local addresses.',
+          _accentOrange,
+        );
+      }
     }
 
     if (!mounted) return;
     setState(() => _isLoading = false);
   }
 
-  Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _prefsKey,
-      jsonEncode(_addresses.map((a) => a.toJson()).toList()),
-    );
+  // ── Helpers ─────────────────────────────────────────────────────
 
-    // Keep primary barangay in sync with profile
+  List<_AddressEntry> _readLocalAddresses(SharedPreferences prefs) {
+    final raw = prefs.getString(_prefsKey);
+    if (raw == null || raw.isEmpty) {
+      return [];
+    }
+
+    try {
+      final list = jsonDecode(raw) as List;
+      return list
+          .map((e) => _AddressEntry.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _migrateLocalAddressesToBackend({
+    required SharedPreferences prefs,
+    required String token,
+    required List<_AddressEntry> localAddresses,
+  }) async {
+    for (final address in localAddresses) {
+      if (address.street.trim().isEmpty || address.barangay.trim().isEmpty) {
+        continue;
+      }
+      await ApiService.createMyAddress(
+        token: token,
+        data: address.toApiPayload(includePrimary: true),
+      );
+    }
+    await prefs.remove(_prefsKey);
+  }
+
+  Future<void> _fetchAddressesFromBackend(String token) async {
+    final result = await ApiService.getMyAddresses(token: token);
+    final rawRows = result['addresses'];
+
+    final rows = (rawRows is List)
+        ? rawRows
+              .whereType<Map>()
+              .map((e) => e.cast<String, dynamic>())
+              .toList()
+        : <Map<String, dynamic>>[];
+
+    _addresses = rows.map(_AddressEntry.fromApi).toList();
+  }
+
+  Future<void> _cachePrimaryBarangay() async {
+    if (_addresses.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
     final primary = _addresses.firstWhere(
       (a) => a.isPrimary,
       orElse: () => _addresses.first,
     );
-    if (primary.barangay.isNotEmpty) {
-      await prefs.setString('barangay', primary.barangay);
+    if (primary.barangay.trim().isNotEmpty) {
+      await prefs.setString('barangay', primary.barangay.trim());
     }
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────
-
-  void _setPrimary(String id) {
-    setState(() {
-      for (final a in _addresses) {
-        a.isPrimary = a.id == id;
-      }
-    });
-    _save();
-    _showSnack('Primary address updated.', _successGreen);
+  int? _parseAddressId(String id) {
+    final parsed = int.tryParse(id.trim());
+    return parsed != null && parsed > 0 ? parsed : null;
   }
 
-  void _deleteAddress(_AddressEntry entry) async {
+  Future<String> _requireToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token')?.trim() ?? '';
+    if (token.isEmpty) {
+      throw Exception('Session expired. Please log in again.');
+    }
+    return token;
+  }
+
+  Future<void> _saveAddress(
+    _AddressEntry entry, {
+    _AddressEntry? existing,
+  }) async {
+    final token = await _requireToken();
+
+    setState(() => _isSaving = true);
+    try {
+      if (existing == null) {
+        await ApiService.createMyAddress(
+          token: token,
+          data: entry.toApiPayload(includePrimary: true),
+        );
+      } else {
+        final addressId = _parseAddressId(existing.id);
+        if (addressId == null) {
+          throw Exception('Invalid address id.');
+        }
+        await ApiService.updateMyAddress(
+          token: token,
+          addressId: addressId,
+          data: entry.toApiPayload(includePrimary: false),
+        );
+      }
+
+      await _fetchAddressesFromBackend(token);
+      await _cachePrimaryBarangay();
+
+      if (!mounted) return;
+      setState(() {});
+      _showSnack(
+        existing != null ? 'Address updated.' : 'Address added.',
+        _successGreen,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  Future<void> _setPrimary(String id) async {
+    final addressId = _parseAddressId(id);
+    if (addressId == null) {
+      _showSnack('Invalid address id.', _errorRed);
+      return;
+    }
+
+    setState(() => _isSaving = true);
+    try {
+      final token = await _requireToken();
+      await ApiService.setPrimaryMyAddress(token: token, addressId: addressId);
+      await _fetchAddressesFromBackend(token);
+      await _cachePrimaryBarangay();
+
+      if (!mounted) return;
+      setState(() {});
+      _showSnack('Primary address updated.', _successGreen);
+    } catch (e) {
+      if (mounted) {
+        _showSnack(e.toString().replaceFirst('Exception: ', ''), _errorRed);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  Future<void> _deleteAddress(_AddressEntry entry) async {
     if (_addresses.length == 1) {
       _showSnack('You must have at least one address.', _errorRed);
       return;
@@ -171,15 +339,31 @@ class _MyAddressesScreenState extends State<MyAddressesScreen> {
     final confirmed = await _showDeleteDialog(entry.label);
     if (!confirmed) return;
 
-    setState(() {
-      _addresses.removeWhere((a) => a.id == entry.id);
-      // Ensure one is primary
-      if (!_addresses.any((a) => a.isPrimary)) {
-        _addresses.first.isPrimary = true;
+    final addressId = _parseAddressId(entry.id);
+    if (addressId == null) {
+      _showSnack('Invalid address id.', _errorRed);
+      return;
+    }
+
+    setState(() => _isSaving = true);
+    try {
+      final token = await _requireToken();
+      await ApiService.deleteMyAddress(token: token, addressId: addressId);
+      await _fetchAddressesFromBackend(token);
+      await _cachePrimaryBarangay();
+
+      if (!mounted) return;
+      setState(() {});
+      _showSnack('Address removed.', _textMuted);
+    } catch (e) {
+      if (mounted) {
+        _showSnack(e.toString().replaceFirst('Exception: ', ''), _errorRed);
       }
-    });
-    _save();
-    _showSnack('Address removed.', _textMuted);
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
   }
 
   Future<bool> _showDeleteDialog(String label) async {
@@ -314,23 +498,7 @@ class _MyAddressesScreenState extends State<MyAddressesScreen> {
         existing: existing,
         barangays: _barangays,
         labelOptions: _labelOptions,
-        onSave: (entry) {
-          setState(() {
-            if (existing != null) {
-              final idx = _addresses.indexWhere((a) => a.id == existing.id);
-              if (idx != -1) _addresses[idx] = entry;
-            } else {
-              // First address auto-primary
-              if (_addresses.isEmpty) entry.isPrimary = true;
-              _addresses.add(entry);
-            }
-          });
-          _save();
-          _showSnack(
-            existing != null ? 'Address updated.' : 'Address added.',
-            _successGreen,
-          );
-        },
+        onSave: (entry) => _saveAddress(entry, existing: existing),
         primaryBlue: _primaryBlue,
         accentOrange: _accentOrange,
         backgroundGray: _backgroundGray,
@@ -582,6 +750,7 @@ class _MyAddressesScreenState extends State<MyAddressesScreen> {
                     borderRadius: BorderRadius.circular(14),
                   ),
                   onSelected: (val) {
+                    if (_isSaving) return;
                     if (val == 'edit') _openAddressSheet(existing: entry);
                     if (val == 'primary') _setPrimary(entry.id);
                     if (val == 'delete') _deleteAddress(entry);
@@ -684,7 +853,9 @@ class _MyAddressesScreenState extends State<MyAddressesScreen> {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () => _openAddressSheet(existing: entry),
+                onPressed: _isSaving
+                    ? null
+                    : () => _openAddressSheet(existing: entry),
                 icon: const Icon(Icons.edit_outlined, size: 16),
                 label: const Text('Edit Address'),
                 style: OutlinedButton.styleFrom(
@@ -711,7 +882,9 @@ class _MyAddressesScreenState extends State<MyAddressesScreen> {
 
   Widget _buildAddButton() {
     return ElevatedButton.icon(
-      onPressed: _addresses.length >= 5 ? null : () => _openAddressSheet(),
+      onPressed: _isSaving || _addresses.length >= 5
+          ? null
+          : () => _openAddressSheet(),
       icon: const Icon(Icons.add_rounded, size: 20),
       label: Text(
         _addresses.length >= 5
@@ -740,7 +913,7 @@ class _AddressFormSheet extends StatefulWidget {
   final _AddressEntry? existing;
   final List<String> barangays;
   final List<String> labelOptions;
-  final void Function(_AddressEntry) onSave;
+  final Future<void> Function(_AddressEntry) onSave;
   final Color primaryBlue,
       accentOrange,
       backgroundGray,
@@ -778,6 +951,7 @@ class _AddressFormSheetState extends State<_AddressFormSheet> {
   late final TextEditingController _customLabelCtrl;
   String? _selectedBarangay;
   late String _selectedLabel;
+  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -806,8 +980,9 @@ class _AddressFormSheetState extends State<_AddressFormSheet> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
     final label =
         _selectedLabel == 'Other' && _customLabelCtrl.text.trim().isNotEmpty
         ? _customLabelCtrl.text.trim()
@@ -824,8 +999,29 @@ class _AddressFormSheetState extends State<_AddressFormSheet> {
       isPrimary: widget.existing?.isPrimary ?? false,
     );
 
-    Navigator.pop(context);
-    widget.onSave(entry);
+    setState(() => _isSubmitting = true);
+    try {
+      await widget.onSave(entry);
+      if (!mounted) return;
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: widget.errorRed,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
   }
 
   InputDecoration _dec(String hint, IconData icon) => InputDecoration(
@@ -1044,7 +1240,7 @@ class _AddressFormSheetState extends State<_AddressFormSheet> {
                 _label('Barangay'),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value: _selectedBarangay,
+                  initialValue: _selectedBarangay,
                   items: widget.barangays
                       .map(
                         (b) => DropdownMenuItem(
@@ -1095,7 +1291,7 @@ class _AddressFormSheetState extends State<_AddressFormSheet> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _submit,
+                    onPressed: _isSubmitting ? null : _submit,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: widget.primaryBlue,
                       foregroundColor: Colors.white,
@@ -1105,13 +1301,24 @@ class _AddressFormSheetState extends State<_AddressFormSheet> {
                         borderRadius: BorderRadius.circular(16),
                       ),
                     ),
-                    child: Text(
-                      isEdit ? 'Update Address' : 'Save Address',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                        : Text(
+                            isEdit ? 'Update Address' : 'Save Address',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                   ),
                 ),
               ],

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../services/api_service.dart';
 import 'tradesperson_chat_screen.dart';
 import 'tradesperson_work_store.dart';
 
@@ -43,6 +46,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
   void initState() {
     super.initState();
     TradespersonWorkStore.notifier.addListener(_handleStoreChanged);
+    _refreshJobDetails();
   }
 
   @override
@@ -64,6 +68,47 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
       );
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<String> _readToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token')?.trim() ?? '';
+    if (token.isEmpty) {
+      throw Exception('Session expired. Please log in again.');
+    }
+    return token;
+  }
+
+  int _bookingIdFromAny(String idOrRef) {
+    final direct = int.tryParse(idOrRef);
+    if (direct != null && direct > 0) return direct;
+
+    final digits = RegExp(
+      r'\d+',
+    ).allMatches(idOrRef).map((m) => m.group(0)).join();
+    return int.tryParse(digits) ?? 0;
+  }
+
+  Future<void> _refreshJobDetails() async {
+    try {
+      final token = await _readToken();
+      final bookingId = _bookingIdFromAny(widget.jobId);
+      if (bookingId <= 0) return;
+
+      final response = await ApiService.getTradespersonJobById(
+        token: token,
+        jobId: bookingId,
+      );
+
+      final jobRow = (response['job'] as Map?)?.cast<String, dynamic>();
+      if (jobRow == null) return;
+      TradespersonWorkStore.upsertJobFromApi(
+        jobRow,
+        mutation: 'job_details_sync',
+      );
+    } catch (_) {
+      // Job details screen can still render from cached store data.
     }
   }
 
@@ -89,18 +134,43 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     final confirmed = await _showStartJobDialog(job);
     if (confirmed != true) return;
 
-    final success = TradespersonWorkStore.startJobById(widget.jobId);
-    if (!mounted) return;
+    try {
+      final token = await _readToken();
+      final bookingId =
+          (job['bookingId'] as int?) ?? _bookingIdFromAny(widget.jobId);
+      if (bookingId <= 0) {
+        throw Exception('Invalid job id.');
+      }
 
-    if (success) {
-      _didMutate = true;
-      _showSnack(
-        'Job started! Get to work, ${job['homeowner'].toString().split(' ').first}\'s place awaits.',
-        _infoBlue,
-        icon: Icons.handyman_rounded,
+      final response = await ApiService.startJob(
+        token: token,
+        jobId: bookingId,
       );
-    } else {
-      _showBlockedSnack();
+      final jobRow = (response['job'] as Map?)?.cast<String, dynamic>();
+      final success = TradespersonWorkStore.startJobByApiResult(
+        widget.jobId,
+        jobRow,
+      );
+
+      if (!mounted) return;
+      if (success) {
+        _didMutate = true;
+        _showSnack(
+          'Job started! Get to work, ${job['homeowner'].toString().split(' ').first}\'s place awaits.',
+          _infoBlue,
+          icon: Icons.handyman_rounded,
+        );
+      } else {
+        _showBlockedSnack();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final message = e.toString().replaceFirst('Exception: ', '');
+      if (message.toLowerCase().contains('in progress')) {
+        _showBlockedSnack();
+        return;
+      }
+      _showSnack(message, _errorRed, icon: Icons.error_outline_rounded);
     }
   }
 
@@ -226,15 +296,33 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     final confirmed = await _showCompleteDialog(job);
     if (confirmed != true) return;
 
-    TradespersonWorkStore.markJobAsComplete(widget.jobId);
-    if (!mounted) return;
+    try {
+      final token = await _readToken();
+      final bookingId =
+          (job['bookingId'] as int?) ?? _bookingIdFromAny(widget.jobId);
+      if (bookingId <= 0) {
+        throw Exception('Invalid job id.');
+      }
 
-    _didMutate = true;
-    _showSnack(
-      'Job complete! ${job['homeowner']} has been notified.',
-      _successGreen,
-      icon: Icons.task_alt_rounded,
-    );
+      final response = await ApiService.completeJob(
+        token: token,
+        jobId: bookingId,
+      );
+      final jobRow = (response['job'] as Map?)?.cast<String, dynamic>();
+      TradespersonWorkStore.completeJobByApiResult(widget.jobId, jobRow);
+      if (!mounted) return;
+
+      _didMutate = true;
+      _showSnack(
+        'Job complete! ${job['homeowner']} has been notified.',
+        _successGreen,
+        icon: Icons.task_alt_rounded,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final message = e.toString().replaceFirst('Exception: ', '');
+      _showSnack(message, _errorRed, icon: Icons.error_outline_rounded);
+    }
   }
 
   Future<bool?> _showCompleteDialog(Map<String, dynamic> job) {

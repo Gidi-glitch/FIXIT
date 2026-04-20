@@ -4,7 +4,7 @@ Use this as your working checklist. Complete each phase in order so you avoid br
 
 ## Phase 0 - Preflight
 
-- [ ] Confirm backend is running on port 8080.
+- [x] Confirm backend is running on port 8080.
 - [ ] Confirm Flutter app can reach backend base URL on your device/emulator.
 - [ ] Keep one Postman collection or curl notes for all endpoints you touch.
 - [ ] Add a standard API error format if not already consistent (message, optional details).
@@ -28,100 +28,100 @@ Use this as your working checklist. Complete each phase in order so you avoid br
 ### Frontend
 
 - [x] Confirm homeowner edit profile uses `ApiService.updateProfile(...)` directly.
-- [ ] Confirm tradesperson edit profile save works end to end.
+- [x] Confirm tradesperson edit profile save works end to end.
 - [x] Wire homeowner privacy/security password change to real API call.
-- [ ] Retest profile photo upload on both roles.
+- [x] Retest profile photo upload on both roles.
 
 ### Validation
 
-- [ ] Login as homeowner and update profile.
-- [ ] Login as tradesperson and update profile.
-- [ ] Change password flow works for both roles.
+- [x] Login as homeowner and update profile.
+- [x] Login as tradesperson and update profile.
+- [x] Change password flow works for both roles.
 
 ## Phase 2 - Replace Homeowner Mock Data
 
 ### Backend Endpoints
 
-- [ ] Add `GET /api/tradespeople` (search, category, on-duty filter).
-- [ ] Add `POST /api/bookings` (create booking request).
-- [ ] Add `GET /api/bookings/homeowner` (list bookings).
-- [ ] Add `GET /api/bookings/{id}` (booking details).
-- [ ] Add `PATCH /api/bookings/{id}` (edit request fields).
-- [ ] Add `POST /api/bookings/{id}/cancel`.
-- [ ] Add `POST /api/bookings/{id}/review`.
-- [ ] Add `POST /api/bookings/{id}/issues`.
+- [x] Add `GET /api/tradespeople` (search, category, on-duty filter).
+- [x] Add `POST /api/bookings` (create booking request).
+- [x] Add `GET /api/bookings/homeowner` (list bookings).
+- [x] Add `GET /api/bookings/{id}` (booking details).
+- [x] Add `PATCH /api/bookings/{id}` (edit request fields).
+- [x] Add `POST /api/bookings/{id}/cancel`.
+- [x] Add `POST /api/bookings/{id}/review`.
+- [x] Add `POST /api/bookings/{id}/issues`.
 
 ### Frontend Wiring
 
-- [ ] Replace tradesperson list sample data with API response.
-- [ ] Replace booking creation from local store to API call.
-- [ ] Replace bookings list local store reads with API fetch.
-- [ ] Replace booking details status/edit/review/issue actions with API.
+- [x] Replace tradesperson list sample data with API response.
+- [x] Replace booking creation from local store to API call.
+- [x] Replace bookings list local store reads with API fetch.
+- [x] Replace booking details status/edit/review/issue actions with API.
 
 ### Validation
 
-- [ ] New booking appears after create without app restart.
-- [ ] Booking status updates are reflected in list and details.
-- [ ] Review submission persists and is visible after relogin.
+- [x] New booking appears after create without app restart.
+- [x] Booking status updates are reflected in list and details.
+- [x] Review submission persists and is visible after relogin.
 
 ## Phase 3 - Replace Tradesperson Mock Data
 
 ### Backend Endpoints
 
-- [ ] Add `PATCH /api/tradespeople/me/on-duty`.
-- [ ] Add `GET /api/requests/incoming`.
-- [ ] Add `POST /api/requests/{id}/accept`.
-- [ ] Add `POST /api/requests/{id}/decline`.
-- [ ] Add `GET /api/jobs/tradesperson`.
-- [ ] Add `GET /api/jobs/{id}`.
-- [ ] Add `POST /api/jobs/{id}/start`.
-- [ ] Add `POST /api/jobs/{id}/complete`.
-- [ ] Enforce rule: only one in-progress job at a time.
+- [x] Add `PATCH /api/tradespeople/me/on-duty`.
+- [x] Add `GET /api/requests/incoming`.
+- [x] Add `POST /api/requests/{id}/accept`.
+- [x] Add `POST /api/requests/{id}/decline`.
+- [x] Add `GET /api/jobs/tradesperson`.
+- [x] Add `GET /api/jobs/{id}`.
+- [x] Add `POST /api/jobs/{id}/start`.
+- [x] Add `POST /api/jobs/{id}/complete`.
+- [x] Enforce rule: only one in-progress job at a time.
 
 ### Frontend Wiring
 
-- [ ] Replace `TradespersonWorkStore` requests feed with API.
-- [ ] Replace accept/decline actions with API calls.
-- [ ] Replace jobs screen and job details reads with API data.
-- [ ] Wire dashboard on-duty switch to API.
+- [x] Replace `TradespersonWorkStore` requests feed with API.
+- [x] Replace accept/decline actions with API calls.
+- [x] Replace jobs screen and job details reads with API data.
+- [x] Wire dashboard on-duty switch to API.
 
 ### Validation
 
-- [ ] Accepted request moves into jobs list correctly.
-- [ ] Start job blocks when another job is already in progress.
+- [x] Accepted request moves into jobs list correctly.
+- [x] Start job blocks when another job is already in progress.
 - [ ] Complete job updates status and dashboard cards.
 
 ## Phase 4 - Reviews, Documents, and Settings
 
 ### Backend Endpoints
 
-- [ ] Add `GET /api/reviews/tradesperson/me` (filter/sort support).
-- [ ] Add document replacement upload endpoint(s).
-- [ ] Add service area save endpoint.
-- [ ] Add trade/skills save endpoint.
+- [x] Add `GET /api/reviews/tradesperson/me` (filter/sort support).
+- [x] Add document replacement upload endpoint(s).
+- [x] Add service area save endpoint.
+- [x] Add trade/skills save endpoint.
 - [ ] Optional: add homeowner addresses CRUD endpoints.
 
 ### Frontend Wiring
 
-- [ ] Replace tradesperson reviews mock list with API.
-- [ ] Replace tradesperson documents mock upload flow with API.
-- [ ] Move service area from SharedPreferences to backend.
-- [ ] Move trade/skills from SharedPreferences to backend.
+- [x] Replace tradesperson reviews mock list with API.
+- [x] Replace tradesperson documents mock upload flow with API.
+- [x] Move service area from SharedPreferences to backend.
+- [x] Move trade/skills from SharedPreferences to backend.
 
 ## Phase 5 - Messaging (After Job/Booking Stability)
 
 ### Backend Endpoints
 
-- [ ] Add `GET /api/conversations`.
-- [ ] Add `GET /api/conversations/{id}/messages`.
-- [ ] Add `POST /api/conversations/{id}/messages`.
-- [ ] Add `POST /api/conversations/{id}/attachments`.
+- [x] Add `GET /api/conversations`.
+- [x] Add `GET /api/conversations/{id}/messages`.
+- [x] Add `POST /api/conversations/{id}/messages`.
+- [x] Add `POST /api/conversations/{id}/attachments`.
 
 ### Frontend Wiring
 
-- [ ] Replace local chat store reads with API.
-- [ ] Replace send message and attachment save with API.
-- [ ] Keep current UI and only swap data source first.
+- [x] Replace local chat store reads with API.
+- [x] Replace send message and attachment save with API.
+- [x] Keep current UI and only swap data source first.
 
 ## Phase 6 - Hardening and Cleanup
 

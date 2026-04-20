@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../services/api_service.dart';
 import 'booking_form_screen.dart';
 
 class TradespersonListScreen extends StatefulWidget {
@@ -41,6 +44,8 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
 
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  bool _isLoading = true;
+  String? _errorMessage;
 
   late AnimationController _listAnimController;
 
@@ -70,157 +75,40 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
     },
   ];
 
-  // ── Sample Tradesperson Data ────────────────────────────────────
-  final List<Map<String, dynamic>> _allPros = [
-    {
-      'id': '1',
-      'name': 'Juan Dela Cruz',
-      'trade': 'Plumbing',
-      'specialization': 'Pipe Repair & Installation',
-      'rating': 4.9,
-      'reviews': 87,
-      'barangay': 'Dayap',
-      'isOnDuty': true,
-      'avatar': 'JD',
-      'avatarColor': Color(0xFF3B82F6),
-      'experience': '8 years',
-      'completedJobs': 214,
-      'responseTime': '~10 mins',
-      'bio':
-          'Certified master plumber specializing in emergency pipe repairs and residential installations. Fast, clean, and reliable.',
-      'skills': [
-        'Pipe Repair',
-        'Leak Detection',
-        'Drain Cleaning',
-        'Water Heater',
-      ],
-    },
-    {
-      'id': '2',
-      'name': 'Maria Santos',
-      'trade': 'Electrical',
-      'specialization': 'Wiring & Panel Upgrades',
-      'rating': 4.8,
-      'reviews': 64,
-      'barangay': 'Hanggan',
-      'isOnDuty': true,
-      'avatar': 'MS',
-      'avatarColor': Color(0xFFF59E0B),
-      'experience': '6 years',
-      'completedJobs': 159,
-      'responseTime': '~15 mins',
-      'bio':
-          'Licensed electrician with expertise in residential rewiring, panel upgrades, and emergency electrical diagnostics.',
-      'skills': ['Rewiring', 'Panel Upgrade', 'Outlet Install', 'Safety Audit'],
-    },
-    {
-      'id': '3',
-      'name': 'Pedro Reyes',
-      'trade': 'HVAC',
-      'specialization': 'AC Maintenance & Repair',
-      'rating': 4.7,
-      'reviews': 41,
-      'barangay': 'Imok',
-      'isOnDuty': true,
-      'avatar': 'PR',
-      'avatarColor': Color(0xFF06B6D4),
-      'experience': '5 years',
-      'completedJobs': 98,
-      'responseTime': '~20 mins',
-      'bio':
-          'HVAC technician focused on air conditioning maintenance, freon recharging, and full unit replacements for homes.',
-      'skills': [
-        'AC Cleaning',
-        'Freon Recharge',
-        'Duct Repair',
-        'Installation',
-      ],
-    },
-    {
-      'id': '4',
-      'name': 'Ramon Flores',
-      'trade': 'Carpentry',
-      'specialization': 'Furniture & Structural Repair',
-      'rating': 4.6,
-      'reviews': 52,
-      'barangay': 'Dayap',
-      'isOnDuty': false,
-      'avatar': 'RF',
-      'avatarColor': Color(0xFF8B5CF6),
-      'experience': '10 years',
-      'completedJobs': 301,
-      'responseTime': '~30 mins',
-      'bio':
-          'Skilled carpenter offering furniture repair, cabinet making, and door/window frame fixes for residential properties.',
-      'skills': ['Cabinet Making', 'Door Repair', 'Flooring', 'Furniture Fix'],
-    },
-    {
-      'id': '5',
-      'name': 'Liza Cruz',
-      'trade': 'Appliance',
-      'specialization': 'Kitchen Appliance Repair',
-      'rating': 4.5,
-      'reviews': 33,
-      'barangay': 'Bangyas',
-      'isOnDuty': true,
-      'avatar': 'LC',
-      'avatarColor': Color(0xFFEC4899),
-      'experience': '4 years',
-      'completedJobs': 77,
-      'responseTime': '~25 mins',
-      'bio':
-          'Appliance repair technician experienced in refrigerators, washing machines, microwaves, and kitchen equipment.',
-      'skills': ['Refrigerator', 'Washing Machine', 'Microwave', 'Oven Repair'],
-    },
-    {
-      'id': '6',
-      'name': 'Carlo Mendoza',
-      'trade': 'Plumbing',
-      'specialization': 'Emergency Leak & Sewage',
-      'rating': 4.4,
-      'reviews': 29,
-      'barangay': 'Lamot',
-      'isOnDuty': false,
-      'avatar': 'CM',
-      'avatarColor': Color(0xFF3B82F6),
-      'experience': '3 years',
-      'completedJobs': 55,
-      'responseTime': '~35 mins',
-      'bio':
-          'Plumber specializing in emergency leak response and sewage line clearing for residential and light commercial units.',
-      'skills': [
-        'Leak Repair',
-        'Sewage Clearing',
-        'Toilet Fix',
-        'Pipe Fitting',
-      ],
-    },
-    {
-      'id': '7',
-      'name': 'Noel Bautista',
-      'trade': 'Electrical',
-      'specialization': 'CCTV & Smart Home Wiring',
-      'rating': 4.9,
-      'reviews': 71,
-      'barangay': 'Hanggan',
-      'isOnDuty': false,
-      'avatar': 'NB',
-      'avatarColor': Color(0xFFF59E0B),
-      'experience': '7 years',
-      'completedJobs': 188,
-      'responseTime': '~20 mins',
-      'bio':
-          'Electrician specializing in smart home wiring, CCTV installation, and structured network cabling for modern homes.',
-      'skills': ['CCTV Install', 'Smart Wiring', 'Intercom', 'Circuit Breaker'],
-    },
-  ];
+  List<Map<String, dynamic>> _allPros = [];
+
+  String _normalizeCategory(String? value) {
+    final raw = (value ?? '').trim();
+    if (raw.isEmpty) return 'All';
+
+    final lower = raw.toLowerCase();
+    if (lower == 'all') return 'All';
+    if (lower.contains('plumb')) return 'Plumbing';
+    if (lower.contains('elect')) return 'Electrical';
+    if (lower.contains('hvac') ||
+        lower.contains('aircon') ||
+        lower.contains('air conditioning') ||
+        lower.contains('air-conditioning')) {
+      return 'HVAC';
+    }
+    if (lower.contains('carpent')) return 'Carpentry';
+    if (lower.contains('appliance')) return 'Appliance';
+
+    return raw;
+  }
+
+  bool _matchesSelectedCategory(String? trade, String? selectedCategory) {
+    final selected = _normalizeCategory(selectedCategory);
+    if (selected == 'All') return true;
+    return _normalizeCategory(trade) == selected;
+  }
 
   List<Map<String, dynamic>> get _filteredPros {
     return _allPros.where((pro) {
-      final matchCategory =
-          _selectedCategory == null ||
-          _selectedCategory == 'All' ||
-          pro['trade'] == _selectedCategory;
+      final matchCategory = _matchesSelectedCategory(
+        pro['trade'] as String?,
+        _selectedCategory,
+      );
       final matchOnDuty = !_onDutyOnly || pro['isOnDuty'] == true;
       final matchSearch =
           _searchQuery.isEmpty ||
@@ -236,18 +124,148 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
       return matchCategory && matchOnDuty && matchSearch;
     }).toList()..sort((a, b) {
       if (_sortBy == 'Rating') {
-        return (b['rating'] as double).compareTo(a['rating'] as double);
+        return _asDouble(b['rating']).compareTo(_asDouble(a['rating']));
       } else if (_sortBy == 'Reviews') {
-        return (b['reviews'] as int).compareTo(a['reviews'] as int);
+        return _asInt(b['reviews']).compareTo(_asInt(a['reviews']));
       } else {
         return (a['name'] as String).compareTo(b['name'] as String);
       }
     });
   }
 
+  static int _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  static double _asDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  List<String> _toStringList(dynamic raw) {
+    final out = <String>[];
+    final seen = <String>{};
+
+    void addValue(String value) {
+      final v = value.trim();
+      if (v.isEmpty) return;
+      final key = v.toLowerCase();
+      if (seen.add(key)) out.add(v);
+    }
+
+    if (raw is List) {
+      for (final item in raw) {
+        addValue(item.toString());
+      }
+      return out;
+    }
+
+    final text = (raw ?? '').toString().trim();
+    if (text.isEmpty) {
+      return out;
+    }
+
+    for (final part in text.split(',')) {
+      addValue(part);
+    }
+    return out;
+  }
+
+  Future<void> _loadTradespeople() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token')?.trim();
+      if (token == null || token.isEmpty) {
+        throw Exception('Session expired. Please log in again.');
+      }
+
+      final response = await ApiService.getTradespeople(token: token);
+      final rows = (response['tradespeople'] as List?) ?? const [];
+
+      final mapped = <Map<String, dynamic>>[];
+      for (final row in rows) {
+        if (row is! Map) continue;
+        final data = row.cast<String, dynamic>();
+        final trade = (data['trade'] ?? data['trade_category'] ?? '')
+            .toString()
+            .trim();
+        final specializations = _toStringList(data['specializations']);
+        final specializationLabel = specializations.isNotEmpty
+            ? specializations.join(', ')
+            : trade;
+        final profileName = (data['name'] ?? '').toString().trim();
+        final years = _asInt(data['experience_years']);
+
+        mapped.add({
+          'id': _asInt(data['id']),
+          'tradesperson_id': _asInt(data['tradesperson_id']),
+          'name': profileName,
+          'trade': trade,
+          'specialization': specializationLabel,
+          'specializations': specializations,
+          'rating': _asDouble(data['rating']),
+          'reviews': _asInt(data['reviews']),
+          'barangay': (data['barangay'] ?? '').toString().trim(),
+          'isOnDuty': data['isOnDuty'] == true || data['is_on_duty'] == true,
+          'avatar': (data['avatar'] ?? 'TP').toString(),
+          'avatarColor': _categoryColor(trade),
+          'experience': years > 0 ? '$years years' : 'N/A',
+          'completedJobs': 0,
+          'responseTime': '~15 mins',
+          'bio': (data['bio'] ?? '').toString().trim(),
+          'skills': _buildSkills(trade, specializations),
+          'profileImageUrl': (data['profile_image_url'] ?? '').toString(),
+        });
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _allPros = mapped;
+        _isLoading = false;
+      });
+      _openInitialTradespersonProfile();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  List<String> _buildSkills(String trade, List<String> specializations) {
+    final out = <String>[];
+    final seen = <String>{};
+
+    void addValue(String value) {
+      final v = value.trim();
+      if (v.isEmpty) return;
+      final key = v.toLowerCase();
+      if (seen.add(key)) {
+        out.add(v);
+      }
+    }
+
+    addValue(trade);
+    for (final specialization in specializations) {
+      addValue(specialization);
+    }
+
+    return out;
+  }
+
   Color _categoryColor(String? category) {
+    final normalized = _normalizeCategory(category);
     final match = _categories.firstWhere(
-      (c) => c['name'] == category,
+      (c) => c['name'] == normalized,
       orElse: () => _categories[0],
     );
     return match['color'] as Color;
@@ -256,10 +274,7 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
   @override
   void initState() {
     super.initState();
-    _selectedCategory =
-        (widget.serviceCategory != null && widget.serviceCategory!.isNotEmpty)
-        ? widget.serviceCategory
-        : 'All';
+    _selectedCategory = _normalizeCategory(widget.serviceCategory);
 
     if (widget.onDutyOnly) _onDutyOnly = true;
 
@@ -269,7 +284,7 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
     )..forward();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _openInitialTradespersonProfile();
+      _loadTradespeople();
     });
   }
 
@@ -291,7 +306,7 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
 
     final pro = match.first;
     setState(() {
-      _selectedCategory = (pro['trade'] ?? '').toString();
+      _selectedCategory = _normalizeCategory((pro['trade'] ?? '').toString());
       _searchQuery = '';
       _searchController.clear();
     });
@@ -750,6 +765,43 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildProList() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.wifi_off_rounded, size: 36, color: _textMuted),
+              const SizedBox(height: 10),
+              Text(
+                _errorMessage!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: _textMuted,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 14),
+              ElevatedButton(
+                onPressed: _loadTradespeople,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _primaryBlue,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final pros = _filteredPros;
     if (pros.isEmpty) {
       return Center(
@@ -820,7 +872,8 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
   Widget _buildProCard(Map<String, dynamic> pro) {
     final avatarColor = pro['avatarColor'] as Color;
     final isOnDuty = pro['isOnDuty'] as bool;
-    final rating = pro['rating'] as double;
+    final rating = _asDouble(pro['rating']);
+    final profileImageUrl = (pro['profileImageUrl'] ?? '').toString().trim();
 
     return GestureDetector(
       onTap: () => _showTradespersonSheet(pro),
@@ -867,15 +920,34 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
                             ),
                           ],
                         ),
-                        child: Center(
-                          child: Text(
-                            pro['avatar'] as String,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                            ),
-                          ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: profileImageUrl.isNotEmpty
+                              ? Image.network(
+                                  profileImageUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      Center(
+                                        child: Text(
+                                          pro['avatar'] as String,
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                )
+                              : Center(
+                                  child: Text(
+                                    pro['avatar'] as String,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
                         ),
                       ),
                       Positioned(
@@ -1000,7 +1072,7 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
                             ),
                             const SizedBox(width: 3),
                             Text(
-                              '(${pro['reviews']})',
+                              '(${_asInt(pro['reviews'])})',
                               style: TextStyle(
                                 fontSize: 11,
                                 color: _textMuted.withValues(alpha: 0.7),
@@ -1171,6 +1243,7 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
     bool scrollToBook = false,
   }) {
     final avatarColor = pro['avatarColor'] as Color;
+    final profileImageUrl = (pro['profileImageUrl'] ?? '').toString().trim();
     final isOnDuty = pro['isOnDuty'] as bool;
     final skills = pro['skills'] as List<String>;
     final scrollController = DraggableScrollableController();
@@ -1257,15 +1330,36 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
                                     ),
                                   ],
                                 ),
-                                child: Center(
-                                  child: Text(
-                                    pro['avatar'] as String,
-                                    style: const TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.white,
-                                    ),
-                                  ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(22),
+                                  child: profileImageUrl.isNotEmpty
+                                      ? Image.network(
+                                          profileImageUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder:
+                                              (context, error, stackTrace) =>
+                                                  Center(
+                                                    child: Text(
+                                                      pro['avatar'] as String,
+                                                      style: const TextStyle(
+                                                        fontSize: 22,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                        color: Colors.white,
+                                                      ),
+                                                    ),
+                                                  ),
+                                        )
+                                      : Center(
+                                          child: Text(
+                                            pro['avatar'] as String,
+                                            style: const TextStyle(
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w800,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
                                 ),
                               ),
                               const SizedBox(width: 16),
@@ -1284,7 +1378,7 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
                                     ),
                                     const SizedBox(height: 3),
                                     Text(
-                                      pro['specialization'] as String,
+                                      pro['trade'] as String,
                                       style: TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w600,

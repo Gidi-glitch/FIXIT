@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -89,6 +90,8 @@ func RegisterTradesperson(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 
+		initialServiceAreas, _ := json.Marshal([]string{serviceBarangay})
+
 		profile := models.TradespersonProfile{
 			UserID:             user.ID,
 			FirstName:          firstName,
@@ -97,6 +100,7 @@ func RegisterTradesperson(w http.ResponseWriter, r *http.Request) {
 			TradeCategory:      tradeCategory,
 			YearsExperience:    yearsExperience,
 			ServiceBarangay:    serviceBarangay,
+			ServiceAreas:       string(initialServiceAreas),
 			Bio:                bio,
 			VerificationStatus: "pending",
 		}
