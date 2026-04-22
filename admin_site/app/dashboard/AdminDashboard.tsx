@@ -564,10 +564,10 @@ const formatPendingVerificationTrend = (homeownerPending: number, tradesmanPendi
   return `${homeownerPending} homeowner, ${tradesmanPending} tradesman`;
 };
 
-const formatVerifiedTradesmanTrend = (verifiedCount: number, totalTradesmen: number) => {
-  if (totalTradesmen === 0) return "No tradesmen yet";
-  if (verifiedCount === totalTradesmen) return "All verified";
-  return `${Math.round((verifiedCount / totalTradesmen) * 100)}% verified`;
+const formatReportTrend = (openReportsCount: number) => {
+  if (openReportsCount === 0) return "No open reports";
+  if (openReportsCount === 1) return "1 open report";
+  return `${openReportsCount} open reports`;
 };
 
 const averageRating = (reviews: TradesmanReview[]) => {
@@ -1754,9 +1754,10 @@ const NotificationItem = ({
 // ─────────────────────────────────────────────────────────────────
 // STAT CARD
 // ─────────────────────────────────────────────────────────────────
-const StatCard = ({ icon, iconBg, iconColor, num, label, trend, trendType }: {
+const StatCard = ({ icon, iconBg, iconColor, num, label, trend, trendType, onClick }: {
   icon: ReactNode; iconBg: string; iconColor: string;
   num: number | string; label: string; trend: string; trendType: "up" | "warn" | "down";
+  onClick: () => void;
 }) => {
   const [hov, setHov] = useState(false);
   const trendStyles = {
@@ -1774,14 +1775,23 @@ const StatCard = ({ icon, iconBg, iconColor, num, label, trend, trendType }: {
     },
   }[trendType];
   return (
-    <div
+    <button
+      type="button"
+      aria-label={`Open ${label}`}
+      onClick={onClick}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
+      onFocus={() => setHov(true)}
+      onBlur={() => setHov(false)}
       style={{
         background: "var(--surface)", borderRadius: 12, border: "1.5px solid var(--border)",
         padding: "20px", boxShadow: hov ? "0 4px 16px rgba(15,25,35,.09)" : "var(--shadow)",
         transform: hov ? "translateY(-2px)" : "translateY(0)",
         transition: "all .2s",
+        width: "100%",
+        textAlign: "left",
+        fontFamily: "inherit",
+        cursor: "pointer",
       }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
@@ -1798,7 +1808,7 @@ const StatCard = ({ icon, iconBg, iconColor, num, label, trend, trendType }: {
       </div>
       <div style={{ fontSize: 32, fontWeight: 800, color: "var(--text)", letterSpacing: -1.5, lineHeight: 1, marginBottom: 5 }}>{num}</div>
       <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>{label}</div>
-    </div>
+    </button>
   );
 };
 
@@ -2845,7 +2855,6 @@ export default function DashboardPage() {
 
   const pendingCount  = verifications.filter((v) => v.status === "pending").length;
   const archivedCount = verifications.filter((v) => v.status === "archived").length;
-  const verifiedCount = tradesmen.filter((t) => t.status === "Verified").length;
   const pendingHomeownerIds = homeowners.filter((h) => h.idStatus === "Pending").length;
   const notificationCount = activity.length;
   const openReportsCount = reports.filter((report) => report.status !== "Resolved").length;
@@ -2857,7 +2866,7 @@ export default function DashboardPage() {
   const homeownerTrend = formatMonthlyTrend(latestGrowthPoint?.homeowners ?? 0, previousGrowthPoint?.homeowners ?? 0);
   const tradesmanTrend = formatMonthlyTrend(latestGrowthPoint?.tradesmen ?? 0, previousGrowthPoint?.tradesmen ?? 0);
   const pendingTrend = formatPendingVerificationTrend(pendingHomeownerVerifications, pendingTradesmanVerifications);
-  const verifiedTradesmanTrend = formatVerifiedTradesmanTrend(verifiedCount, tradesmen.length);
+  const reportTrend = formatReportTrend(openReportsCount);
   const homeownerTrendType = trendDirectionFromDelta(latestGrowthPoint?.homeowners ?? 0, previousGrowthPoint?.homeowners ?? 0);
   const tradesmanTrendType = trendDirectionFromDelta(latestGrowthPoint?.tradesmen ?? 0, previousGrowthPoint?.tradesmen ?? 0);
 
@@ -4196,17 +4205,17 @@ export default function DashboardPage() {
     <div style={{ animation: "fadeUp .35s ease both" }}>
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 28 }}>
-        <StatCard iconBg="var(--info-bg)" iconColor="var(--info-text)" num={homeowners.length} label="Total Homeowners" trend={homeownerTrend} trendType={homeownerTrendType}
+        <StatCard iconBg="var(--info-bg)" iconColor="var(--info-text)" num={homeowners.length} label="Total Homeowners" trend={homeownerTrend} trendType={homeownerTrendType} onClick={() => setActivePage("homeowners")}
           icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>}
         />
-        <StatCard iconBg="var(--info-bg)" iconColor="var(--info-text)" num={tradesmen.length} label="Total Tradesmen" trend={tradesmanTrend} trendType={tradesmanTrendType}
+        <StatCard iconBg="var(--info-bg)" iconColor="var(--info-text)" num={tradesmen.length} label="Total Tradesmen" trend={tradesmanTrend} trendType={tradesmanTrendType} onClick={() => setActivePage("tradesmen")}
           icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>}
         />
-        <StatCard iconBg="var(--warning-bg)" iconColor="var(--warning-text)" num={pendingCount} label="Pending Verifications" trend={pendingTrend} trendType="warn"
+        <StatCard iconBg="var(--warning-bg)" iconColor="var(--warning-text)" num={pendingCount} label="Pending Verifications" trend={pendingTrend} trendType="warn" onClick={() => setActivePage("verification")}
           icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>}
         />
-        <StatCard iconBg="var(--success-bg)" iconColor="var(--success-text)" num={verifiedCount} label="Verified Tradesmen" trend={verifiedTradesmanTrend} trendType="up"
-          icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>}
+        <StatCard iconBg="var(--success-bg)" iconColor="var(--success-text)" num={reports.length} label="Total Reports" trend={reportTrend} trendType={openReportsCount > 0 ? "warn" : "up"} onClick={() => setActivePage("reports")}
+          icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H8a2 2 0 0 1-2-2V7"/><path d="M14 3H6a2 2 0 0 0-2 2v12"/><path d="M16 5h4v16H9"/><line x1="12" y1="10" x2="17" y2="10"/><line x1="12" y1="14" x2="17" y2="14"/></svg>}
         />
       </div>
 
