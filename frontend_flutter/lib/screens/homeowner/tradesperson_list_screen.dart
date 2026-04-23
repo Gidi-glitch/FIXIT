@@ -1,20 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+<<<<<<< HEAD
 import 'booking_form_screen.dart';
 import '../../services/api_service.dart';
+=======
+
+import '../../services/api_service.dart';
+import 'booking_form_screen.dart';
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
 class TradespersonListScreen extends StatefulWidget {
   final String? serviceCategory;
   final bool onDutyOnly;
   final String? initialTradespersonName;
   final VoidCallback onBookingConfirmed;
+<<<<<<< HEAD
   final void Function(
     String tradespersonName,
     String trade,
     String avatar, [
     String? tradespersonUserId,
   ]) onMessageRequested;
+=======
+  final void Function(String tradespersonName, String trade, String avatar)
+  onMessageRequested;
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
   const TradespersonListScreen({
     super.key,
@@ -47,6 +58,11 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
 
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+<<<<<<< HEAD
+=======
+  bool _isLoading = true;
+  String? _errorMessage;
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
   late AnimationController _listAnimController;
 
@@ -77,6 +93,7 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
   ];
 
   List<Map<String, dynamic>> _allPros = [];
+<<<<<<< HEAD
   bool _isLoadingPros = true;
 
   List<Map<String, dynamic>> get _filteredPros {
@@ -85,6 +102,41 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
           _selectedCategory == null ||
           _selectedCategory == 'All' ||
           pro['trade'] == _selectedCategory;
+=======
+
+  String _normalizeCategory(String? value) {
+    final raw = (value ?? '').trim();
+    if (raw.isEmpty) return 'All';
+
+    final lower = raw.toLowerCase();
+    if (lower == 'all') return 'All';
+    if (lower.contains('plumb')) return 'Plumbing';
+    if (lower.contains('elect')) return 'Electrical';
+    if (lower.contains('hvac') ||
+        lower.contains('aircon') ||
+        lower.contains('air conditioning') ||
+        lower.contains('air-conditioning')) {
+      return 'HVAC';
+    }
+    if (lower.contains('carpent')) return 'Carpentry';
+    if (lower.contains('appliance')) return 'Appliance';
+
+    return raw;
+  }
+
+  bool _matchesSelectedCategory(String? trade, String? selectedCategory) {
+    final selected = _normalizeCategory(selectedCategory);
+    if (selected == 'All') return true;
+    return _normalizeCategory(trade) == selected;
+  }
+
+  List<Map<String, dynamic>> get _filteredPros {
+    return _allPros.where((pro) {
+      final matchCategory = _matchesSelectedCategory(
+        pro['trade'] as String?,
+        _selectedCategory,
+      );
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       final matchOnDuty = !_onDutyOnly || pro['isOnDuty'] == true;
       final matchSearch =
           _searchQuery.isEmpty ||
@@ -100,18 +152,160 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
       return matchCategory && matchOnDuty && matchSearch;
     }).toList()..sort((a, b) {
       if (_sortBy == 'Rating') {
+<<<<<<< HEAD
         return (b['rating'] as double).compareTo(a['rating'] as double);
       } else if (_sortBy == 'Reviews') {
         return (b['reviews'] as int).compareTo(a['reviews'] as int);
+=======
+        return _asDouble(b['rating']).compareTo(_asDouble(a['rating']));
+      } else if (_sortBy == 'Reviews') {
+        return _asInt(b['reviews']).compareTo(_asInt(a['reviews']));
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       } else {
         return (a['name'] as String).compareTo(b['name'] as String);
       }
     });
   }
 
+<<<<<<< HEAD
   Color _categoryColor(String? category) {
     final match = _categories.firstWhere(
       (c) => c['name'] == category,
+=======
+  static int _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  static double _asDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  List<String> _toStringList(dynamic raw) {
+    final out = <String>[];
+    final seen = <String>{};
+
+    void addValue(String value) {
+      final v = value.trim();
+      if (v.isEmpty) return;
+      final key = v.toLowerCase();
+      if (seen.add(key)) out.add(v);
+    }
+
+    if (raw is List) {
+      for (final item in raw) {
+        addValue(item.toString());
+      }
+      return out;
+    }
+
+    final text = (raw ?? '').toString().trim();
+    if (text.isEmpty) {
+      return out;
+    }
+
+    for (final part in text.split(',')) {
+      addValue(part);
+    }
+    return out;
+  }
+
+  Future<void> _loadTradespeople() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token')?.trim();
+      if (token == null || token.isEmpty) {
+        throw Exception('Session expired. Please log in again.');
+      }
+
+      final response = await ApiService.getTradespeople(token: token);
+      final rows = (response['tradespeople'] as List?) ?? const [];
+
+      final mapped = <Map<String, dynamic>>[];
+      for (final row in rows) {
+        if (row is! Map) continue;
+        final data = row.cast<String, dynamic>();
+        final trade = (data['trade'] ?? data['trade_category'] ?? '')
+            .toString()
+            .trim();
+        final specializations = _toStringList(data['specializations']);
+        final specializationLabel = specializations.isNotEmpty
+            ? specializations.join(', ')
+            : trade;
+        final profileName = (data['name'] ?? '').toString().trim();
+        final years = _asInt(data['experience_years']);
+
+        mapped.add({
+          'id': _asInt(data['id']),
+          'tradesperson_id': _asInt(data['tradesperson_id']),
+          'name': profileName,
+          'trade': trade,
+          'specialization': specializationLabel,
+          'specializations': specializations,
+          'rating': _asDouble(data['rating']),
+          'reviews': _asInt(data['reviews']),
+          'barangay': (data['barangay'] ?? '').toString().trim(),
+          'isOnDuty': data['isOnDuty'] == true || data['is_on_duty'] == true,
+          'avatar': (data['avatar'] ?? 'TP').toString(),
+          'avatarColor': _categoryColor(trade),
+          'experience': years > 0 ? '$years years' : 'N/A',
+          'completedJobs': 0,
+          'responseTime': '~15 mins',
+          'bio': (data['bio'] ?? '').toString().trim(),
+          'skills': _buildSkills(trade, specializations),
+          'profileImageUrl': (data['profile_image_url'] ?? '').toString(),
+        });
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _allPros = mapped;
+        _isLoading = false;
+      });
+      _openInitialTradespersonProfile();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  List<String> _buildSkills(String trade, List<String> specializations) {
+    final out = <String>[];
+    final seen = <String>{};
+
+    void addValue(String value) {
+      final v = value.trim();
+      if (v.isEmpty) return;
+      final key = v.toLowerCase();
+      if (seen.add(key)) {
+        out.add(v);
+      }
+    }
+
+    addValue(trade);
+    for (final specialization in specializations) {
+      addValue(specialization);
+    }
+
+    return out;
+  }
+
+  Color _categoryColor(String? category) {
+    final normalized = _normalizeCategory(category);
+    final match = _categories.firstWhere(
+      (c) => c['name'] == normalized,
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       orElse: () => _categories[0],
     );
     return match['color'] as Color;
@@ -120,10 +314,14 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
   @override
   void initState() {
     super.initState();
+<<<<<<< HEAD
     _selectedCategory =
         (widget.serviceCategory != null && widget.serviceCategory!.isNotEmpty)
         ? widget.serviceCategory
         : 'All';
+=======
+    _selectedCategory = _normalizeCategory(widget.serviceCategory);
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
     if (widget.onDutyOnly) _onDutyOnly = true;
 
@@ -132,10 +330,15 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
       duration: const Duration(milliseconds: 500),
     )..forward();
 
+<<<<<<< HEAD
     _loadTradespeople();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _openInitialTradespersonProfile();
+=======
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadTradespeople();
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     });
   }
 
@@ -157,7 +360,11 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
 
     final pro = match.first;
     setState(() {
+<<<<<<< HEAD
       _selectedCategory = (pro['trade'] ?? '').toString();
+=======
+      _selectedCategory = _normalizeCategory((pro['trade'] ?? '').toString());
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       _searchQuery = '';
       _searchController.clear();
     });
@@ -165,6 +372,7 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
     _showTradespersonSheet(pro);
   }
 
+<<<<<<< HEAD
   Future<void> _loadTradespeople() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token')?.trim();
@@ -238,6 +446,8 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
         .toUpperCase();
   }
 
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   @override
   void dispose() {
     _searchController.dispose();
@@ -689,10 +899,51 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildProList() {
+<<<<<<< HEAD
     final pros = _filteredPros;
     if (_isLoadingPros) {
       return const Center(child: CircularProgressIndicator());
     }
+=======
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.wifi_off_rounded, size: 36, color: _textMuted),
+              const SizedBox(height: 10),
+              Text(
+                _errorMessage!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: _textMuted,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 14),
+              ElevatedButton(
+                onPressed: _loadTradespeople,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _primaryBlue,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final pros = _filteredPros;
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     if (pros.isEmpty) {
       return Center(
         child: Column(
@@ -762,7 +1013,12 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
   Widget _buildProCard(Map<String, dynamic> pro) {
     final avatarColor = pro['avatarColor'] as Color;
     final isOnDuty = pro['isOnDuty'] as bool;
+<<<<<<< HEAD
     final rating = pro['rating'] as double;
+=======
+    final rating = _asDouble(pro['rating']);
+    final profileImageUrl = (pro['profileImageUrl'] ?? '').toString().trim();
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
     return GestureDetector(
       onTap: () => _showTradespersonSheet(pro),
@@ -809,6 +1065,7 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
                             ),
                           ],
                         ),
+<<<<<<< HEAD
                         child: Center(
                           child: Text(
                             pro['avatar'] as String,
@@ -818,6 +1075,36 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
                               color: Colors.white,
                             ),
                           ),
+=======
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: profileImageUrl.isNotEmpty
+                              ? Image.network(
+                                  profileImageUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      Center(
+                                        child: Text(
+                                          pro['avatar'] as String,
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                )
+                              : Center(
+                                  child: Text(
+                                    pro['avatar'] as String,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                         ),
                       ),
                       Positioned(
@@ -942,7 +1229,11 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
                             ),
                             const SizedBox(width: 3),
                             Text(
+<<<<<<< HEAD
                               '(${pro['reviews']})',
+=======
+                              '(${_asInt(pro['reviews'])})',
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                               style: TextStyle(
                                 fontSize: 11,
                                 color: _textMuted.withValues(alpha: 0.7),
@@ -1113,6 +1404,10 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
     bool scrollToBook = false,
   }) {
     final avatarColor = pro['avatarColor'] as Color;
+<<<<<<< HEAD
+=======
+    final profileImageUrl = (pro['profileImageUrl'] ?? '').toString().trim();
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     final isOnDuty = pro['isOnDuty'] as bool;
     final skills = pro['skills'] as List<String>;
     final scrollController = DraggableScrollableController();
@@ -1199,6 +1494,7 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
                                     ),
                                   ],
                                 ),
+<<<<<<< HEAD
                                 child: Center(
                                   child: Text(
                                     pro['avatar'] as String,
@@ -1208,6 +1504,38 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
                                       color: Colors.white,
                                     ),
                                   ),
+=======
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(22),
+                                  child: profileImageUrl.isNotEmpty
+                                      ? Image.network(
+                                          profileImageUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder:
+                                              (context, error, stackTrace) =>
+                                                  Center(
+                                                    child: Text(
+                                                      pro['avatar'] as String,
+                                                      style: const TextStyle(
+                                                        fontSize: 22,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                        color: Colors.white,
+                                                      ),
+                                                    ),
+                                                  ),
+                                        )
+                                      : Center(
+                                          child: Text(
+                                            pro['avatar'] as String,
+                                            style: const TextStyle(
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w800,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                                 ),
                               ),
                               const SizedBox(width: 16),
@@ -1226,7 +1554,11 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
                                     ),
                                     const SizedBox(height: 3),
                                     Text(
+<<<<<<< HEAD
                                       pro['specialization'] as String,
+=======
+                                      pro['trade'] as String,
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                                       style: TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w600,
@@ -1506,6 +1838,7 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
                             ),
                           ),
 
+<<<<<<< HEAD
                           const SizedBox(height: 12),
                           SizedBox(
                             width: double.infinity,
@@ -1552,6 +1885,55 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
                               ),
                             ),
                           ),
+=======
+                          if (!isOnDuty) ...[
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  Navigator.of(this.context).pop();
+                                  widget.onMessageRequested(
+                                    (pro['name'] ?? '').toString(),
+                                    (pro['trade'] ?? '').toString(),
+                                    (pro['avatar'] ?? '').toString(),
+                                  );
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: _primaryBlue,
+                                  side: BorderSide(
+                                    color: _primaryBlue.withValues(alpha: 0.3),
+                                    width: 1.5,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.chat_bubble_outline_rounded,
+                                      size: 16,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Send a Message',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                         ],
                       ),
                     ),

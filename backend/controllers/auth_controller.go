@@ -3,6 +3,10 @@ package controllers
 import (
 	"bytes"
 	"crypto/rand"
+<<<<<<< HEAD
+=======
+	"crypto/subtle"
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 	"encoding/json"
 	"log"
 	"math/big"
@@ -45,6 +49,15 @@ type changePasswordRequest struct {
 	NewPassword     string `json:"new_password"`
 }
 
+<<<<<<< HEAD
+=======
+type adminRegisterRequest struct {
+	Email       string `json:"email"`
+	Password    string `json:"password"`
+	AdminSecret string `json:"admin_secret"`
+}
+
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 type resetCodeEntry struct {
 	Code      string
 	ExpiresAt time.Time
@@ -94,11 +107,14 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+<<<<<<< HEAD
 	if !user.IsActive {
 		writeError(w, http.StatusForbidden, "Your account has been suspended or banned. Please contact support.")
 		return
 	}
 
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 	token, err := middleware.GenerateJWT(user)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate token")
@@ -134,6 +150,84 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+<<<<<<< HEAD
+=======
+func RegisterAdmin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	registrationSecret := strings.TrimSpace(os.Getenv("ADMIN_REGISTRATION_SECRET"))
+	if registrationSecret == "" {
+		writeError(w, http.StatusServiceUnavailable, "admin registration is disabled")
+		return
+	}
+
+	var req adminRegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	email := normalizeEmail(req.Email)
+	if email == "" || strings.TrimSpace(req.Password) == "" {
+		writeError(w, http.StatusBadRequest, "email and password are required")
+		return
+	}
+
+	if len(req.Password) < 8 {
+		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+
+	providedSecret := strings.TrimSpace(r.Header.Get("X-Admin-Registration-Secret"))
+	if providedSecret == "" {
+		providedSecret = strings.TrimSpace(req.AdminSecret)
+	}
+	if subtle.ConstantTimeCompare([]byte(providedSecret), []byte(registrationSecret)) != 1 {
+		writeError(w, http.StatusUnauthorized, "invalid admin registration secret")
+		return
+	}
+
+	var existingCount int64
+	if err := config.DB.Model(&models.User{}).Where("email = ?", email).Count(&existingCount).Error; err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to validate email")
+		return
+	}
+	if existingCount > 0 {
+		writeError(w, http.StatusConflict, "email is already registered")
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to hash password")
+		return
+	}
+
+	user := models.User{
+		Email:        email,
+		PasswordHash: string(hashedPassword),
+		Role:         "admin",
+		IsActive:     true,
+	}
+	if err := config.DB.Create(&user).Error; err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create admin user")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"message": "admin registered successfully",
+		"user": map[string]any{
+			"id":    user.ID,
+			"email": user.Email,
+			"role":  user.Role,
+		},
+	})
+}
+
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 // -------------------- FORGOT PASSWORD --------------------
 
 func ForgotPassword(w http.ResponseWriter, r *http.Request) {

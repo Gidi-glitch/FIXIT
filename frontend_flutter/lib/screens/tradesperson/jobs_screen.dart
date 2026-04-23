@@ -1,7 +1,13 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+<<<<<<< HEAD
 
+=======
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../services/api_service.dart';
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 import 'tradesperson_work_store.dart';
 import 'job_details_screen.dart';
 
@@ -33,6 +39,11 @@ class _JobsScreenState extends State<JobsScreen>
   static const Color _infoBlue = Color(0xFF3B82F6);
 
   bool _isSyncingAcceptedJob = false;
+<<<<<<< HEAD
+=======
+  bool _isLoading = true;
+  String? _errorMessage;
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   int _handledMutationToken = 0;
 
   @override
@@ -43,7 +54,11 @@ class _JobsScreenState extends State<JobsScreen>
     super.initState();
     _handledMutationToken = TradespersonWorkStore.mutationToken;
     TradespersonWorkStore.notifier.addListener(_handleStoreChanged);
+<<<<<<< HEAD
     _refreshFromBackend();
+=======
+    _refreshJobs();
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   @override
@@ -93,12 +108,15 @@ class _JobsScreenState extends State<JobsScreen>
     setState(() {});
   }
 
+<<<<<<< HEAD
   Future<void> _refreshFromBackend() async {
     await TradespersonWorkStore.syncFromBackend();
     if (!mounted) return;
     setState(() {});
   }
 
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   String _activeFilter = 'All';
   final List<String> _filters = [
     'All',
@@ -110,6 +128,41 @@ class _JobsScreenState extends State<JobsScreen>
 
   List<Map<String, dynamic>> get _jobs => TradespersonWorkStore.jobs;
 
+<<<<<<< HEAD
+=======
+  Future<String> _readToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token')?.trim() ?? '';
+    if (token.isEmpty) {
+      throw Exception('Session expired. Please log in again.');
+    }
+    return token;
+  }
+
+  Future<void> _refreshJobs() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final token = await _readToken();
+      final response = await ApiService.getTradespersonJobs(token: token);
+      final rows = (response['jobs'] as List?) ?? const [];
+      TradespersonWorkStore.setJobsFromApi(rows);
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   // ── Status helpers ─────────────────────────────────────────────
   Color _statusColor(String status) => switch (status) {
     'In Progress' => _infoBlue,
@@ -154,6 +207,7 @@ class _JobsScreenState extends State<JobsScreen>
     final confirmed = await _showStartJobDialog(job);
     if (confirmed != true || !mounted) return;
 
+<<<<<<< HEAD
     final success = await TradespersonWorkStore.startJobById(
       job['id'] as String,
     );
@@ -167,6 +221,43 @@ class _JobsScreenState extends State<JobsScreen>
       );
     } else {
       _showBlockedSnack();
+=======
+    try {
+      final token = await _readToken();
+      final bookingId = (job['bookingId'] as int?) ?? 0;
+      if (bookingId <= 0) {
+        throw Exception('Invalid job id.');
+      }
+
+      final response = await ApiService.startJob(
+        token: token,
+        jobId: bookingId,
+      );
+      final jobRow = (response['job'] as Map?)?.cast<String, dynamic>();
+      final success = TradespersonWorkStore.startJobByApiResult(
+        (job['id'] ?? '').toString(),
+        jobRow,
+      );
+
+      if (!mounted) return;
+      if (success) {
+        _showSnack(
+          'Job started! Head to ${job['homeowner'].toString().split(' ').first}\'s place.',
+          _infoBlue,
+          icon: Icons.handyman_rounded,
+        );
+      } else {
+        _showBlockedSnack();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final message = e.toString().replaceFirst('Exception: ', '');
+      if (message.toLowerCase().contains('in progress')) {
+        _showBlockedSnack();
+        return;
+      }
+      _showSnack(message, _errorRed, icon: Icons.error_outline_rounded);
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     }
   }
 
@@ -402,6 +493,7 @@ class _JobsScreenState extends State<JobsScreen>
       ),
     ).then((confirmed) async {
       if (confirmed == true) {
+<<<<<<< HEAD
         final completed = await TradespersonWorkStore.markJobAsComplete(
           job['id'] as String,
         );
@@ -420,6 +512,36 @@ class _JobsScreenState extends State<JobsScreen>
           _successGreen,
           icon: Icons.task_alt_rounded,
         );
+=======
+        try {
+          final token = await _readToken();
+          final bookingId = (job['bookingId'] as int?) ?? 0;
+          if (bookingId <= 0) {
+            throw Exception('Invalid job id.');
+          }
+
+          final response = await ApiService.completeJob(
+            token: token,
+            jobId: bookingId,
+          );
+          final jobRow = (response['job'] as Map?)?.cast<String, dynamic>();
+          TradespersonWorkStore.completeJobByApiResult(
+            (job['id'] ?? '').toString(),
+            jobRow,
+          );
+
+          if (!mounted) return;
+          _showSnack(
+            'Job marked as complete. Homeowner has been notified.',
+            _successGreen,
+            icon: Icons.task_alt_rounded,
+          );
+        } catch (e) {
+          if (!mounted) return;
+          final message = e.toString().replaceFirst('Exception: ', '');
+          _showSnack(message, _errorRed, icon: Icons.error_outline_rounded);
+        }
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       }
     });
   }
@@ -479,6 +601,13 @@ class _JobsScreenState extends State<JobsScreen>
                 switchOutCurve: Curves.easeIn,
                 child: _isSyncingAcceptedJob
                     ? _buildJobsSyncState()
+<<<<<<< HEAD
+=======
+                    : _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _errorMessage != null
+                    ? _buildErrorState()
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                     : jobs.isEmpty
                     ? _buildEmptyState()
                     : ListView.builder(
@@ -561,6 +690,66 @@ class _JobsScreenState extends State<JobsScreen>
     );
   }
 
+<<<<<<< HEAD
+=======
+  Widget _buildErrorState() {
+    return Center(
+      key: const ValueKey('jobs-error'),
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.wifi_off_rounded,
+              size: 54,
+              color: _textMuted.withValues(alpha: 0.7),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Failed to load jobs',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: _textDark,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _errorMessage ?? 'Please try again.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: _textMuted.withValues(alpha: 0.85),
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 18),
+            ElevatedButton(
+              onPressed: _refreshJobs,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryBlue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Retry',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   // ═══════════════════════════════════════════════════════════════
   //  APP BAR
   // ═══════════════════════════════════════════════════════════════
@@ -612,7 +801,11 @@ class _JobsScreenState extends State<JobsScreen>
               ],
             ),
             child: IconButton(
+<<<<<<< HEAD
               onPressed: () => _refreshFromBackend(),
+=======
+              onPressed: _refreshJobs,
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
               icon: const Icon(
                 Icons.refresh_rounded,
                 color: _textDark,
@@ -714,6 +907,12 @@ class _JobsScreenState extends State<JobsScreen>
   Widget _buildJobCard(Map<String, dynamic> job) {
     final status = job['status'] as String;
     final statusColor = _statusColor(status);
+<<<<<<< HEAD
+=======
+    final homeownerProfileImageUrl = (job['homeownerProfileImageUrl'] ?? '')
+        .toString()
+        .trim();
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     final isCompleted = status == 'Completed';
     final isCancelled = status == 'Cancelled';
     final isInProgress = status == 'In Progress';
@@ -772,6 +971,7 @@ class _JobsScreenState extends State<JobsScreen>
                         ),
                         borderRadius: BorderRadius.circular(14),
                       ),
+<<<<<<< HEAD
                       child: Center(
                         child: Text(
                           job['avatar'] as String,
@@ -781,6 +981,36 @@ class _JobsScreenState extends State<JobsScreen>
                             color: Colors.white,
                           ),
                         ),
+=======
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: homeownerProfileImageUrl.isNotEmpty
+                            ? Image.network(
+                                homeownerProfileImageUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    Center(
+                                      child: Text(
+                                        job['avatar'] as String,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                              )
+                            : Center(
+                                child: Text(
+                                  job['avatar'] as String,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                       ),
                     ),
                     const SizedBox(width: 12),

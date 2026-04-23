@@ -22,6 +22,7 @@ func RegisterAdminRoutes() {
 
 	// GET  /api/admin/tradespeople?status=pending|approved|rejected
 	http.Handle("/api/admin/tradespeople", admin(http.HandlerFunc(controllers.ListTradespeople)))
+<<<<<<< HEAD
 	http.Handle("/api/admin/tradespeople/", admin(http.HandlerFunc(controllers.HandleTradespersonAction)))
 
 	// GET /api/admin/homeowners
@@ -30,4 +31,6 @@ func RegisterAdminRoutes() {
 
 	// GET /api/admin/activity?limit=6
 	http.Handle("/api/admin/activity", admin(http.HandlerFunc(controllers.ListActivity)))
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 }

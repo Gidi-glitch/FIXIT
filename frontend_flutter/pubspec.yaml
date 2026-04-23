@@ -2,7 +2,11 @@ name: flutter_fixit_application
 description: "A new Flutter project."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
+<<<<<<< HEAD
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+=======
+publish_to: "none" # Remove this line if you wish to publish to pub.dev
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
 # The following defines the version and build number for your application.
 # A version number is three numbers separated by dots, like 1.2.43
@@ -36,9 +40,19 @@ dependencies:
   cupertino_icons: ^1.0.8
   http: ^1.6.0
   image_picker: ^1.0.4
+<<<<<<< HEAD
   file_picker: ^8.0.0
   shared_preferences: ^2.3.0
   device_info_plus: ^10.0.0
+=======
+  file_picker: ^11.0.2
+  path_provider: ^2.1.5
+  mime: ^2.0.0
+  path: ^1.9.1
+  shared_preferences: ^2.3.0
+  device_info_plus: ^12.4.0
+  url_launcher: ^6.3.2
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
 dev_dependencies:
   flutter_test:
@@ -56,7 +70,10 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+<<<<<<< HEAD
 
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
@@ -95,5 +112,8 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+<<<<<<< HEAD
 
   
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe

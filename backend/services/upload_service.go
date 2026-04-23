@@ -7,8 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+<<<<<<< HEAD
 
 	"fixit-backend/models"
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 )
 
 const MaxUploadSize int64 = 5 * 1024 * 1024
@@ -37,6 +40,7 @@ func ValidateUpload(header *multipart.FileHeader) error {
 	return nil
 }
 
+<<<<<<< HEAD
 func UploadRootDir() string {
 	if configured := strings.TrimSpace(os.Getenv("UPLOAD_DIR")); configured != "" {
 		if filepath.IsAbs(configured) {
@@ -103,6 +107,12 @@ func SaveUploadedFile(file multipart.File, header *multipart.FileHeader, relativ
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	storedName := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
 	directory := filepath.Join(UploadRootDir(), relativeDir)
+=======
+func SaveUploadedFile(file multipart.File, header *multipart.FileHeader, relativeDir string) (string, string, error) {
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	storedName := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+	directory := filepath.Join("uploads", relativeDir)
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
 	if err := os.MkdirAll(directory, os.ModePerm); err != nil {
 		return "", "", err
@@ -120,4 +130,8 @@ func SaveUploadedFile(file multipart.File, header *multipart.FileHeader, relativ
 	}
 
 	return storedName, filepath.ToSlash(absolutePath), nil
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe

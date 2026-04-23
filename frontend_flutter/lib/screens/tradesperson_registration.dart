@@ -4,6 +4,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter_fixit_application/screens/login_screen.dart';
 import 'dart:io';
 import 'package:flutter_fixit_application/services/api_service.dart';
+<<<<<<< HEAD
+=======
+import '../shared/calauan_barangays.dart';
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
 /// Multi-step tradesperson registration screen for the Fix It Marketplace.
 /// Three steps: Basic Information, Professional Details, Verification & Documents.
@@ -79,6 +83,7 @@ class _TradespersonRegistrationScreenState
     'Appliance Repair',
   ];
 
+<<<<<<< HEAD
   /// ── Barangay List (Calauan, Laguna) ──────
   static const List<String> _barangayList = [
     'Balayhangin',
@@ -100,6 +105,8 @@ class _TradespersonRegistrationScreenState
     'Santo Tomas',
   ];
 
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   // ── Valid ID Types ─────────────────────────────
   static const List<String> _idTypeList = [
     'PhilSys National ID',
@@ -203,7 +210,11 @@ class _TradespersonRegistrationScreenState
         return;
       }
 
+<<<<<<< HEAD
             setState(() => _isSubmitting = true);
+=======
+      setState(() => _isSubmitting = true);
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
       try {
         await ApiService.registerTradesperson(
@@ -224,7 +235,13 @@ class _TradespersonRegistrationScreenState
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
+<<<<<<< HEAD
               content: Text('Registration submitted! Your documents are pending verification.'),
+=======
+              content: Text(
+                'Registration submitted! Your documents are pending verification.',
+              ),
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
               backgroundColor: Color(0xFF1E3A8A),
               behavior: SnackBarBehavior.floating,
               margin: EdgeInsets.all(16),
@@ -235,7 +252,13 @@ class _TradespersonRegistrationScreenState
       } on HttpException catch (e) {
         if (mounted) _showErrorSnackBar(e.message);
       } catch (_) {
+<<<<<<< HEAD
         if (mounted) _showErrorSnackBar('Connection error. Is the server running?');
+=======
+        if (mounted) {
+          _showErrorSnackBar('Connection error. Is the server running?');
+        }
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       } finally {
         if (mounted) setState(() => _isSubmitting = false);
       }
@@ -288,7 +311,11 @@ class _TradespersonRegistrationScreenState
     setState(() => _isUploadingGovernmentId = true);
 
     try {
+<<<<<<< HEAD
       final result = await FilePicker.platform.pickFiles(
+=======
+      final result = await FilePicker.pickFiles(
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
       );
@@ -319,7 +346,11 @@ class _TradespersonRegistrationScreenState
     setState(() => _isUploadingLicense = true);
 
     try {
+<<<<<<< HEAD
       final result = await FilePicker.platform.pickFiles(
+=======
+      final result = await FilePicker.pickFiles(
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
       );
@@ -1003,7 +1034,11 @@ class _TradespersonRegistrationScreenState
             decoration: _dropdownDecoration(
               prefixIcon: Icons.location_on_outlined,
             ),
+<<<<<<< HEAD
             items: _barangayList.map((barangay) {
+=======
+            items: kCalauanBarangays.map((barangay) {
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
               return DropdownMenuItem<String>(
                 value: barangay,
                 child: Text(barangay),

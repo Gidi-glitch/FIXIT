@@ -75,10 +75,13 @@ class _UserLoginScreenState extends State<UserLoginScreen>
         await prefs.setString('token', token);
         final role = (result['user'] as Map)['role'] as String;
         await prefs.setString('role', role);
+<<<<<<< HEAD
         final userId = (result['user'] as Map)['id'];
         if (userId != null) {
           await prefs.setString('user_id', userId.toString());
         }
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
         await prefs.remove('first_name');
         await prefs.remove('last_name');
         await prefs.remove('full_name');

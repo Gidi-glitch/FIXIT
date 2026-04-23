@@ -3,8 +3,11 @@ package main
 import (
 	"log"
 	"net/http"
+<<<<<<< HEAD
 	"os"
 	"strings"
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
 	"fixit-backend/config"
 	"fixit-backend/routes"
@@ -12,6 +15,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
+<<<<<<< HEAD
 func loadEnv() {
 	candidates := []string{
 		".env",
@@ -36,15 +40,28 @@ func loadEnv() {
 func main() {
 
 	loadEnv()
+=======
+func main() {
+
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
 	config.ConnectDB()
 
 	routes.RegisterAuthRoutes()
 	routes.RegisterProfileRoutes()
+<<<<<<< HEAD
 	routes.RegisterAdminRoutes()
 	routes.RegisterVerificationRoutes()
 	routes.RegisterMessagingRoutes()
 	routes.RegisterBookingRoutes()
+=======
+	routes.RegisterBookingRoutes()
+	routes.RegisterAdminRoutes()
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 	http.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 
 	http.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
@@ -52,6 +69,7 @@ func main() {
 	})
 
 	log.Println("🚀 Server running on port 8080")
+<<<<<<< HEAD
 	log.Fatal(http.ListenAndServe(":8080", withCORS(http.DefaultServeMux)))
 }
 
@@ -73,4 +91,7 @@ func withCORS(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+=======
+	log.Fatal(http.ListenAndServe(":8080", nil))
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 }

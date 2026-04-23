@@ -13,7 +13,10 @@ import (
 	"fixit-backend/services"
 
 	"github.com/golang-jwt/jwt/v5"
+<<<<<<< HEAD
 	"golang.org/x/crypto/bcrypt"
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 	"gorm.io/gorm"
 )
 
@@ -27,6 +30,7 @@ type updateMyProfileRequest struct {
 	Barangay  *string `json:"barangay"`
 }
 
+<<<<<<< HEAD
 type updateMyNameRequest struct {
 	FullName string `json:"full_name"`
 }
@@ -41,6 +45,8 @@ type updateMyPasswordRequest struct {
 	NewPassword     string `json:"new_password"`
 }
 
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 func ProfileMe(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -119,7 +125,10 @@ func GetMyProfile(w http.ResponseWriter, r *http.Request) {
 		"user": map[string]any{
 			"id":                user.ID,
 			"email":             user.Email,
+<<<<<<< HEAD
 			"full_name":         buildDisplayName(user.FullName, firstName, lastName, user.Email),
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 			"role":              user.Role,
 			"is_active":         user.IsActive,
 			"first_name":        firstName,
@@ -128,7 +137,10 @@ func GetMyProfile(w http.ResponseWriter, r *http.Request) {
 			"gender":            gender,
 			"barangay":          barangay,
 			"profile_image_url": profileImageURL,
+<<<<<<< HEAD
 			"updated_at":        user.UpdatedAt,
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 		},
 		"documents": documents,
 	}
@@ -302,7 +314,25 @@ func UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusBadRequest, "barangay cannot be empty")
 				return
 			}
+<<<<<<< HEAD
 			updates["service_barangay"] = barangay
+=======
+
+			serviceAreas := syncServiceAreasWithNewHomeBarangay(
+				profile.ServiceAreas,
+				profile.ServiceBarangay,
+				barangay,
+			)
+
+			encodedAreas, err := json.Marshal(serviceAreas)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to update service area")
+				return
+			}
+
+			updates["service_barangay"] = barangay
+			updates["service_areas"] = string(encodedAreas)
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 		}
 		if req.Bio != nil {
 			updates["bio"] = strings.TrimSpace(*req.Bio)
@@ -326,6 +356,7 @@ func UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
 	GetMyProfile(w, r)
 }
 
+<<<<<<< HEAD
 func UpdateMyName(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPatch {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -514,6 +545,51 @@ func buildDisplayName(fullName, firstName, lastName, email string) string {
 	}
 
 	return strings.Join(parts, " ")
+=======
+func syncServiceAreasWithNewHomeBarangay(
+	rawServiceAreas string,
+	previousBarangay string,
+	newBarangay string,
+) []string {
+	previousBarangay = strings.TrimSpace(previousBarangay)
+	newBarangay = strings.TrimSpace(newBarangay)
+
+	serviceAreas := decodeStringList(rawServiceAreas)
+	if len(serviceAreas) == 0 && previousBarangay != "" {
+		serviceAreas = []string{previousBarangay}
+	}
+
+	replaced := false
+	if previousBarangay != "" {
+		for i, area := range serviceAreas {
+			if strings.EqualFold(strings.TrimSpace(area), previousBarangay) {
+				serviceAreas[i] = newBarangay
+				replaced = true
+			}
+		}
+	}
+
+	if !replaced && newBarangay != "" {
+		serviceAreas = append(serviceAreas, newBarangay)
+	}
+
+	serviceAreas = cleanUniqueStrings(serviceAreas)
+
+	if newBarangay != "" {
+		hasNewBarangay := false
+		for _, area := range serviceAreas {
+			if strings.EqualFold(strings.TrimSpace(area), newBarangay) {
+				hasNewBarangay = true
+				break
+			}
+		}
+		if !hasNewBarangay {
+			serviceAreas = append(serviceAreas, newBarangay)
+		}
+	}
+
+	return cleanUniqueStrings(serviceAreas)
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 }
 
 func UploadProfilePhoto(w http.ResponseWriter, r *http.Request) {

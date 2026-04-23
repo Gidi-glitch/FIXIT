@@ -56,7 +56,11 @@ class EditRequestSheet extends StatefulWidget {
   /// Called after `BookingStore.updateBookingDetails` succeeds and the
   /// sheet is popped. Use this to refresh the parent's local state and
   /// show a success SnackBar.
+<<<<<<< HEAD
   final VoidCallback onSaved;
+=======
+  final Future<void> Function() onSaved;
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
   @override
   State<EditRequestSheet> createState() => _EditRequestSheetState();
@@ -95,6 +99,7 @@ class _EditRequestSheetState extends State<EditRequestSheet>
 
   bool _isSaving = false;
 
+<<<<<<< HEAD
   static const Map<String, List<String>> _profileSkillsByName = {
     'Juan Dela Cruz': [
       'Pipe Repair & Installation',
@@ -170,6 +175,8 @@ class _EditRequestSheetState extends State<EditRequestSheet>
     ],
   };
 
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   // ── Lifecycle ──────────────────────────────────────────────────
 
   @override
@@ -202,6 +209,13 @@ class _EditRequestSheetState extends State<EditRequestSheet>
       }
     }
 
+<<<<<<< HEAD
+=======
+    if (_selectedServices.isEmpty && _serviceOptions.isNotEmpty) {
+      _selectedServices.add(_serviceOptions.first);
+    }
+
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     _descriptionCtrl = TextEditingController(
       text: widget.booking.problemDescription,
     );
@@ -221,6 +235,7 @@ class _EditRequestSheetState extends State<EditRequestSheet>
   }
 
   List<String> _extractServiceOptions() {
+<<<<<<< HEAD
     final fromName =
         _profileSkillsByName[widget.booking.tradespersonName] ?? const [];
 
@@ -229,6 +244,9 @@ class _EditRequestSheetState extends State<EditRequestSheet>
         .where((entry) => tradeKey.contains(entry.key))
         .expand((entry) => entry.value)
         .toList();
+=======
+    final trade = widget.booking.trade.trim();
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
     final fromCurrent = widget.booking.specialization
         .split(',')
@@ -236,7 +254,11 @@ class _EditRequestSheetState extends State<EditRequestSheet>
         .where((e) => e.isNotEmpty)
         .toList();
 
+<<<<<<< HEAD
     final raw = <String>[...fromCurrent, ...fromName, ...fromTrade];
+=======
+    final raw = <String>[if (trade.isNotEmpty) trade, ...fromCurrent];
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
     final seen = <String>{};
     final deduped = <String>[];
@@ -246,6 +268,14 @@ class _EditRequestSheetState extends State<EditRequestSheet>
         deduped.add(value);
       }
     }
+<<<<<<< HEAD
+=======
+
+    if (deduped.isEmpty && trade.isNotEmpty) {
+      return [trade];
+    }
+
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     return deduped;
   }
 
@@ -440,7 +470,11 @@ class _EditRequestSheetState extends State<EditRequestSheet>
     if (!mounted) return;
     setState(() => _isSaving = false);
     Navigator.pop(context);
+<<<<<<< HEAD
     widget.onSaved();
+=======
+    await widget.onSaved();
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   // ═══════════════════════════════════════════════════════════════

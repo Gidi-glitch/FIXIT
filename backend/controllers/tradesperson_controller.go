@@ -1,6 +1,10 @@
 package controllers
 
 import (
+<<<<<<< HEAD
+=======
+	"encoding/json"
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 	"fmt"
 	"net/http"
 	"strconv"
@@ -89,6 +93,11 @@ func RegisterTradesperson(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 
+<<<<<<< HEAD
+=======
+		initialServiceAreas, _ := json.Marshal([]string{serviceBarangay})
+
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 		profile := models.TradespersonProfile{
 			UserID:             user.ID,
 			FirstName:          firstName,
@@ -97,6 +106,10 @@ func RegisterTradesperson(w http.ResponseWriter, r *http.Request) {
 			TradeCategory:      tradeCategory,
 			YearsExperience:    yearsExperience,
 			ServiceBarangay:    serviceBarangay,
+<<<<<<< HEAD
+=======
+			ServiceAreas:       string(initialServiceAreas),
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 			Bio:                bio,
 			VerificationStatus: "pending",
 		}
@@ -153,4 +166,8 @@ func RegisterTradesperson(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{
 		"message": "tradesperson registered successfully",
 	})
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe

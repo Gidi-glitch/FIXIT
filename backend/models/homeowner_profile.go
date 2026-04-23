@@ -11,7 +11,10 @@ type HomeownerProfile struct {
 	Gender    string `json:"gender"`
 	Bio       string `json:"bio"`
 	Barangay  string `json:"barangay" gorm:"not null"`
+<<<<<<< HEAD
 	StatusID  string `json:"status_id" gorm:"not null;default:pending"`
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
 	User User `json:"-" gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:UserID"`
 }

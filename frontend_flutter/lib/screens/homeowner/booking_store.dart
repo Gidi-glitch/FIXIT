@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 /// Simple static store that acts as the shared in-memory booking list.
 /// BookingFormScreen writes here; BookingsScreen reads from here.
 /// Replace with a proper state-management solution (Riverpod/Provider)
@@ -13,6 +14,16 @@ class BookingModel {
   final String id;
   final String tradespersonName;
   final String tradespersonAvatar;
+=======
+import 'package:flutter/foundation.dart';
+
+class BookingModel {
+  final int id;
+  final String referenceId;
+  final String tradespersonName;
+  final String tradespersonAvatar;
+  final String? tradespersonProfileImageUrl;
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   final String trade;
   final String specialization;
   final String problemDescription;
@@ -20,6 +31,7 @@ class BookingModel {
   final String date;
   final String time;
   final double offeredBudget;
+<<<<<<< HEAD
   final String
   status; // 'Pending' | 'Accepted' | 'In Progress' | 'Completed' | 'Under Review' | 'Disputed' | 'Cancelled'
   final DateTime createdAt;
@@ -32,6 +44,21 @@ class BookingModel {
     required this.id,
     required this.tradespersonName,
     required this.tradespersonAvatar,
+=======
+  final String status;
+  final DateTime createdAt;
+  final bool isReviewed;
+  final double? reviewRating;
+  final String? reviewComment;
+  final List<String> reviewTags;
+
+  const BookingModel({
+    required this.id,
+    required this.referenceId,
+    required this.tradespersonName,
+    required this.tradespersonAvatar,
+    this.tradespersonProfileImageUrl,
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     required this.trade,
     required this.specialization,
     required this.problemDescription,
@@ -47,7 +74,67 @@ class BookingModel {
     this.reviewTags = const [],
   });
 
+<<<<<<< HEAD
   BookingModel copyWith({
+=======
+  factory BookingModel.fromApi(Map<String, dynamic> json) {
+    final id = _asInt(json['id']);
+    final referenceId = _asString(json['reference_id']).isNotEmpty
+        ? _asString(json['reference_id'])
+        : 'BK-${id.toString().padLeft(6, '0')}';
+
+    final tagsRaw = json['review_tags'];
+    final tags = <String>[];
+    if (tagsRaw is List) {
+      for (final item in tagsRaw) {
+        final value = item.toString().trim();
+        if (value.isNotEmpty) {
+          tags.add(value);
+        }
+      }
+    }
+
+    return BookingModel(
+      id: id,
+      referenceId: referenceId,
+      tradespersonName: _asString(json['tradesperson_name']),
+      tradespersonAvatar: _asString(json['tradesperson_avatar']).isNotEmpty
+          ? _asString(json['tradesperson_avatar'])
+          : 'TP',
+      tradespersonProfileImageUrl: _asNullableString(
+        json['tradesperson_profile_image_url'],
+      ),
+      trade: _asString(json['trade']).isNotEmpty
+          ? _asString(json['trade'])
+          : _asString(json['trade_category']),
+      specialization: _asString(json['specialization']),
+      problemDescription: _asString(json['problem_description']).isNotEmpty
+          ? _asString(json['problem_description'])
+          : _asString(json['problemDescription']),
+      address: _asString(json['address']),
+      date: _asString(json['date']),
+      time: _asString(json['time']),
+      offeredBudget: _asDouble(json['offered_budget']) > 0
+          ? _asDouble(json['offered_budget'])
+          : _asDouble(json['offeredBudget']),
+      status: _asString(json['status']).isNotEmpty
+          ? _asString(json['status'])
+          : 'Pending',
+      createdAt: _asDateTime(json['created_at']) ?? DateTime.now(),
+      isReviewed: _asBool(json['is_reviewed']) || _asBool(json['isReviewed']),
+      reviewRating: _asNullableDouble(json['review_rating']),
+      reviewComment: _asNullableString(json['review_comment']),
+      reviewTags: tags,
+    );
+  }
+
+  BookingModel copyWith({
+    String? referenceId,
+    String? tradespersonName,
+    String? tradespersonAvatar,
+    String? tradespersonProfileImageUrl,
+    String? trade,
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     String? specialization,
     String? problemDescription,
     String? address,
@@ -55,6 +142,10 @@ class BookingModel {
     String? time,
     double? offeredBudget,
     String? status,
+<<<<<<< HEAD
+=======
+    DateTime? createdAt,
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     bool? isReviewed,
     double? reviewRating,
     String? reviewComment,
@@ -62,9 +153,18 @@ class BookingModel {
   }) {
     return BookingModel(
       id: id,
+<<<<<<< HEAD
       tradespersonName: tradespersonName,
       tradespersonAvatar: tradespersonAvatar,
       trade: trade,
+=======
+      referenceId: referenceId ?? this.referenceId,
+      tradespersonName: tradespersonName ?? this.tradespersonName,
+      tradespersonAvatar: tradespersonAvatar ?? this.tradespersonAvatar,
+      tradespersonProfileImageUrl:
+          tradespersonProfileImageUrl ?? this.tradespersonProfileImageUrl,
+      trade: trade ?? this.trade,
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       specialization: specialization ?? this.specialization,
       problemDescription: problemDescription ?? this.problemDescription,
       address: address ?? this.address,
@@ -72,7 +172,11 @@ class BookingModel {
       time: time ?? this.time,
       offeredBudget: offeredBudget ?? this.offeredBudget,
       status: status ?? this.status,
+<<<<<<< HEAD
       createdAt: createdAt,
+=======
+      createdAt: createdAt ?? this.createdAt,
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       isReviewed: isReviewed ?? this.isReviewed,
       reviewRating: reviewRating ?? this.reviewRating,
       reviewComment: reviewComment ?? this.reviewComment,
@@ -83,7 +187,11 @@ class BookingModel {
 
 class BookingIssueReport {
   final String id;
+<<<<<<< HEAD
   final String bookingId;
+=======
+  final int bookingId;
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   final String category;
   final String details;
   final DateTime createdAt;
@@ -102,6 +210,7 @@ class BookingIssueReport {
 class BookingStore {
   BookingStore._();
 
+<<<<<<< HEAD
   static final ValueNotifier<int> notifier = ValueNotifier<int>(0);
   static int _mutationToken = 0;
   static bool _isSyncing = false;
@@ -170,10 +279,18 @@ class BookingStore {
   static List<BookingModel> get all => List.unmodifiable(_bookings);
   static int get mutationToken => _mutationToken;
   static final List<BookingIssueReport> _issueReports = [];
+=======
+  static final List<BookingModel> _bookings = [];
+  static final List<BookingIssueReport> _issueReports = [];
+  static final ValueNotifier<int> notifier = ValueNotifier<int>(0);
+
+  static List<BookingModel> get all => List.unmodifiable(_bookings);
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
   static List<BookingIssueReport> get issueReports =>
       List.unmodifiable(_issueReports);
 
+<<<<<<< HEAD
   static void add(BookingModel booking) {
     _bookings.insert(0, booking);
     _notify();
@@ -225,6 +342,41 @@ class BookingStore {
   }
 
   static void updateStatus(String id, String status) {
+=======
+  static void setAllFromApi(List<dynamic> rows) {
+    _bookings
+      ..clear()
+      ..addAll(
+        rows
+            .whereType<Map>()
+            .map((row) => BookingModel.fromApi(row.cast<String, dynamic>())),
+      );
+    _sortByCreatedAt();
+    _notify();
+  }
+
+  static void upsertFromApi(Map<String, dynamic> row) {
+    final booking = BookingModel.fromApi(row);
+    replaceBooking(booking);
+  }
+
+  static void add(BookingModel booking) {
+    replaceBooking(booking);
+  }
+
+  static void replaceBooking(BookingModel booking) {
+    final index = _bookings.indexWhere((b) => b.id == booking.id);
+    if (index >= 0) {
+      _bookings[index] = booking;
+    } else {
+      _bookings.add(booking);
+    }
+    _sortByCreatedAt();
+    _notify();
+  }
+
+  static void updateStatus(int id, String status) {
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     final index = _bookings.indexWhere((b) => b.id == id);
     if (index != -1) {
       _bookings[index] = _bookings[index].copyWith(status: status);
@@ -233,7 +385,11 @@ class BookingStore {
   }
 
   static void updateBookingDetails(
+<<<<<<< HEAD
     String id, {
+=======
+    int id, {
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     String? specialization,
     String? problemDescription,
     String? address,
@@ -242,7 +398,13 @@ class BookingStore {
     double? offeredBudget,
   }) {
     final index = _bookings.indexWhere((b) => b.id == id);
+<<<<<<< HEAD
     if (index == -1) return;
+=======
+    if (index == -1) {
+      return;
+    }
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
     _bookings[index] = _bookings[index].copyWith(
       specialization: specialization,
@@ -256,7 +418,11 @@ class BookingStore {
   }
 
   static void submitReview(
+<<<<<<< HEAD
     String id,
+=======
+    int id,
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     double rating,
     String comment,
     List<String> tags,
@@ -274,7 +440,11 @@ class BookingStore {
   }
 
   static void submitIssue(
+<<<<<<< HEAD
     String bookingId, {
+=======
+    int bookingId, {
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     required String category,
     required String details,
     String status = 'Under Review',
@@ -287,6 +457,7 @@ class BookingStore {
       createdAt: DateTime.now(),
     );
     _issueReports.insert(0, report);
+<<<<<<< HEAD
 
     // In-memory handoff to admin queue for now.
     updateStatus(bookingId, status);
@@ -296,6 +467,15 @@ class BookingStore {
     try {
       return _bookings.firstWhere((b) => b.id == id);
     } catch (e) {
+=======
+    updateStatus(bookingId, status);
+  }
+
+  static BookingModel? getBookingById(int id) {
+    try {
+      return _bookings.firstWhere((b) => b.id == id);
+    } catch (_) {
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       return null;
     }
   }
@@ -303,6 +483,7 @@ class BookingStore {
   static List<BookingModel> get unreviewedCompletedBookings =>
       _bookings.where((b) => b.status == 'Completed' && !b.isReviewed).toList();
 
+<<<<<<< HEAD
   static BookingModel fromBackendRow(Map<String, dynamic> row) {
     final id = _parseInt(row['id']) ?? 0;
     final createdAt = _parseDateTime(row['created_at']) ?? DateTime.now();
@@ -404,3 +585,86 @@ class BookingStore {
         .toUpperCase();
   }
 }
+=======
+  static void clear() {
+    _bookings.clear();
+    _issueReports.clear();
+    _notify();
+  }
+
+  static void _sortByCreatedAt() {
+    _bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  }
+
+  static void _notify() {
+    notifier.value++;
+  }
+}
+
+int _asInt(dynamic value) {
+  if (value is int) {
+    return value;
+  }
+  if (value is double) {
+    return value.toInt();
+  }
+  if (value is String) {
+    return int.tryParse(value.trim()) ?? 0;
+  }
+  return 0;
+}
+
+double _asDouble(dynamic value) {
+  if (value is double) {
+    return value;
+  }
+  if (value is int) {
+    return value.toDouble();
+  }
+  if (value is String) {
+    return double.tryParse(value.trim()) ?? 0;
+  }
+  return 0;
+}
+
+double? _asNullableDouble(dynamic value) {
+  final parsed = _asDouble(value);
+  if (parsed == 0 && value != 0 && value != 0.0 && value != '0') {
+    return null;
+  }
+  return parsed;
+}
+
+String _asString(dynamic value) {
+  return value?.toString().trim() ?? '';
+}
+
+String? _asNullableString(dynamic value) {
+  final str = _asString(value);
+  return str.isEmpty ? null : str;
+}
+
+bool _asBool(dynamic value) {
+  if (value is bool) {
+    return value;
+  }
+  if (value is num) {
+    return value != 0;
+  }
+  if (value is String) {
+    final lower = value.trim().toLowerCase();
+    return lower == '1' || lower == 'true' || lower == 'yes';
+  }
+  return false;
+}
+
+DateTime? _asDateTime(dynamic value) {
+  if (value is DateTime) {
+    return value;
+  }
+  if (value is String && value.trim().isNotEmpty) {
+    return DateTime.tryParse(value.trim())?.toLocal();
+  }
+  return null;
+}
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe

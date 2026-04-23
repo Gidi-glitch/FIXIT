@@ -3,6 +3,7 @@ package controllers
 import (
 	"encoding/json"
 	"net/http"
+<<<<<<< HEAD
 	"sort"
 	"strconv"
 	"strings"
@@ -12,6 +13,13 @@ import (
 	"fixit-backend/models"
 
 	"gorm.io/gorm"
+=======
+	"strconv"
+	"strings"
+
+	"fixit-backend/config"
+	"fixit-backend/models"
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 )
 
 // ListDocuments handles GET /api/admin/documents
@@ -140,6 +148,7 @@ func ListTradespeople(w http.ResponseWriter, r *http.Request) {
 
 	rows := make([]map[string]any, 0, len(profiles))
 	for _, p := range profiles {
+<<<<<<< HEAD
 		docs := findVerificationDocumentsForUser(p.UserID)
 		licenseDoc := findDocumentByGroup(docs, "license")
 		govDoc := findDocumentByGroup(docs, "government_id")
@@ -162,12 +171,28 @@ func ListTradespeople(w http.ResponseWriter, r *http.Request) {
 			"status":                     status,
 			"verification_status":        p.VerificationStatus,
 			"created_at":                 p.CreatedAt,
+=======
+		rows = append(rows, map[string]any{
+			"id":                  p.ID,
+			"user_id":             p.UserID,
+			"user_email":          p.User.Email,
+			"first_name":          p.FirstName,
+			"last_name":           p.LastName,
+			"phone":               p.Phone,
+			"trade_category":      p.TradeCategory,
+			"years_experience":    p.YearsExperience,
+			"service_barangay":    p.ServiceBarangay,
+			"bio":                 p.Bio,
+			"verification_status": p.VerificationStatus,
+			"created_at":          p.CreatedAt,
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 		})
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"tradespeople": rows})
 }
 
+<<<<<<< HEAD
 func ListHomeowners(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -396,6 +421,8 @@ func ListActivity(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"activity": entries})
 }
 
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 // syncTradespersonStatus re-evaluates the tradesperson profile's verification_status
 // based on the current state of all their documents:
 //   - Any doc "rejected"  → profile becomes "rejected"
@@ -426,6 +453,7 @@ func syncTradespersonStatus(userID uint) {
 			Update("verification_status", "approved")
 	}
 }
+<<<<<<< HEAD
 
 func adminVerificationType(role, documentGroup string) (string, bool) {
 	switch {
@@ -610,3 +638,5 @@ func titleCase(value string) string {
 	}
 	return strings.ToUpper(value[:1]) + strings.ToLower(value[1:])
 }
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe

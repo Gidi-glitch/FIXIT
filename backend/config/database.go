@@ -4,11 +4,17 @@ import (
 	"fmt"
 	"log"
 	"os"
+<<<<<<< HEAD
 	"strings"
 
 	"fixit-backend/models"
 
 	"golang.org/x/crypto/bcrypt"
+=======
+
+	"fixit-backend/models"
+
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -39,6 +45,7 @@ func ConnectDB() {
 	if err := db.AutoMigrate(
 		&models.User{},
 		&models.HomeownerProfile{},
+<<<<<<< HEAD
 		&models.TradespersonProfile{},
 		&models.VerificationDocument{},
 		&models.UserProfilePhoto{},
@@ -94,4 +101,18 @@ func seedAdminUser(db *gorm.DB) {
 	}
 
 	log.Printf("✅ Bootstrapped admin user: %s", email)
+=======
+		&models.HomeownerAddress{},
+		&models.TradespersonProfile{},
+		&models.VerificationDocument{},
+		&models.UserProfilePhoto{},
+		&models.Booking{},
+		&models.Conversation{},
+		&models.ConversationMessage{},
+		&models.BookingReview{},
+		&models.BookingIssue{},
+	); err != nil {
+		log.Fatal("❌ Failed to migrate database:", err)
+	}
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 }

@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+<<<<<<< HEAD
+=======
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../services/api_service.dart';
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 import 'booking_store.dart';
 import 'review_screen.dart';
 import 'edit_request_sheet.dart';
@@ -542,6 +548,10 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
   late Animation<Offset> _slideAnimation;
   bool _isShowingReview = false;
   bool _isShowingReportModal = false;
+<<<<<<< HEAD
+=======
+  bool _isActionLoading = false;
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
   // ── Color Palette ──────────────────────────────────────────────
   static const Color _primaryBlue = Color(0xFF1E3A8A);
@@ -569,6 +579,13 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _slideController, curve: Curves.easeOut));
     _slideController.forward();
+<<<<<<< HEAD
+=======
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _reloadBookingFromServer();
+    });
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   @override
@@ -614,6 +631,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
     }
   }
 
+<<<<<<< HEAD
   void _updateBookingStatus(String newStatus) {
     BookingStore.updateStatus(_currentBooking.id, newStatus);
     setState(() {
@@ -627,6 +645,94 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
         backgroundColor: _successGreen,
       ),
     );
+=======
+  Future<String> _readToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token')?.trim();
+    if (token == null || token.isEmpty) {
+      throw Exception('Session expired. Please log in again.');
+    }
+    return token;
+  }
+
+  Future<void> _reloadBookingFromServer() async {
+    try {
+      final token = await _readToken();
+      final response = await ApiService.getBookingById(
+        token: token,
+        bookingId: _currentBooking.id,
+      );
+      final bookingRaw = response['booking'];
+      if (bookingRaw is! Map<String, dynamic>) {
+        return;
+      }
+
+      BookingStore.upsertFromApi(bookingRaw);
+      final latest = BookingStore.getBookingById(_currentBooking.id);
+      if (!mounted || latest == null) {
+        return;
+      }
+      setState(() => _currentBooking = latest);
+    } catch (_) {
+      // Keep existing UI state if reload fails.
+    }
+  }
+
+  Future<void> _cancelBooking() async {
+    if (_isActionLoading) return;
+
+    setState(() => _isActionLoading = true);
+    try {
+      final token = await _readToken();
+      final response = await ApiService.cancelBooking(
+        token: token,
+        bookingId: _currentBooking.id,
+      );
+
+      final bookingRaw = response['booking'];
+      if (bookingRaw is Map<String, dynamic>) {
+        BookingStore.upsertFromApi(bookingRaw);
+      }
+
+      if (!mounted) return;
+      setState(() => _isActionLoading = false);
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isActionLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
+  Future<void> _submitIssue(String category, String details) async {
+    try {
+      final token = await _readToken();
+      await ApiService.reportBookingIssue(
+        token: token,
+        bookingId: _currentBooking.id,
+        category: category,
+        details: details,
+      );
+
+      await _reloadBookingFromServer();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Issue submitted. Admin will review your report shortly.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   Future<void> _handleConfirmCompletion() async {
@@ -663,6 +769,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
         builder: (_) => ReportProblemSheet(
           booking: _currentBooking,
           onSubmit: (category, details) {
+<<<<<<< HEAD
             BookingStore.submitIssue(
               _currentBooking.id,
               category: category,
@@ -682,6 +789,9 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
                 ),
               ),
             );
+=======
+            _submitIssue(category, details);
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
           },
         ),
       );
@@ -705,13 +815,18 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
         heightFactor: 0.94,
         child: EditRequestSheet(
           booking: _currentBooking,
+<<<<<<< HEAD
           onSaved: () {
+=======
+          onSaved: () async {
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
             // Refresh local state from the store
             final latest = BookingStore.getBookingById(_currentBooking.id);
             if (latest != null && mounted) {
               setState(() => _currentBooking = latest);
             }
 
+<<<<<<< HEAD
             // Show success snackbar
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -740,6 +855,75 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
                 duration: const Duration(seconds: 2),
               ),
             );
+=======
+            final refreshCandidate =
+                BookingStore.getBookingById(_currentBooking.id) ??
+                _currentBooking;
+
+            try {
+              final token = await _readToken();
+              final response = await ApiService.updateBooking(
+                token: token,
+                bookingId: refreshCandidate.id,
+                data: {
+                  'specialization': refreshCandidate.specialization,
+                  'problem_description': refreshCandidate.problemDescription,
+                  'address': refreshCandidate.address,
+                  'date': refreshCandidate.date,
+                  'time': refreshCandidate.time,
+                  'offered_budget': refreshCandidate.offeredBudget,
+                },
+              );
+
+              final bookingRaw = response['booking'];
+              if (bookingRaw is Map<String, dynamic>) {
+                BookingStore.upsertFromApi(bookingRaw);
+                final serverLatest = BookingStore.getBookingById(
+                  refreshCandidate.id,
+                );
+                if (serverLatest != null && mounted) {
+                  setState(() => _currentBooking = serverLatest);
+                }
+              }
+
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Row(
+                    children: [
+                      Icon(
+                        Icons.check_circle_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Booking request updated successfully.',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                  backgroundColor: _successGreen,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  margin: const EdgeInsets.all(16),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            } catch (e) {
+              await _reloadBookingFromServer();
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(e.toString().replaceFirst('Exception: ', '')),
+                ),
+              );
+            }
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
           },
         ),
       ),
@@ -1083,6 +1267,11 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildTradespersonCard() {
+<<<<<<< HEAD
+=======
+    final tradespersonProfileImageUrl =
+        (_currentBooking.tradespersonProfileImageUrl ?? '').trim();
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       padding: const EdgeInsets.all(16),
@@ -1111,6 +1300,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
               ),
               borderRadius: BorderRadius.circular(16),
             ),
+<<<<<<< HEAD
             child: Center(
               child: Text(
                 _currentBooking.tradespersonAvatar,
@@ -1120,6 +1310,35 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
                   color: Colors.white,
                 ),
               ),
+=======
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: tradespersonProfileImageUrl.isNotEmpty
+                  ? Image.network(
+                      tradespersonProfileImageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Center(
+                        child: Text(
+                          _currentBooking.tradespersonAvatar,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    )
+                  : Center(
+                      child: Text(
+                        _currentBooking.tradespersonAvatar,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
             ),
           ),
           const SizedBox(width: 14),
@@ -1445,10 +1664,14 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
+<<<<<<< HEAD
                 onPressed: () {
                   _updateBookingStatus('Cancelled');
                   Navigator.pop(context);
                 },
+=======
+                onPressed: _isActionLoading ? null : _cancelBooking,
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _errorRed,
                   foregroundColor: Colors.white,
@@ -1489,6 +1712,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
+<<<<<<< HEAD
                     onPressed: () {
                       Navigator.pop(context, {
                         'openMessage': true,
@@ -1497,6 +1721,19 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
                         'avatar': _currentBooking.tradespersonAvatar,
                       });
                     },
+=======
+                    onPressed: _isActionLoading
+                        ? null
+                        : () {
+                            Navigator.pop(context, {
+                              'openMessage': true,
+                              'tradespersonName':
+                                  _currentBooking.tradespersonName,
+                              'trade': _currentBooking.trade,
+                              'avatar': _currentBooking.tradespersonAvatar,
+                            });
+                          },
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                     icon: const Icon(Icons.message_rounded, size: 18),
                     label: const Text('Message'),
                     style: ElevatedButton.styleFrom(
@@ -1513,10 +1750,14 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
                 Expanded(
                   child: _currentBooking.status == 'Accepted'
                       ? OutlinedButton.icon(
+<<<<<<< HEAD
                           onPressed: () {
                             _updateBookingStatus('Cancelled');
                             Navigator.pop(context);
                           },
+=======
+                          onPressed: _isActionLoading ? null : _cancelBooking,
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                           icon: const Icon(Icons.cancel_rounded, size: 18),
                           label: const Text('Cancel Booking'),
                           style: OutlinedButton.styleFrom(

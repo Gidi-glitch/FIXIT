@@ -76,12 +76,32 @@ func RegisterHomeowner(w http.ResponseWriter, r *http.Request) {
 			LastName:  lastName,
 			Phone:     phone,
 			Barangay:  barangay,
+<<<<<<< HEAD
 			StatusID:  "pending",
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 		}
 		if err := tx.Create(&profile).Error; err != nil {
 			return err
 		}
 
+<<<<<<< HEAD
+=======
+		defaultAddress := models.HomeownerAddress{
+			UserID:       user.ID,
+			Label:        "Home",
+			Unit:         "",
+			Street:       "",
+			Barangay:     barangay,
+			Municipality: "Calauan",
+			Province:     "Laguna",
+			IsPrimary:    true,
+		}
+		if err := tx.Create(&defaultAddress).Error; err != nil {
+			return err
+		}
+
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 		storedName, filePath, err := services.SaveUploadedFile(file, header, "homeowners/ids")
 		if err != nil {
 			return err

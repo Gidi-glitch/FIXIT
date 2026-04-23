@@ -1,5 +1,8 @@
+<<<<<<< HEAD
 import 'dart:io';
 
+=======
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,6 +10,52 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
 import 'booking_store.dart';
 
+<<<<<<< HEAD
+=======
+class _MyAddressOption {
+  final int id;
+  final String label;
+  final String unit;
+  final String street;
+  final String barangay;
+  final bool isPrimary;
+
+  static const String municipality = 'Calauan';
+  static const String province = 'Laguna';
+
+  const _MyAddressOption({
+    required this.id,
+    required this.label,
+    required this.unit,
+    required this.street,
+    required this.barangay,
+    required this.isPrimary,
+  });
+
+  factory _MyAddressOption.fromApi(Map<String, dynamic> row) {
+    return _MyAddressOption(
+      id: int.tryParse((row['id'] ?? '').toString()) ?? 0,
+      label: (row['label'] ?? '').toString().trim(),
+      unit: (row['unit'] ?? '').toString().trim(),
+      street: (row['street'] ?? '').toString().trim(),
+      barangay: (row['barangay'] ?? '').toString().trim(),
+      isPrimary: row['is_primary'] == true || row['isPrimary'] == true,
+    );
+  }
+
+  String get fullAddress {
+    final parts = <String>[
+      if (unit.isNotEmpty) unit,
+      if (street.isNotEmpty) street,
+      if (barangay.isNotEmpty) 'Brgy. $barangay',
+      municipality,
+      province,
+    ];
+    return parts.join(', ');
+  }
+}
+
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 class BookingFormScreen extends StatefulWidget {
   final Map<String, dynamic> pro;
   final VoidCallback onBookingConfirmed;
@@ -44,11 +93,20 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
   bool _isSubmitting = false;
+<<<<<<< HEAD
+=======
+  bool _isLoadingAddresses = false;
+  List<_MyAddressOption> _myAddresses = <_MyAddressOption>[];
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
   @override
   void initState() {
     super.initState();
     _serviceOptions = _extractServiceOptions();
+<<<<<<< HEAD
+=======
+    _loadAddressOptions();
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   @override
@@ -61,6 +119,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
 
   // ── Helpers ─────────────────────────────────────────────────────
 
+<<<<<<< HEAD
   List<String> _extractServiceOptions() {
     final raw = <dynamic>[
       if (widget.pro['skills'] is List) ...(widget.pro['skills'] as List),
@@ -76,12 +135,76 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
       final value = item.toString().trim();
       if (value.isEmpty) continue;
 
+=======
+  List<String> _toStringList(dynamic raw) {
+    final out = <String>[];
+    final seen = <String>{};
+
+    void addValue(String value) {
+      final v = value.trim();
+      if (v.isEmpty) return;
+      final key = v.toLowerCase();
+      if (seen.add(key)) {
+        out.add(v);
+      }
+    }
+
+    if (raw is List) {
+      for (final item in raw) {
+        addValue(item.toString());
+      }
+      return out;
+    }
+
+    final text = (raw ?? '').toString().trim();
+    if (text.isEmpty) {
+      return out;
+    }
+
+    for (final part in text.split(',')) {
+      addValue(part);
+    }
+
+    return out;
+  }
+
+  List<String> _extractServiceOptions() {
+    final seen = <String>{};
+    final result = <String>[];
+
+    final trade = (widget.pro['trade'] ?? widget.pro['trade_category'] ?? '')
+        .toString()
+        .trim();
+    final specializations = _toStringList(widget.pro['specializations']);
+
+    void addValue(String value) {
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       final normalized = value.toLowerCase();
       if (seen.add(normalized)) {
         result.add(value);
       }
     }
 
+<<<<<<< HEAD
+=======
+    if (trade.isNotEmpty) {
+      addValue(trade);
+    }
+
+    for (final specialization in specializations) {
+      final value = specialization.toString().trim();
+      if (value.isEmpty) continue;
+      addValue(value);
+    }
+
+    if (result.isEmpty) {
+      final fallback = (widget.pro['specialization'] ?? '').toString().trim();
+      if (fallback.isNotEmpty) {
+        addValue(fallback);
+      }
+    }
+
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     return result;
   }
 
@@ -162,6 +285,164 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     if (picked != null) setState(() => _selectedTime = picked);
   }
 
+<<<<<<< HEAD
+=======
+  Future<void> _loadAddressOptions() async {
+    setState(() => _isLoadingAddresses = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token')?.trim() ?? '';
+      if (token.isEmpty) return;
+
+      final result = await ApiService.getMyAddresses(token: token);
+      final raw = result['addresses'];
+      final rows = raw is List
+          ? raw.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList()
+          : <Map<String, dynamic>>[];
+
+      final parsed = rows.map(_MyAddressOption.fromApi).where((a) {
+        return a.id > 0 && a.barangay.isNotEmpty;
+      }).toList();
+
+      if (parsed.isEmpty) {
+        if (!mounted) return;
+        setState(() => _myAddresses = <_MyAddressOption>[]);
+        return;
+      }
+
+      final selected = parsed.firstWhere(
+        (a) => a.isPrimary,
+        orElse: () => parsed.first,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _myAddresses = parsed;
+        _addressController.text = selected.fullAddress;
+      });
+    } catch (_) {
+      // Keep booking form usable even if addresses fail to load.
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingAddresses = false);
+      }
+    }
+  }
+
+  Future<void> _openAddressPicker() async {
+    if (_myAddresses.isEmpty) return;
+
+    final selected = await showModalBottomSheet<_MyAddressOption>(
+      context: context,
+      backgroundColor: _cardWhite,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _textMuted.withValues(alpha: 0.25),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Text(
+                      'Select Service Address',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: _textDark,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _myAddresses.length,
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final address = _myAddresses[index];
+                    return ListTile(
+                      onTap: () => Navigator.of(ctx).pop(address),
+                      leading: Icon(
+                        address.isPrimary
+                            ? Icons.star_rounded
+                            : Icons.location_on_outlined,
+                        color: address.isPrimary
+                            ? _warningYellow
+                            : _primaryBlue,
+                      ),
+                      title: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              address.label.isNotEmpty
+                                  ? address.label
+                                  : 'Address',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: _textDark,
+                              ),
+                            ),
+                          ),
+                          if (address.isPrimary) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _primaryBlue.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: const Text(
+                                'Primary',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: _primaryBlue,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      subtitle: Text(address.fullAddress),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (selected == null || !mounted) return;
+
+    setState(() {
+      _addressController.text = selected.fullAddress;
+    });
+  }
+
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   Future<void> _confirmBooking() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedServices.isEmpty) {
@@ -179,6 +460,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
 
     setState(() => _isSubmitting = true);
 
+<<<<<<< HEAD
     // Simulate network delay
     await Future.delayed(const Duration(milliseconds: 800));
 
@@ -254,6 +536,57 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
 
     // Switch dashboard to Bookings tab (index 1)
     widget.onBookingConfirmed();
+=======
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token')?.trim();
+      if (token == null || token.isEmpty) {
+        throw Exception('Session expired. Please log in again.');
+      }
+
+      final proIdRaw = widget.pro['tradesperson_id'] ?? widget.pro['id'];
+      final tradespersonId = _toInt(proIdRaw);
+      if (tradespersonId <= 0) {
+        throw Exception('Invalid tradesperson selected.');
+      }
+
+      final payload = {
+        'tradesperson_id': tradespersonId,
+        'trade_category': (widget.pro['trade'] ?? '').toString(),
+        'specialization': _selectedServices.join(', '),
+        'problem_description': _descriptionController.text.trim(),
+        'address': _addressController.text.trim(),
+        'date': _formatDate(_selectedDate!),
+        'time': _formatTime(_selectedTime!),
+        'offered_budget': double.tryParse(_budgetController.text.trim()) ?? 0,
+      };
+
+      final result = await ApiService.createBooking(
+        token: token,
+        data: payload,
+      );
+      final bookingRaw = result['booking'];
+      if (bookingRaw is Map<String, dynamic>) {
+        BookingStore.upsertFromApi(bookingRaw);
+      }
+
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      widget.onBookingConfirmed();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      _showError(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  int _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   void _showError(String message) {
@@ -781,6 +1114,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   }
 
   Widget _buildAddressField() {
+<<<<<<< HEAD
     return TextFormField(
       controller: _addressController,
       style: const TextStyle(
@@ -798,6 +1132,64 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         }
         return null;
       },
+=======
+    final hasSavedAddresses = _myAddresses.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          controller: _addressController,
+          readOnly: hasSavedAddresses,
+          onTap: hasSavedAddresses ? _openAddressPicker : null,
+          style: const TextStyle(
+            fontSize: 14,
+            color: _textDark,
+            fontWeight: FontWeight.w500,
+          ),
+          decoration:
+              _inputDecoration(
+                hint: hasSavedAddresses
+                    ? 'Tap to choose from your saved addresses'
+                    : 'e.g. Blk 4 Lot 12, Dayap, Calauan, Laguna',
+                prefixIcon: Icons.home_rounded,
+              ).copyWith(
+                suffixIcon: _isLoadingAddresses
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: Padding(
+                          padding: EdgeInsets.all(14),
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : hasSavedAddresses
+                    ? const Icon(Icons.keyboard_arrow_down_rounded)
+                    : null,
+              ),
+          validator: (val) {
+            if (val == null || val.trim().isEmpty) {
+              return hasSavedAddresses
+                  ? 'Please select your service address.'
+                  : 'Please enter your service address.';
+            }
+            return null;
+          },
+        ),
+        if (hasSavedAddresses)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 2),
+            child: Text(
+              'Primary address is auto-selected. Tap field to choose another saved address.',
+              style: TextStyle(
+                fontSize: 12,
+                color: _textMuted.withValues(alpha: 0.8),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
+>>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     );
   }
 
