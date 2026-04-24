@@ -1077,7 +1077,7 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
               Switch.adaptive(
                 value: value,
                 onChanged: onChanged,
-                activeColor: _primaryBlue,
+                activeThumbColor: _primaryBlue,
               ),
             ],
           ),

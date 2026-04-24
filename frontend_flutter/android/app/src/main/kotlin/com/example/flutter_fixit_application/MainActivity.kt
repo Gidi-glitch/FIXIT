@@ -1,10 +1,5 @@
 package com.example.flutter_fixit_application
 
-<<<<<<< HEAD
-import io.flutter.embedding.android.FlutterActivity
-
-class MainActivity : FlutterActivity()
-=======
 import android.content.ContentValues
 import android.net.Uri
 import android.os.Build
@@ -156,4 +151,3 @@ class MainActivity : FlutterActivity() {
 		}
 	}
 }
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe

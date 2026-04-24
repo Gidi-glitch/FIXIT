@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-<<<<<<< HEAD
-=======
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/api_service.dart';
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 import 'booking_store.dart';
 import 'booking_details_screen.dart';
 
@@ -37,37 +34,9 @@ class _BookingsScreenState extends State<BookingsScreen>
   @override
   bool get wantKeepAlive => true;
 
-<<<<<<< HEAD
-  @override
-  void initState() {
-    super.initState();
-    BookingStore.notifier.addListener(_handleStoreChanged);
-    _refreshFromBackend();
-  }
-
-  @override
-  void dispose() {
-    BookingStore.notifier.removeListener(_handleStoreChanged);
-    super.dispose();
-  }
-
-  void _handleStoreChanged() {
-    if (!mounted) return;
-    setState(() {});
-  }
-
-  Future<void> _refreshFromBackend() async {
-    await BookingStore.syncFromBackend();
-    if (!mounted) return;
-    setState(() {});
-  }
-
-  String _activeFilter = 'All';
-=======
   String _activeFilter = 'All';
   bool _isLoading = true;
   String? _errorMessage;
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   final List<String> _filters = [
     'All',
     'Pending',
@@ -107,8 +76,6 @@ class _BookingsScreenState extends State<BookingsScreen>
     return all.where((b) => b.status == _activeFilter).toList();
   }
 
-<<<<<<< HEAD
-=======
   @override
   void initState() {
     super.initState();
@@ -155,7 +122,6 @@ class _BookingsScreenState extends State<BookingsScreen>
     }
   }
 
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   // ═══════════════════════════════════════════════════════════════
   //  BUILD
   // ═══════════════════════════════════════════════════════════════
@@ -174,15 +140,11 @@ class _BookingsScreenState extends State<BookingsScreen>
             _buildAppBar(),
             _buildFilterTabs(),
             Expanded(
-<<<<<<< HEAD
-              child: bookings.isEmpty
-=======
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _errorMessage != null
                   ? _buildErrorState()
                   : bookings.isEmpty
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                   ? _buildEmptyState()
                   : ListView.builder(
                       physics: const BouncingScrollPhysics(),
@@ -262,11 +224,7 @@ class _BookingsScreenState extends State<BookingsScreen>
               ],
             ),
             child: IconButton(
-<<<<<<< HEAD
-              onPressed: () => _refreshFromBackend(),
-=======
               onPressed: _refreshBookings,
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
               icon: const Icon(
                 Icons.refresh_rounded,
                 color: _textDark,
@@ -412,8 +370,6 @@ class _BookingsScreenState extends State<BookingsScreen>
     );
   }
 
-<<<<<<< HEAD
-=======
   Widget _buildErrorState() {
     return Center(
       child: Padding(
@@ -447,7 +403,6 @@ class _BookingsScreenState extends State<BookingsScreen>
     );
   }
 
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   // ═══════════════════════════════════════════════════════════════
   //  BOOKING CARD
   // ═══════════════════════════════════════════════════════════════
@@ -455,11 +410,8 @@ class _BookingsScreenState extends State<BookingsScreen>
   Widget _buildBookingCard(BookingModel booking) {
     final color = _statusColor(booking.status);
     final isCompleted = booking.status == 'Completed';
-<<<<<<< HEAD
-=======
     final tradespersonProfileImageUrl =
         (booking.tradespersonProfileImageUrl ?? '').trim();
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -524,17 +476,6 @@ class _BookingsScreenState extends State<BookingsScreen>
                           ),
                           borderRadius: BorderRadius.circular(14),
                         ),
-<<<<<<< HEAD
-                        child: Center(
-                          child: Text(
-                            booking.tradespersonAvatar,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
-=======
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(14),
                           child: tradespersonProfileImageUrl.isNotEmpty
@@ -563,7 +504,6 @@ class _BookingsScreenState extends State<BookingsScreen>
                                     ),
                                   ),
                                 ),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                         ),
                       ),
                     ),

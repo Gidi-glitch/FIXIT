@@ -1,32 +1,5 @@
 package models
 
-<<<<<<< HEAD
-import (
-	"time"
-
-	"gorm.io/gorm"
-)
-
-type Booking struct {
-	gorm.Model
-	HomeownerUserID    uint       `json:"homeowner_user_id" gorm:"index;not null"`
-	TradespersonUserID uint       `json:"tradesperson_user_id" gorm:"index;not null"`
-	Trade              string     `json:"trade" gorm:"not null"`
-	Specialization     string     `json:"specialization" gorm:"type:text;not null"`
-	ProblemDescription string     `json:"problem_description" gorm:"type:text;not null"`
-	Address            string     `json:"address" gorm:"type:text;not null"`
-	Barangay           string     `json:"barangay"`
-	DateLabel          string     `json:"date" gorm:"not null"`
-	TimeLabel          string     `json:"time" gorm:"not null"`
-	OfferedBudget      float64    `json:"offered_budget" gorm:"not null"`
-	Urgency            string     `json:"urgency" gorm:"not null;default:Medium"`
-	Status             string     `json:"status" gorm:"not null;default:Pending"`
-	StartedAt          *time.Time `json:"started_at"`
-	CompletedAt        *time.Time `json:"completed_at"`
-
-	HomeownerUser    User `json:"-" gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:HomeownerUserID"`
-	TradespersonUser User `json:"-" gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:TradespersonUserID"`
-=======
 import "time"
 
 type Booking struct {
@@ -78,11 +51,16 @@ type BookingIssue struct {
 
 	HomeownerID uint `json:"homeowner_id" gorm:"not null;index"`
 
+	ReporterRole string `json:"reporter_role" gorm:"not null;default:homeowner"`
+	ReporterName string `json:"reporter_name" gorm:"not null;default:''"`
+	TargetRole   string `json:"target_role" gorm:"not null;default:tradesperson"`
+	TargetName   string `json:"target_name" gorm:"not null;default:''"`
+	TargetEmail  string `json:"target_email" gorm:"not null;default:''"`
+
 	Category string `json:"category" gorm:"not null"`
 	Details  string `json:"details" gorm:"not null"`
 	Status   string `json:"status" gorm:"not null;default:Under Review"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 }

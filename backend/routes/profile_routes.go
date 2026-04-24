@@ -9,14 +9,10 @@ import (
 
 func RegisterProfileRoutes() {
 	http.Handle("/api/profile/me", middleware.AuthMiddleware(http.HandlerFunc(controllers.ProfileMe)))
-<<<<<<< HEAD
-	http.Handle("/api/profile/me/name", middleware.AuthMiddleware(http.HandlerFunc(controllers.UpdateMyName)))
-	http.Handle("/api/profile/me/email", middleware.AuthMiddleware(http.HandlerFunc(controllers.UpdateMyEmail)))
+	http.Handle("/api/profile/me/name", middleware.AuthMiddleware(http.HandlerFunc(controllers.UpdateMyProfileName)))
+	http.Handle("/api/profile/me/email", middleware.AuthMiddleware(http.HandlerFunc(controllers.UpdateMyProfileEmail)))
 	http.Handle("/api/profile/me/password", middleware.AuthMiddleware(http.HandlerFunc(controllers.UpdateMyPassword)))
-	http.Handle("/api/profile/photo", middleware.AuthMiddleware(http.HandlerFunc(controllers.UploadProfilePhoto)))
-=======
 	http.Handle("/api/profile/photo", middleware.AuthMiddleware(http.HandlerFunc(controllers.UploadProfilePhoto)))
 	http.Handle("/api/profile/addresses", middleware.AuthMiddleware(http.HandlerFunc(controllers.MyAddresses)))
 	http.Handle("/api/profile/addresses/", middleware.AuthMiddleware(http.HandlerFunc(controllers.MyAddressByIDRouter)))
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 }

@@ -2,20 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/api_service.dart';
-<<<<<<< HEAD
-=======
 
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 import 'tradesperson_chat_screen.dart';
 
 /// Messages Screen for the Fix It Marketplace Tradesperson App.
 /// Displays a chat list UI similar to Messenger with conversations.
 class TradespersonMessagesScreen extends StatefulWidget {
   final String? initialHomeownerName;
-<<<<<<< HEAD
-  final String? initialHomeownerUserId;
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   final String? initialService;
   final String? initialAvatar;
   final bool autoOpenChat;
@@ -24,10 +17,6 @@ class TradespersonMessagesScreen extends StatefulWidget {
   const TradespersonMessagesScreen({
     super.key,
     this.initialHomeownerName,
-<<<<<<< HEAD
-    this.initialHomeownerUserId,
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     this.initialService,
     this.initialAvatar,
     this.autoOpenChat = false,
@@ -49,27 +38,16 @@ class _TradespersonMessagesScreenState
   static const Color _cardWhite = Color(0xFFFFFFFF);
   static const Color _successGreen = Color(0xFF10B981);
 
-<<<<<<< HEAD
-  List<Map<String, dynamic>> _conversations = [];
-=======
   late List<Map<String, dynamic>> _conversations;
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   bool _hasAutoOpenedChat = false;
   bool _isLoading = true;
-<<<<<<< HEAD
-  String? _token;
-=======
   String? _loadError;
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
   @override
   void initState() {
     super.initState();
-<<<<<<< HEAD
-    _loadConversations();
-=======
     _conversations = [];
     _loadConversations();
 
@@ -79,7 +57,6 @@ class _TradespersonMessagesScreenState
         _openChatForInitialHomeowner();
       });
     }
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   @override
@@ -100,19 +77,7 @@ class _TradespersonMessagesScreenState
     final normalized = name.trim().toLowerCase();
     if (normalized.isEmpty) return null;
 
-<<<<<<< HEAD
-    final requestedUserId = (widget.initialHomeownerUserId ?? '').trim();
-
     for (final conversation in _conversations) {
-      final conversationUserId = (conversation['counterpartUserId'] ?? '')
-          .toString()
-          .trim();
-      if (requestedUserId.isNotEmpty && requestedUserId == conversationUserId) {
-        return conversation;
-      }
-=======
-    for (final conversation in _conversations) {
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       final conversationName = (conversation['name'] ?? '')
           .toString()
           .trim()
@@ -122,8 +87,6 @@ class _TradespersonMessagesScreenState
     return null;
   }
 
-<<<<<<< HEAD
-=======
   Map<String, dynamic> _buildBookingConversation() {
     final name = (widget.initialHomeownerName ?? '').trim();
     final avatar = (widget.initialAvatar ?? '').trim();
@@ -244,41 +207,10 @@ class _TradespersonMessagesScreenState
     return raw == '1' || raw == 'true' || raw == 'yes';
   }
 
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   Future<void> _openChatForInitialHomeowner() async {
     final name = (widget.initialHomeownerName ?? '').trim();
     if (name.isEmpty) return;
 
-<<<<<<< HEAD
-    Map<String, dynamic>? targetConversation = _findConversationByHomeowner(
-      name,
-    );
-
-    if (targetConversation == null) {
-      final counterpartUserId = (widget.initialHomeownerUserId ?? '').trim();
-      if (_token == null || _token!.isEmpty || counterpartUserId.isEmpty) {
-        return;
-      }
-
-      try {
-        final result = await ApiService.ensureConversation(
-          token: _token!,
-          counterpartUserId: counterpartUserId,
-        );
-        final conversation = _mapConversation(
-          (result['conversation'] as Map?)?.cast<String, dynamic>() ??
-              <String, dynamic>{},
-          fallbackName: name,
-          fallbackAvatar: widget.initialAvatar,
-          fallbackSubtitle: widget.initialService,
-        );
-        if (!mounted) return;
-        _upsertConversationToTop(conversation);
-        targetConversation = conversation;
-      } catch (_) {
-        return;
-      }
-=======
     final targetConversation =
         _findConversationByHomeowner(name) ?? _buildBookingConversation();
 
@@ -290,7 +222,6 @@ class _TradespersonMessagesScreenState
       setState(() {
         _conversations.insert(0, targetConversation);
       });
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     }
 
     _hasAutoOpenedChat = true;
@@ -381,104 +312,6 @@ class _TradespersonMessagesScreenState
     }).toList();
   }
 
-<<<<<<< HEAD
-  Future<void> _loadConversations() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token')?.trim();
-    if (token == null || token.isEmpty) {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
-      return;
-    }
-
-    try {
-      final result = await ApiService.getConversations(token);
-      final rows = (result['conversations'] as List? ?? const <dynamic>[])
-          .whereType<Map>()
-          .map((row) => _mapConversation(row.cast<String, dynamic>()))
-          .toList();
-
-      if (!mounted) return;
-      setState(() {
-        _token = token;
-        _conversations = rows;
-        _isLoading = false;
-      });
-
-      if (widget.autoOpenChat && !_hasAutoOpenedChat) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted || _hasAutoOpenedChat) return;
-          _openChatForInitialHomeowner();
-        });
-      }
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _token = token;
-        _isLoading = false;
-      });
-    }
-  }
-
-  Map<String, dynamic> _mapConversation(
-    Map<String, dynamic> row, {
-    String? fallbackName,
-    String? fallbackAvatar,
-    String? fallbackSubtitle,
-  }) {
-    final name = (row['name'] ?? fallbackName ?? 'Conversation').toString();
-    final avatar = (row['avatar'] ?? fallbackAvatar ?? _initialsFromName(name))
-        .toString();
-    final service = (row['service'] ?? fallbackSubtitle ?? 'Homeowner')
-        .toString();
-
-    return {
-      'id': (row['id'] ?? '').toString(),
-      'counterpartUserId': (row['counterpart_user_id'] ?? '').toString(),
-      'name': name,
-      'avatar': avatar,
-      'lastMessage': (row['last_message'] ?? '').toString(),
-      'time': _formatConversationTime((row['last_message_at'] ?? '').toString()),
-      'unreadCount': (row['unread_count'] as num?)?.toInt() ?? 0,
-      'isOnline': row['is_online'] == true,
-      'service': service,
-    };
-  }
-
-  String _formatConversationTime(String isoText) {
-    final parsed = DateTime.tryParse(isoText);
-    if (parsed == null) return '';
-    final local = parsed.toLocal();
-    final now = DateTime.now();
-    final isSameDay =
-        local.year == now.year &&
-        local.month == now.month &&
-        local.day == now.day;
-    if (isSameDay) {
-      final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
-      final minute = local.minute.toString().padLeft(2, '0');
-      final period = local.hour >= 12 ? 'PM' : 'AM';
-      return '$hour:$minute $period';
-    }
-    return '${local.month}/${local.day}';
-  }
-
-  String _initialsFromName(String name) {
-    final parts = name
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .toList();
-    if (parts.isEmpty) return 'HO';
-    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
-        .toUpperCase();
-  }
-
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   @override
   void dispose() {
     _searchController.dispose();
@@ -495,44 +328,13 @@ class _TradespersonMessagesScreenState
           children: [
             _buildAppBar(),
             _buildSearchBar(),
-<<<<<<< HEAD
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _filteredConversations.isEmpty
-                  ? Center(
-                      child: Text(
-                        'No conversations yet.',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: _textMuted.withValues(alpha: 0.85),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    )
-                  : ListView.builder(
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(0, 8, 0, 100),
-                      itemCount: _filteredConversations.length,
-                      itemBuilder: (context, index) {
-                        return _buildMessageTile(
-                          context,
-                          _filteredConversations[index],
-                        );
-                      },
-                    ),
-            ),
-=======
             Expanded(child: _buildConversationListBody()),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
           ],
         ),
       ),
     );
   }
 
-<<<<<<< HEAD
-=======
   Widget _buildConversationListBody() {
     if (_isLoading) {
       return const Center(
@@ -596,7 +398,6 @@ class _TradespersonMessagesScreenState
     );
   }
 
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   Widget _buildAppBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
@@ -701,13 +502,8 @@ class _TradespersonMessagesScreenState
     BuildContext context,
     Map<String, dynamic> conversation,
   ) {
-<<<<<<< HEAD
-    final hasUnread = (conversation['unreadCount'] as int) > 0;
-    final isOnline = conversation['isOnline'] as bool;
-=======
     final hasUnread = _asInt(conversation['unreadCount']) > 0;
     final isOnline = _asBool(conversation['isOnline']);
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
     return Material(
       color: hasUnread
@@ -736,11 +532,7 @@ class _TradespersonMessagesScreenState
                     ),
                     child: Center(
                       child: Text(
-<<<<<<< HEAD
-                        conversation['avatar'] as String,
-=======
                         (conversation['avatar'] ?? 'HO').toString(),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
@@ -774,11 +566,7 @@ class _TradespersonMessagesScreenState
                       children: [
                         Expanded(
                           child: Text(
-<<<<<<< HEAD
-                            conversation['name'] as String,
-=======
                             (conversation['name'] ?? 'Conversation').toString(),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: hasUnread
@@ -791,11 +579,7 @@ class _TradespersonMessagesScreenState
                           ),
                         ),
                         Text(
-<<<<<<< HEAD
-                          conversation['time'] as String,
-=======
                           (conversation['time'] ?? '').toString(),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: hasUnread
@@ -811,11 +595,7 @@ class _TradespersonMessagesScreenState
                       children: [
                         Expanded(
                           child: Text(
-<<<<<<< HEAD
-                            conversation['lastMessage'] as String,
-=======
                             (conversation['lastMessage'] ?? '').toString(),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: hasUnread

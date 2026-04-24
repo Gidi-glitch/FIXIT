@@ -167,13 +167,9 @@ class _HomeownerRegistrationScreenState
               content: Text(e.message),
               backgroundColor: _errorRed,
               behavior: SnackBarBehavior.floating,
-<<<<<<< HEAD
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-=======
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
               margin: const EdgeInsets.all(16),
             ),
           );
@@ -222,11 +218,7 @@ class _HomeownerRegistrationScreenState
     setState(() => _isUploadingFile = true);
 
     try {
-<<<<<<< HEAD
-      final result = await FilePicker.platform.pickFiles(
-=======
       final result = await FilePicker.pickFiles(
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
       );

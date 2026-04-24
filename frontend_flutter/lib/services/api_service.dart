@@ -10,11 +10,7 @@ class ApiService {
       "http://10.0.2.2:8080";*/ // Use 10.0.2.2 for Android emulator
 
   static const String _emulatorUrl = "http://10.0.2.2:8080";
-<<<<<<< HEAD
-  static const String _physicalUrl = "http://192.168.1.10:8080";
-=======
   static const String _physicalUrl = "http://192.168.1.13:8080";
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
   static String baseUrl = _emulatorUrl; // safe default
 
@@ -170,8 +166,6 @@ class ApiService {
     return _decodeResponse(response);
   }
 
-<<<<<<< HEAD
-=======
   static Future<Map<String, dynamic>> getMyAddresses({
     required String token,
   }) async {
@@ -250,7 +244,6 @@ class ApiService {
     return _decodeResponse(response);
   }
 
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   static Future<Map<String, dynamic>> changePassword({
     required String token,
     required String currentPassword,
@@ -271,23 +264,6 @@ class ApiService {
     return _decodeResponse(response);
   }
 
-<<<<<<< HEAD
-  static Future<Map<String, dynamic>> getTradespeople(
-    String token, {
-    String? search,
-    String? category,
-    bool onDutyOnly = false,
-  }) async {
-    final query = <String, String>{};
-    if (search != null && search.trim().isNotEmpty) {
-      query['search'] = search.trim();
-    }
-    if (category != null && category.trim().isNotEmpty) {
-      query['category'] = category.trim();
-    }
-    if (onDutyOnly) {
-      query['on_duty'] = 'true';
-=======
   static Future<Map<String, dynamic>> getTradespeople({
     required String token,
     String? search,
@@ -303,34 +279,10 @@ class ApiService {
     }
     if (onDuty != null) {
       params['on_duty'] = onDuty.toString();
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     }
 
     final uri = Uri.parse(
       '$baseUrl/api/tradespeople',
-<<<<<<< HEAD
-    ).replace(queryParameters: query.isEmpty ? null : query);
-
-    final response = await http.get(uri, headers: _authorizedHeaders(token));
-
-    return _decodeResponse(response);
-  }
-
-  static Future<Map<String, dynamic>> getBookings(
-    String token, {
-    String? status,
-  }) async {
-    final query = <String, String>{};
-    if (status != null && status.trim().isNotEmpty) {
-      query['status'] = status.trim();
-    }
-
-    final uri = Uri.parse(
-      '$baseUrl/api/bookings',
-    ).replace(queryParameters: query.isEmpty ? null : query);
-
-    final response = await http.get(uri, headers: _authorizedHeaders(token));
-=======
     ).replace(queryParameters: params.isEmpty ? null : params);
 
     final response = await http.get(
@@ -340,41 +292,12 @@ class ApiService {
         "Authorization": 'Bearer $token',
       },
     );
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
     return _decodeResponse(response);
   }
 
   static Future<Map<String, dynamic>> createBooking({
     required String token,
-<<<<<<< HEAD
-    required int tradespersonUserId,
-    required String trade,
-    required String specialization,
-    required String problemDescription,
-    required String address,
-    required String date,
-    required String time,
-    required double offeredBudget,
-    String urgency = 'Medium',
-    String barangay = '',
-  }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/bookings'),
-      headers: _authorizedHeaders(token),
-      body: jsonEncode({
-        'tradesperson_user_id': tradespersonUserId,
-        'trade': trade,
-        'specialization': specialization,
-        'problem_description': problemDescription,
-        'address': address,
-        'barangay': barangay,
-        'date': date,
-        'time': time,
-        'offered_budget': offeredBudget,
-        'urgency': urgency,
-      }),
-=======
     required Map<String, dynamic> data,
   }) async {
     final response = await http.post(
@@ -384,23 +307,11 @@ class ApiService {
         "Authorization": 'Bearer $token',
       },
       body: jsonEncode(data),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     );
 
     return _decodeResponse(response);
   }
 
-<<<<<<< HEAD
-  static Future<Map<String, dynamic>> updateBookingStatus({
-    required String token,
-    required int bookingId,
-    required String status,
-  }) async {
-    final response = await http.patch(
-      Uri.parse('$baseUrl/api/bookings/$bookingId/status'),
-      headers: _authorizedHeaders(token),
-      body: jsonEncode({'status': status}),
-=======
   static Future<Map<String, dynamic>> getHomeownerBookings({
     required String token,
   }) async {
@@ -442,33 +353,11 @@ class ApiService {
         "Authorization": 'Bearer $token',
       },
       body: jsonEncode(data),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     );
 
     return _decodeResponse(response);
   }
 
-<<<<<<< HEAD
-  static Future<Map<String, dynamic>> getConversations(String token) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/api/conversations'),
-      headers: _authorizedHeaders(token),
-    );
-
-    return _decodeResponse(response);
-  }
-
-  static Future<Map<String, dynamic>> ensureConversation({
-    required String token,
-    required String counterpartUserId,
-  }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/conversations'),
-      headers: _authorizedHeaders(token),
-      body: jsonEncode({
-        'counterpart_user_id': int.tryParse(counterpartUserId) ?? 0,
-      }),
-=======
   static Future<Map<String, dynamic>> cancelBooking({
     required String token,
     required int bookingId,
@@ -781,7 +670,6 @@ class ApiService {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       },
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     );
 
     return _decodeResponse(response);
@@ -789,13 +677,6 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getConversationMessages({
     required String token,
-<<<<<<< HEAD
-    required String conversationId,
-  }) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/api/conversations/$conversationId/messages'),
-      headers: _authorizedHeaders(token),
-=======
     required int conversationId,
   }) async {
     final response = await http.get(
@@ -804,7 +685,6 @@ class ApiService {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       },
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     );
 
     return _decodeResponse(response);
@@ -812,38 +692,21 @@ class ApiService {
 
   static Future<Map<String, dynamic>> sendConversationMessage({
     required String token,
-<<<<<<< HEAD
-    required String conversationId,
-=======
     required int conversationId,
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     required String text,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/api/conversations/$conversationId/messages'),
-<<<<<<< HEAD
-      headers: _authorizedHeaders(token),
-=======
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       },
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       body: jsonEncode({'text': text}),
     );
 
     return _decodeResponse(response);
   }
 
-<<<<<<< HEAD
-  static Future<Map<String, dynamic>> deleteConversation({
-    required String token,
-    required String conversationId,
-  }) async {
-    final response = await http.delete(
-      Uri.parse('$baseUrl/api/conversations/$conversationId'),
-      headers: _authorizedHeaders(token),
-=======
   static Future<Map<String, dynamic>> sendConversationAttachment({
     required String token,
     required int conversationId,
@@ -880,23 +743,11 @@ class ApiService {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       },
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     );
 
     return _decodeResponse(response);
   }
 
-<<<<<<< HEAD
-  static Map<String, String> _authorizedHeaders(String token) => {
-    "Content-Type": "application/json",
-    "Authorization": 'Bearer $token',
-  };
-
-  static Map<String, dynamic> _decodeResponse(http.Response response) {
-    final responseBody = response.body.isNotEmpty
-        ? jsonDecode(response.body) as Map<String, dynamic>
-        : <String, dynamic>{};
-=======
   static Future<Map<String, dynamic>> archiveConversation({
     required String token,
     required int conversationId,
@@ -969,19 +820,14 @@ class ApiService {
         responseBody = <String, dynamic>{'message': raw};
       }
     }
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return responseBody;
     }
 
     throw HttpException(
-<<<<<<< HEAD
-      responseBody['message']?.toString() ?? 'Request failed',
-=======
       responseBody['message']?.toString() ??
           'Request failed (${response.statusCode})',
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     );
   }
 

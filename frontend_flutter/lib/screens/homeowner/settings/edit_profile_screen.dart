@@ -560,8 +560,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       canPop: !_hasUnsavedChanges,
       onPopInvokedWithResult: (didPop, _) async {
         if (!didPop) {
+          final navigator = Navigator.of(context);
           final shouldPop = await _onWillPop();
-          if (shouldPop && mounted) Navigator.of(context).pop();
+          if (!mounted) return;
+          if (shouldPop) navigator.pop();
         }
       },
       child: AnnotatedRegion<SystemUiOverlayStyle>(
@@ -793,7 +795,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         ? Image.network(
                             _profileImagePath!,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Center(
+                            errorBuilder: (context, error, stackTrace) =>
+                                Center(
                               child: Text(
                                 _initials,
                                 style: const TextStyle(

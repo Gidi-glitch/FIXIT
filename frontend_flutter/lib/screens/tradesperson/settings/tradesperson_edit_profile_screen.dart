@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-import 'package:flutter/material.dart';
-
-=======
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -17,7 +13,6 @@ import '../../../shared/calauan_barangays.dart';
 /// Updates personal info: name, phone, email, bio, barangay, gender.
 /// Also handles profile photo changes.
 /// Pops with [true] on save so TradespersonProfileScreen can refresh.
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 class TradespersonEditProfileScreen extends StatefulWidget {
   const TradespersonEditProfileScreen({super.key});
 
@@ -28,15 +23,6 @@ class TradespersonEditProfileScreen extends StatefulWidget {
 
 class _TradespersonEditProfileScreenState
     extends State<TradespersonEditProfileScreen> {
-<<<<<<< HEAD
-  final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _nameController;
-  late final TextEditingController _phoneController;
-  late final TextEditingController _specialtyController;
-
-  static const Color _primaryBlue = Color(0xFF1E3A8A);
-  static const Color _backgroundGray = Color(0xFFF9FAFB);
-=======
   // ── Color Palette ──────────────────────────────────────────────
   static const Color _primaryBlue = Color(0xFF1E3A8A);
   static const Color _accentOrange = Color(0xFFF97316);
@@ -67,16 +53,10 @@ class _TradespersonEditProfileScreenState
   bool _hasChanges = false;
 
   final ImagePicker _imagePicker = ImagePicker();
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
   @override
   void initState() {
     super.initState();
-<<<<<<< HEAD
-    _nameController = TextEditingController(text: 'Tradesperson');
-    _phoneController = TextEditingController();
-    _specialtyController = TextEditingController(text: 'Plumber');
-=======
     _loadData();
     for (final c in [
       _firstNameCtrl,
@@ -91,83 +71,10 @@ class _TradespersonEditProfileScreenState
 
   void _markDirty() {
     if (!_hasChanges) setState(() => _hasChanges = true);
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   @override
   void dispose() {
-<<<<<<< HEAD
-    _nameController.dispose();
-    _phoneController.dispose();
-    _specialtyController.dispose();
-    super.dispose();
-  }
-
-  void _saveProfile() {
-    if (!_formKey.currentState!.validate()) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Profile updates saved locally.'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-    Navigator.of(context).pop();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _backgroundGray,
-      appBar: AppBar(
-        title: const Text('Edit Profile'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 0,
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              children: [
-                _buildField(
-                  controller: _nameController,
-                  label: 'Full Name',
-                  validator: (value) => (value == null || value.trim().isEmpty)
-                      ? 'Full name is required'
-                      : null,
-                ),
-                const SizedBox(height: 12),
-                _buildField(
-                  controller: _phoneController,
-                  label: 'Phone Number',
-                  keyboardType: TextInputType.phone,
-                ),
-                const SizedBox(height: 12),
-                _buildField(
-                  controller: _specialtyController,
-                  label: 'Primary Trade',
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _saveProfile,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _primaryBlue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text('Save Changes'),
-                  ),
-                ),
-              ],
-            ),
-=======
     for (final c in [
       _firstNameCtrl,
       _lastNameCtrl,
@@ -316,15 +223,16 @@ class _TradespersonEditProfileScreenState
         Icons.check_circle_rounded,
       );
       setState(() => _hasChanges = false);
+      final navigator = Navigator.of(context);
       await Future.delayed(const Duration(milliseconds: 350));
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) navigator.pop(true);
     } catch (_) {
-      if (mounted)
-        _showSnack(
-          'Failed to save. Please try again.',
-          _errorRed,
-          Icons.error_outline_rounded,
-        );
+      if (!mounted) return;
+      _showSnack(
+        'Failed to save. Please try again.',
+        _errorRed,
+        Icons.error_outline_rounded,
+      );
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -392,8 +300,10 @@ class _TradespersonEditProfileScreenState
       canPop: !_hasChanges,
       onPopInvokedWithResult: (didPop, _) async {
         if (!didPop) {
+          final navigator = Navigator.of(context);
           final ok = await _onWillPop();
-          if (ok && mounted) Navigator.pop(context);
+          if (!mounted) return;
+          if (ok) navigator.pop();
         }
       },
       child: AnnotatedRegion<SystemUiOverlayStyle>(
@@ -435,10 +345,12 @@ class _TradespersonEditProfileScreenState
                             ),
                           ],
                           validator: (v) {
-                            if (v == null || v.trim().isEmpty)
+                            if (v == null || v.trim().isEmpty) {
                               return 'Phone is required.';
-                            if (v.replaceAll(RegExp(r'[^0-9]'), '').length < 10)
+                            }
+                            if (v.replaceAll(RegExp(r'[^0-9]'), '').length < 10) {
                               return 'Enter a valid phone number.';
+                            }
                             return null;
                           },
                         ),
@@ -450,12 +362,14 @@ class _TradespersonEditProfileScreenState
                           icon: Icons.email_outlined,
                           keyboardType: TextInputType.emailAddress,
                           validator: (v) {
-                            if (v == null || v.trim().isEmpty)
+                            if (v == null || v.trim().isEmpty) {
                               return 'Email is required.';
+                            }
                             if (!RegExp(
                               r'^[\w\.-]+@[\w\.-]+\.\w{2,}$',
-                            ).hasMatch(v.trim()))
+                            ).hasMatch(v.trim())) {
                               return 'Enter a valid email.';
+                            }
                             return null;
                           },
                         ),
@@ -507,32 +421,12 @@ class _TradespersonEditProfileScreenState
                 ),
               ),
             ],
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
           ),
         ),
       ),
     );
   }
 
-<<<<<<< HEAD
-  Widget _buildField({
-    required TextEditingController controller,
-    required String label,
-    String? Function(String?)? validator,
-    TextInputType? keyboardType,
-  }) {
-    return TextFormField(
-      controller: controller,
-      validator: validator,
-      keyboardType: keyboardType,
-      decoration: InputDecoration(
-        labelText: label,
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-=======
   // ── Header ──────────────────────────────────────────────────────
   Widget _buildHeader() {
     return Container(
@@ -662,7 +556,8 @@ class _TradespersonEditProfileScreenState
                         ? Image.network(
                             _profileImagePath!,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Center(
+                            errorBuilder: (context, error, stackTrace) =>
+                                Center(
                               child: Text(
                                 _initials,
                                 style: const TextStyle(
@@ -1311,7 +1206,6 @@ class _ConfirmDialog extends StatelessWidget {
               ],
             ),
           ],
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
         ),
       ),
     );

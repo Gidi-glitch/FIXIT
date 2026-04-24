@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -147,6 +146,41 @@ func ListTradespeopleForHomeowner(w http.ResponseWriter, r *http.Request) {
 }
 
 func BookingsRoot(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value(middleware.UserContextKey).(jwt.MapClaims)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	role, _ := claims["role"].(string)
+
+	if r.Method == http.MethodGet {
+		if role != "admin" {
+			writeError(w, http.StatusForbidden, "admin access required")
+			return
+		}
+
+		var bookings []models.Booking
+		if err := config.DB.Order("created_at DESC, id DESC").Find(&bookings).Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to list bookings")
+			return
+		}
+
+		rows := make([]map[string]any, 0, len(bookings))
+		for _, b := range bookings {
+			rows = append(rows, map[string]any{
+				"id":           b.ID,
+				"status":       b.Status,
+				"created_at":   b.CreatedAt,
+				"updated_at":   b.UpdatedAt,
+				"completed_at": nil,
+			})
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"bookings": rows})
+		return
+	}
+
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -239,7 +273,7 @@ func HomeownerBookings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var bookings []models.Booking
-	if err := config.DB.Where("homeowner_id = ?", homeownerID).Order("created_at DESC").Find(&bookings).Error; err != nil {
+	if err := config.DB.Where("homeowner_id = ?", homeownerID).Order("created_at DESC, id DESC").Find(&bookings).Error; err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list bookings")
 		return
 	}
@@ -560,11 +594,16 @@ func reportBookingIssueByID(w http.ResponseWriter, r *http.Request, bookingID ui
 	}
 
 	issue := models.BookingIssue{
-		BookingID:   booking.ID,
-		HomeownerID: homeownerID,
-		Category:    category,
-		Details:     details,
-		Status:      "Under Review",
+		BookingID:    booking.ID,
+		HomeownerID:  homeownerID,
+		ReporterRole: "homeowner",
+		ReporterName: adminUserDisplayName(booking.Homeowner),
+		TargetRole:   "tradesperson",
+		TargetName:   adminUserDisplayName(booking.Tradesperson),
+		TargetEmail:  booking.Tradesperson.Email,
+		Category:     category,
+		Details:      details,
+		Status:       "Under Review",
 	}
 
 	if err := config.DB.Create(&issue).Error; err != nil {
@@ -591,7 +630,8 @@ func reportBookingIssueByID(w http.ResponseWriter, r *http.Request, bookingID ui
 
 func getOwnedBooking(w http.ResponseWriter, homeownerID uint, bookingID uint) (models.Booking, bool) {
 	var booking models.Booking
-	if err := config.DB.Where("id = ? AND homeowner_id = ?", bookingID, homeownerID).First(&booking).Error; err != nil {
+	if err := config.DB.Preload("Homeowner").Preload("Tradesperson").
+		Where("id = ? AND homeowner_id = ?", bookingID, homeownerID).First(&booking).Error; err != nil {
 		writeError(w, http.StatusNotFound, "booking not found")
 		return models.Booking{}, false
 	}
@@ -838,7 +878,7 @@ func initialsFromName(firstName string, lastName string, fallback string) string
 }
 
 func buildPublicUploadURL(r *http.Request, filePath string) string {
-	trimmed := strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(filePath)), "uploads/")
+	trimmed := publicUploadRelativePath(filePath)
 	if trimmed == "" {
 		return ""
 	}

@@ -116,6 +116,8 @@ type AnalyticsRange = "today" | "week" | "month";
 
 interface ReportEntry {
   id: string;
+  bookingId?: string;
+  targetUserId?: string;
   targetType: "Homeowner" | "Tradesman";
   targetName: string;
   targetEmail: string;
@@ -125,6 +127,7 @@ interface ReportEntry {
   details: string;
   status: "Open" | "Reviewing" | "Resolved";
   submittedAt: string;
+  rawStatus?: string;
 }
 
 interface TradesmanReview {
@@ -243,7 +246,9 @@ const sortVerifications = (items: Verification[]) =>
 
     const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
     const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return bTime - aTime;
+    if (bTime !== aTime) return bTime - aTime;
+
+    return b.id - a.id;
   });
 
 const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short" });
@@ -586,6 +591,34 @@ const formatReportId = (value: string) => {
   return `RPRT-${String(number).padStart(3, "0")}`;
 };
 
+const formatBookingId = (value: string) => {
+  const digits = (value.match(/\d+/g) ?? []).join("");
+  if (!digits) return "BK-0000";
+  const number = Number.parseInt(digits, 10);
+  if (Number.isNaN(number)) return "BK-0000";
+  return `BK-${String(number).padStart(4, "0")}`;
+};
+
+const normalizeReportStatus = (value?: string): ReportEntry["status"] => {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (normalized === "resolved" || normalized === "closed") return "Resolved";
+  if (normalized === "reviewing") return "Reviewing";
+  if (normalized === "open" || normalized === "under review") return "Open";
+  return "Open";
+};
+
+const normalizeReportTargetType = (value?: string): ReportEntry["targetType"] => {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (normalized === "homeowner") return "Homeowner";
+  return "Tradesman";
+};
+
+const normalizeReportRole = (value?: string): ReportEntry["reporterRole"] => {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (normalized === "tradesperson" || normalized === "tradesman") return "Tradesman";
+  return "Homeowner";
+};
+
 const activityDot = (type: string) => {
   switch (type) {
     case "verification_approved":
@@ -622,69 +655,6 @@ const HOMEOWNERS_DATA: Homeowner[] = [
   { id: "h4", initials: "KS", color: "linear-gradient(135deg,#0F7060,#17A88E)", name: "Karl Santos",    email: "karlsantos99@gmail.com",   location: "Mandaluyong",  registered: "Dec 18, 2024", jobs: 11, status: "Active",  idNumber: "HO-2024-5543", idStatus: "Approved", idImageUrl: "/fixit_logo.png" },
   { id: "h5", initials: "MG", color: "linear-gradient(135deg,#5B2D8E,#8040C0)", name: "Maria Garcia",   email: "maria.g@fixit.ph",         location: "Taguig",       registered: "Nov 5, 2024",  jobs: 6,  status: "Active",  idNumber: "HO-2024-1208", idStatus: "Approved", idImageUrl: "/fixit_logo.png" },
   { id: "h6", initials: "JR", color: "linear-gradient(135deg,#1B2B5E,#2D44A0)", name: "Jose Ramos",     email: "jose.r@gmail.com",         location: "Quezon City",  registered: "Oct 22, 2024", jobs: 3,  status: "Inactive",idNumber: "HO-2024-0X12", idStatus: "Rejected", idImageUrl: "/fixit_logo.png" },
-];
-
-const REPORTS_DATA: ReportEntry[] = [
-  {
-    id: "r1",
-    targetType: "Tradesman",
-    targetName: "Marco Reyes",
-    targetEmail: "marco.r@gmail.com",
-    reporterName: "Sofia Mendoza",
-    reporterRole: "Homeowner",
-    reason: "No-show appointment",
-    details: "The booked repair schedule passed without any arrival or update from the tradesman.",
-    status: "Open",
-    submittedAt: "2026-03-29T09:30:00Z",
-  },
-  {
-    id: "r2",
-    targetType: "Homeowner",
-    targetName: "Ben Torres",
-    targetEmail: "bentorres@yahoo.com",
-    reporterName: "Jake Cruz",
-    reporterRole: "Tradesman",
-    reason: "Unpaid completed job",
-    details: "The service was completed but the payment marked in chat was not sent after follow-up.",
-    status: "Reviewing",
-    submittedAt: "2026-03-28T14:20:00Z",
-  },
-  {
-    id: "r3",
-    targetType: "Tradesman",
-    targetName: "Ana Lim",
-    targetEmail: "ana.lim@gmail.com",
-    reporterName: "Maria Garcia",
-    reporterRole: "Homeowner",
-    reason: "Unprofessional conduct",
-    details: "The homeowner reported rude behavior during an on-site visit and requested admin review.",
-    status: "Resolved",
-    submittedAt: "2026-03-26T07:15:00Z",
-  },
-  {
-    id: "r4",
-    targetType: "Homeowner",
-    targetName: "Karl Santos",
-    targetEmail: "karlsantos99@gmail.com",
-    reporterName: "Pedro Villarta",
-    reporterRole: "Tradesman",
-    reason: "Repeated cancellation",
-    details: "The project was cancelled multiple times after material preparation was already confirmed.",
-    status: "Open",
-    submittedAt: "2026-03-25T11:05:00Z",
-  },
-  {
-    id: "r5",
-    targetType: "Tradesman",
-    targetName: "Ramon Dela Cruz",
-    targetEmail: "ramon.dc@gmail.com",
-    reporterName: "Liza Villanueva",
-    reporterRole: "Homeowner",
-    reason: "Quoted price dispute",
-    details: "The final amount requested was higher than the estimate shown in the app conversation.",
-    status: "Reviewing",
-    submittedAt: "2026-03-24T17:40:00Z",
-  },
 ];
 
 const SAMPLE_TRADESMAN_REVIEW_TEMPLATES = [
@@ -814,10 +784,10 @@ const StarRating = ({ value, size = 14 }: { value: number; size?: number }) => (
 
 // Small button
 const Btn = ({
-  children, variant = "default", onClick, disabled,
+  children, variant = "default", onClick, disabled, compact = false,
 }: {
   children: ReactNode; variant?: "approve" | "reject" | "view" | "default" | "navy";
-  onClick?: () => void; disabled?: boolean;
+  onClick?: () => void; disabled?: boolean; compact?: boolean;
 }) => {
   const [hov, setHov] = useState(false);
   const base: Record<string, { bg: string; color: string; border: string; hovBg: string; hovColor: string }> = {
@@ -835,9 +805,9 @@ const Btn = ({
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        display: "inline-flex", alignItems: "center", gap: 5,
-        padding: "7px 13px", borderRadius: 7,
-        fontFamily: "inherit", fontSize: 12, fontWeight: 700,
+        display: "inline-flex", alignItems: "center", gap: compact ? 6 : 5,
+        padding: compact ? "10px 16px" : "7px 13px", borderRadius: compact ? 12 : 7,
+        fontFamily: "inherit", fontSize: compact ? 14 : 12, fontWeight: 700,
         border: v.border, cursor: disabled ? "not-allowed" : "pointer",
         background: hov && !disabled ? v.hovBg : v.bg,
         color:      hov && !disabled ? v.hovColor : v.color,
@@ -1536,7 +1506,9 @@ const ProfileEditorModal = ({
 // ─────────────────────────────────────────────────────────────────
 const Table = ({ children }: { children: ReactNode }) => (
   <div style={{ overflowX: "auto" }}>
-    <table style={{ width: "100%", borderCollapse: "collapse" }}>{children}</table>
+    <table style={{ width: "100%", minWidth: "100%", tableLayout: "fixed", borderCollapse: "collapse" }}>
+      {children}
+    </table>
   </div>
 );
 const Th = ({ children }: { children: ReactNode }) => (
@@ -1545,7 +1517,20 @@ const Th = ({ children }: { children: ReactNode }) => (
   </th>
 );
 const Td = ({ children, style = {}, colSpan }: { children: ReactNode; style?: React.CSSProperties; colSpan?: number }) => (
-  <td colSpan={colSpan} style={{ padding: "14px 20px", fontSize: 13, color: "var(--text)", borderBottom: "1px solid var(--border)", verticalAlign: "middle", ...style }}>
+  <td
+    colSpan={colSpan}
+    style={{
+      padding: "14px 20px",
+      fontSize: 13,
+      color: "var(--text)",
+      borderBottom: "1px solid var(--border)",
+      verticalAlign: "middle",
+      minWidth: 0,
+      overflowWrap: "anywhere",
+      wordBreak: "break-word",
+      ...style,
+    }}
+  >
     {children}
   </td>
 );
@@ -2629,7 +2614,7 @@ export default function DashboardPage() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(false);
   const [toast, setToast]           = useState({ show: false, msg: "", type: "success" as ToastType });
-  const [modal, setModal]           = useState<{ open: boolean; title: string; hero?: ReactNode; rows: { label: string; value: string; highlight?: boolean }[]; actions?: ReactNode }>({ open: false, title: "", rows: [] });
+  const [modal, setModal]           = useState<{ open: boolean; title: string; variant?: "default" | "detail"; hero?: ReactNode; rows: { label: string; value: string; highlight?: boolean }[]; actions?: ReactNode }>({ open: false, title: "", rows: [] });
   const [idModal, setIdModal]       = useState<{ open: boolean; title: string; imageUrl: string; contentType: string }>({ open: false, title: "", imageUrl: "", contentType: "" });
   const [confirm, setConfirm]       = useState<{ open: boolean; title: string; message: string; confirmLabel: string; onConfirm: () => void }>({
     open: false,
@@ -2660,11 +2645,11 @@ export default function DashboardPage() {
   const [reportsPage, setReportsPage] = useState(1);
   const [ratingsPage, setRatingsPage] = useState(1);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [reports, setReports] = useState<ReportEntry[]>([]);
   const [requestAnalyticsBookings, setRequestAnalyticsBookings] = useState<RequestAnalyticsBooking[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
   const bellButtonRef = useRef<HTMLButtonElement | null>(null);
   const bellPanelRef = useRef<HTMLDivElement | null>(null);
-  const reports = REPORTS_DATA;
 
   useEffect(() => {
     const stored = localStorage.getItem("admin_theme");
@@ -3399,6 +3384,55 @@ export default function DashboardPage() {
     }
   };
 
+  const loadReports = async (silent = false) => {
+    if (!authToken) return;
+    try {
+      const res = await fetch(`${apiBase}/api/admin/reports?limit=500`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          localStorage.removeItem("admin_token");
+          router.push("/login");
+          return;
+        }
+        if (!silent) showToast("Failed to load reports.", "error");
+        return;
+      }
+
+      const data = await res.json();
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.reports)
+          ? data.reports
+          : [];
+      const mapped = list.map((report) => {
+        const createdAt = report.submitted_at ?? report.created_at ?? report.CreatedAt;
+        const targetType = normalizeReportTargetType(report.target_type ?? report.targetType ?? report.target_type_label);
+        const status = normalizeReportStatus(report.status ?? report.Status ?? report.raw_status ?? report.rawStatus);
+
+        return {
+          id: String(report.id ?? report.ID ?? ""),
+          bookingId: String(report.booking_id ?? report.bookingId ?? report.BookingID ?? ""),
+          targetUserId: String(report.target_user_id ?? report.targetUserId ?? report.TargetUserID ?? ""),
+          targetType,
+          targetName: String(report.target_name ?? report.targetName ?? "Unknown"),
+          targetEmail: String(report.target_email ?? report.targetEmail ?? "—"),
+          reporterName: String(report.reporter_name ?? report.reporterName ?? "Unknown"),
+          reporterRole: normalizeReportRole(report.reporter_role ?? report.reporterRole),
+          reason: String(report.reason ?? report.category ?? report.Category ?? "—"),
+          details: String(report.details ?? report.Details ?? ""),
+          status,
+          submittedAt: createdAt ?? "",
+          rawStatus: String(report.raw_status ?? report.rawStatus ?? report.status ?? report.Status ?? ""),
+        } as ReportEntry;
+      });
+      setReports(mapped);
+    } catch {
+      if (!silent) showToast("Failed to load reports.", "error");
+    }
+  };
+
   const loadRequestAnalyticsBookings = async (silent = false) => {
     if (!authToken) return;
     try {
@@ -3438,10 +3472,12 @@ export default function DashboardPage() {
     if (!authToken) return;
     loadUsers();
     loadActivity();
+    loadReports();
     loadRequestAnalyticsBookings();
     loadAdminProfile();
     const intervalId = window.setInterval(() => {
       loadActivity(true);
+      loadReports(true);
       loadRequestAnalyticsBookings(true);
     }, 15000);
     return () => window.clearInterval(intervalId);
@@ -3982,6 +4018,44 @@ export default function DashboardPage() {
     setModal({
       open: true,
       title: getVerificationUserName(v) || `User #${v.userId}`,
+      variant: "detail",
+      hero: (
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 18, padding: "4px 0 8px", flexWrap: "nowrap" }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <Btn
+              variant="view"
+              compact
+              onClick={() =>
+                openDocumentModal(
+                  `User #${v.userId}`,
+                  v.documentUrl || `${apiBase}/api/admin/documents/${v.id}/file`
+                )
+              }
+            >
+              {icons.license} View ID
+            </Btn>
+          </div>
+          {canRevoke && (
+            <div style={{ flexShrink: 0 }}>
+              <Btn
+                variant="reject"
+                compact
+                onClick={() => {
+                  closeInfoModal();
+                  openConfirm({
+                    title: `Revoke User #${v.userId}?`,
+                    message: "This will remove this approved verification and require a new submission.",
+                    confirmLabel: "Revoke",
+                    onConfirm: () => archiveVerification(v.id),
+                  });
+                }}
+              >
+                {icons.x} Revoke
+              </Btn>
+            </div>
+          )}
+        </div>
+      ),
       rows: [
         { label: "User ID", value: String(v.userId) },
         { label: "Verification Type", value: verificationTypeLabel(v.type) },
@@ -3991,21 +4065,11 @@ export default function DashboardPage() {
       ],
       actions: (
         <>
-          <Btn
-            variant="view"
-            onClick={() =>
-              openDocumentModal(
-                `User #${v.userId}`,
-                v.documentUrl || `${apiBase}/api/admin/documents/${v.id}/file`
-              )
-            }
-          >
-            {icons.license} View ID
-          </Btn>
           {canReview && (
             <>
               <Btn
                 variant="approve"
+                compact
                 onClick={() => {
                   closeInfoModal();
                   reviewVerification(v.id, "approved");
@@ -4015,6 +4079,7 @@ export default function DashboardPage() {
               </Btn>
               <Btn
                 variant="reject"
+                compact
                 onClick={() => {
                   closeInfoModal();
                   reviewVerification(v.id, "rejected");
@@ -4024,25 +4089,10 @@ export default function DashboardPage() {
               </Btn>
             </>
           )}
-          {canRevoke && (
-            <Btn
-              variant="reject"
-              onClick={() => {
-                closeInfoModal();
-                openConfirm({
-                  title: `Revoke User #${v.userId}?`,
-                  message: "This will remove this approved verification and require a new submission.",
-                  confirmLabel: "Revoke",
-                  onConfirm: () => archiveVerification(v.id),
-                });
-              }}
-            >
-              {icons.x} Revoke
-            </Btn>
-          )}
           {canRestore && (
             <Btn
               variant="approve"
+              compact
               onClick={() => {
                 closeInfoModal();
                 restoreVerification(v.id);
@@ -4053,6 +4103,52 @@ export default function DashboardPage() {
           )}
         </>
       ),
+    });
+  };
+
+  const openReportModal = (report: ReportEntry) => {
+    const targetUserId = report.targetUserId?.trim() ?? "";
+    const canRevoke = Boolean(targetUserId) && (report.targetType === "Tradesman" || report.targetType === "Homeowner");
+
+    const handleRevoke = () => {
+      closeInfoModal();
+      openConfirm({
+        title: `Revoke ${report.targetName}?`,
+        message:
+          report.targetType === "Homeowner"
+            ? "This will suspend the reported homeowner account and block app login."
+            : "This will suspend the reported tradesman account and block app login.",
+        confirmLabel: "Revoke",
+        onConfirm: () => {
+          if (report.targetType === "Homeowner") {
+            void revokeHomeowner(targetUserId, report.targetName);
+            return;
+          }
+          void revokeTradesman(targetUserId, report.targetName);
+        },
+      });
+    };
+
+    setModal({
+      open: true,
+      title: `${report.targetName} · ${report.targetType} Report`,
+      rows: [
+        { label: "Report ID", value: formatReportId(report.id) },
+        { label: "Booking ID", value: report.bookingId ? formatBookingId(report.bookingId) : "—" },
+        { label: "Reported User", value: report.targetName },
+        { label: "Reported Email", value: report.targetEmail },
+        { label: "Reporter", value: `${report.reporterName} (${report.reporterRole})` },
+        { label: "Reason", value: report.reason },
+        { label: "Details", value: report.details },
+        { label: "Raw Status", value: report.rawStatus || report.status },
+        { label: "Submitted", value: formatDate(report.submittedAt) },
+        { label: "Status", value: report.status, highlight: report.status === "Resolved" },
+      ],
+      actions: canRevoke ? (
+        <Btn variant="reject" onClick={handleRevoke}>
+          {icons.x} Revoke {report.targetType}
+        </Btn>
+      ) : undefined,
     });
   };
 
@@ -4284,8 +4380,8 @@ export default function DashboardPage() {
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   style={{ transition: "background .15s" }}>
                   <Td>
-                    <div style={{ fontWeight: 700, fontSize: 13 }}>{userName || `User #${v.userId}`}</div>
-                    {userName && <div style={{ fontSize: 12, color: "var(--muted)" }}>User #{v.userId}</div>}
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{userName || "Unknown user"}</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>User #{v.userId}</div>
                   </Td>
                   <Td>{verificationTypeLabel(v.type)}</Td>
                   <Td>{v.createdAt ? new Date(v.createdAt).toLocaleDateString() : "—"}</Td>
@@ -4750,7 +4846,7 @@ export default function DashboardPage() {
         <Card>
           <CardHead
             title="User Reports"
-            subtitle="Review reports submitted against homeowners and tradesmen"
+            subtitle="Review reports submitted across the apps"
             right={<Pill color="orange">{openReportsCount} Open</Pill>}
           />
           <div style={{ padding: "18px 24px 0", display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -4841,22 +4937,7 @@ export default function DashboardPage() {
                   <Td>
                     <Btn
                       variant="view"
-                      onClick={() =>
-                        setModal({
-                          open: true,
-                          title: `${report.targetName} · ${report.targetType} Report`,
-                          rows: [
-                            { label: "Report ID", value: formatReportId(report.id) },
-                            { label: "Reported User", value: report.targetName },
-                            { label: "Reported Email", value: report.targetEmail },
-                            { label: "Reporter", value: `${report.reporterName} (${report.reporterRole})` },
-                            { label: "Reason", value: report.reason },
-                            { label: "Details", value: report.details },
-                            { label: "Submitted", value: formatDate(report.submittedAt) },
-                            { label: "Status", value: report.status, highlight: report.status === "Resolved" },
-                          ],
-                        })
-                      }
+                      onClick={() => openReportModal(report)}
                     >
                       View Report
                     </Btn>

@@ -202,7 +202,7 @@ class _TradespersonNotificationsScreenState
         Text(_pushAll ? 'All notifications are enabled.' : 'All notifications are turned off.',
           style: TextStyle(fontSize: 12, color: _textMuted.withValues(alpha: 0.8), fontWeight: FontWeight.w500)),
       ])),
-      Switch.adaptive(value: _pushAll, onChanged: _toggleMaster, activeColor: _primaryBlue),
+      Switch.adaptive(value: _pushAll, onChanged: _toggleMaster, activeThumbColor: _primaryBlue),
     ]),
   );
 
@@ -230,7 +230,7 @@ class _TradespersonNotificationsScreenState
                 Text(item.subtitle, style: TextStyle(fontSize: 12, color: _textMuted.withValues(alpha: _pushAll ? 0.75 : 0.4), fontWeight: FontWeight.w500, height: 1.35)),
               ])),
               const SizedBox(width: 12),
-              Switch.adaptive(value: _pushAll ? item.value : false, onChanged: _pushAll ? item.onChanged : null, activeColor: _successGreen),
+              Switch.adaptive(value: _pushAll ? item.value : false, onChanged: _pushAll ? item.onChanged : null, activeThumbColor: _successGreen),
             ])),
             if (!isLast) Container(height: 1, color: Colors.grey.shade100, margin: const EdgeInsets.symmetric(horizontal: 16)),
           ]);

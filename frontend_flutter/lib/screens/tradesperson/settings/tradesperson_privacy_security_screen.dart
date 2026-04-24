@@ -321,7 +321,7 @@ class _TradespersonPrivacySecurityScreenState
           Text(subtitle, style: TextStyle(fontSize: 12, color: _textMuted.withValues(alpha: 0.8), fontWeight: FontWeight.w500, height: 1.35)),
         ])),
         const SizedBox(width: 8),
-        Switch.adaptive(value: value, onChanged: onChanged, activeColor: _primaryBlue),
+        Switch.adaptive(value: value, onChanged: onChanged, activeThumbColor: _primaryBlue),
       ])),
       if (showDivider) Container(height: 1, color: Colors.grey.shade100, margin: const EdgeInsets.symmetric(horizontal: 16)),
     ]);

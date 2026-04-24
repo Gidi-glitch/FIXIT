@@ -16,10 +16,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Flutter Demo',
-<<<<<<< HEAD
-=======
       debugShowCheckedModeBanner: false,
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       theme: ThemeData(
         // This is the theme of your application.
         //
@@ -36,11 +33,7 @@ class MyApp extends StatelessWidget {
         //
         // This works for code too, not just values: Most code changes can be
         // tested with just a hot reload.
-<<<<<<< HEAD
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
-=======
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       ),
       home: const UserLoginScreen(),
     );
@@ -114,11 +107,7 @@ class _MyHomePageState extends State<MyHomePage> {
           // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
           // action in the IDE, or press "p" in the console), to see the
           // wireframe for each widget.
-<<<<<<< HEAD
-          mainAxisAlignment: .center,
-=======
           mainAxisAlignment: MainAxisAlignment.center,
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
           children: [
             const Text('You have pushed the button this many times:'),
             Text(

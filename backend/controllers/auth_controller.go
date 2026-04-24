@@ -3,10 +3,7 @@ package controllers
 import (
 	"bytes"
 	"crypto/rand"
-<<<<<<< HEAD
-=======
 	"crypto/subtle"
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 	"encoding/json"
 	"log"
 	"math/big"
@@ -49,15 +46,12 @@ type changePasswordRequest struct {
 	NewPassword     string `json:"new_password"`
 }
 
-<<<<<<< HEAD
-=======
 type adminRegisterRequest struct {
 	Email       string `json:"email"`
 	Password    string `json:"password"`
 	AdminSecret string `json:"admin_secret"`
 }
 
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 type resetCodeEntry struct {
 	Code      string
 	ExpiresAt time.Time
@@ -107,14 +101,6 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-<<<<<<< HEAD
-	if !user.IsActive {
-		writeError(w, http.StatusForbidden, "Your account has been suspended or banned. Please contact support.")
-		return
-	}
-
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 	token, err := middleware.GenerateJWT(user)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate token")
@@ -150,8 +136,6 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-<<<<<<< HEAD
-=======
 func RegisterAdmin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -227,7 +211,6 @@ func RegisterAdmin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 // -------------------- FORGOT PASSWORD --------------------
 
 func ForgotPassword(w http.ResponseWriter, r *http.Request) {

@@ -25,7 +25,7 @@ func ListVerifications(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var docs []models.VerificationDocument
-	if err := config.DB.Preload("User").Order("created_at desc").Find(&docs).Error; err != nil {
+	if err := config.DB.Preload("User").Order("created_at desc, id desc").Find(&docs).Error; err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list verifications")
 		return
 	}
@@ -146,8 +146,56 @@ func getVerificationDocument(id uint) (models.VerificationDocument, error) {
 	return doc, err
 }
 
+func adminVerificationType(role string, documentGroup string) (string, bool) {
+	role = strings.ToLower(strings.TrimSpace(role))
+	documentGroup = strings.ToLower(strings.TrimSpace(documentGroup))
+
+	switch role {
+	case "homeowner":
+		if documentGroup == "government_id" || documentGroup == "homeowner_id" {
+			return "government_id", true
+		}
+	case "tradesperson":
+		switch documentGroup {
+		case "government_id", "license":
+			return documentGroup, true
+		}
+	}
+
+	return "", false
+}
+
+func adminUserDisplayName(user models.User) string {
+	switch strings.ToLower(strings.TrimSpace(user.Role)) {
+	case "homeowner":
+		var profile models.HomeownerProfile
+		if err := config.DB.Where("user_id = ?", user.ID).First(&profile).Error; err == nil {
+			name := strings.TrimSpace(profile.FirstName + " " + profile.LastName)
+			if name != "" {
+				return name
+			}
+		}
+	case "tradesperson":
+		var profile models.TradespersonProfile
+		if err := config.DB.Where("user_id = ?", user.ID).First(&profile).Error; err == nil {
+			name := strings.TrimSpace(profile.FirstName + " " + profile.LastName)
+			if name != "" {
+				return name
+			}
+		}
+	}
+
+	if email := strings.TrimSpace(user.Email); email != "" {
+		return email
+	}
+
+	return "Unknown user"
+}
+
 func applyVerificationStatus(doc models.VerificationDocument, status string) error {
-	return config.DB.Transaction(func(tx *gorm.DB) error {
+	wasArchived := strings.EqualFold(doc.Status, "archived")
+
+	if err := config.DB.Transaction(func(tx *gorm.DB) error {
 		now := time.Now()
 
 		if doc.User.Role == "tradesperson" {
@@ -194,5 +242,19 @@ func applyVerificationStatus(doc models.VerificationDocument, status string) err
 		return tx.Model(&models.User{}).
 			Where("id = ?", doc.UserID).
 			Updates(map[string]any{"is_active": active, "updated_at": now}).Error
-	})
+	}); err != nil {
+		return err
+	}
+
+	activityType := "verification_" + status
+	if status == "approved" && wasArchived {
+		activityType = "verification_restored"
+	}
+	recordActivity(nil,
+		"Verification "+status,
+		adminUserDisplayName(doc.User)+" ("+doc.User.Role+")",
+		activityType,
+	)
+
+	return nil
 }

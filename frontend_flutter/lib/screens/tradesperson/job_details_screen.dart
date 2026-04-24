@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-<<<<<<< HEAD
-=======
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/api_service.dart';
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 import 'tradesperson_chat_screen.dart';
 import 'tradesperson_work_store.dart';
 
@@ -49,11 +46,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
   void initState() {
     super.initState();
     TradespersonWorkStore.notifier.addListener(_handleStoreChanged);
-<<<<<<< HEAD
-    _refreshFromBackend();
-=======
     _refreshJobDetails();
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   @override
@@ -66,15 +59,6 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     if (mounted) setState(() {});
   }
 
-<<<<<<< HEAD
-  Future<void> _refreshFromBackend() async {
-    await TradespersonWorkStore.syncFromBackend();
-    if (!mounted) return;
-    setState(() {});
-  }
-
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   // ── Live job lookup ─────────────────────────────────────────────
 
   Map<String, dynamic>? get _job {
@@ -87,8 +71,6 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     }
   }
 
-<<<<<<< HEAD
-=======
   Future<String> _readToken() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token')?.trim() ?? '';
@@ -130,7 +112,6 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     }
   }
 
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   // ── Status helpers ──────────────────────────────────────────────
 
   IconData _statusIcon(String status) => switch (status) {
@@ -153,20 +134,6 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     final confirmed = await _showStartJobDialog(job);
     if (confirmed != true) return;
 
-<<<<<<< HEAD
-    final success = await TradespersonWorkStore.startJobById(widget.jobId);
-    if (!mounted) return;
-
-    if (success) {
-      _didMutate = true;
-      _showSnack(
-        'Job started! Get to work, ${job['homeowner'].toString().split(' ').first}\'s place awaits.',
-        _infoBlue,
-        icon: Icons.handyman_rounded,
-      );
-    } else {
-      _showBlockedSnack();
-=======
     try {
       final token = await _readToken();
       final bookingId =
@@ -204,7 +171,6 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
         return;
       }
       _showSnack(message, _errorRed, icon: Icons.error_outline_rounded);
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     }
   }
 
@@ -330,27 +296,6 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     final confirmed = await _showCompleteDialog(job);
     if (confirmed != true) return;
 
-<<<<<<< HEAD
-    final completed = await TradespersonWorkStore.markJobAsComplete(
-      widget.jobId,
-    );
-    if (!mounted) return;
-    if (!completed) {
-      _showSnack(
-        'Unable to complete this job right now.',
-        _errorRed,
-        icon: Icons.error_outline_rounded,
-      );
-      return;
-    }
-
-    _didMutate = true;
-    _showSnack(
-      'Job complete! ${job['homeowner']} has been notified.',
-      _successGreen,
-      icon: Icons.task_alt_rounded,
-    );
-=======
     try {
       final token = await _readToken();
       final bookingId =
@@ -378,7 +323,6 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
       final message = e.toString().replaceFirst('Exception: ', '');
       _showSnack(message, _errorRed, icon: Icons.error_outline_rounded);
     }
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   Future<bool?> _showCompleteDialog(Map<String, dynamic> job) {

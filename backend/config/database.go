@@ -4,17 +4,9 @@ import (
 	"fmt"
 	"log"
 	"os"
-<<<<<<< HEAD
-	"strings"
 
 	"fixit-backend/models"
 
-	"golang.org/x/crypto/bcrypt"
-=======
-
-	"fixit-backend/models"
-
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -44,75 +36,159 @@ func ConnectDB() {
 
 	if err := db.AutoMigrate(
 		&models.User{},
+		&models.AdminProfile{},
 		&models.HomeownerProfile{},
-<<<<<<< HEAD
-		&models.TradespersonProfile{},
-		&models.VerificationDocument{},
-		&models.UserProfilePhoto{},
-		&models.Conversation{},
-		&models.ChatMessage{},
-		&models.Booking{},
-	); err != nil {
-		log.Fatal("❌ Failed to migrate database:", err)
-	}
-
-	seedAdminUser(db)
-}
-
-func seedAdminUser(db *gorm.DB) {
-	email := strings.ToLower(strings.TrimSpace(os.Getenv("ADMIN_EMAIL")))
-	password := strings.TrimSpace(os.Getenv("ADMIN_PASSWORD"))
-	fullName := strings.TrimSpace(os.Getenv("ADMIN_FULL_NAME"))
-
-	if email == "" || password == "" {
-		return
-	}
-
-	var existing models.User
-	err := db.Where("email = ?", email).First(&existing).Error
-	if err == nil {
-		if existing.Role != "admin" {
-			log.Printf("⚠️ Existing user %s is not an admin; skipping admin bootstrap", email)
-		}
-		return
-	}
-	if err != nil && err != gorm.ErrRecordNotFound {
-		log.Printf("⚠️ Failed to check admin bootstrap user: %v", err)
-		return
-	}
-
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		log.Printf("⚠️ Failed to hash ADMIN_PASSWORD: %v", err)
-		return
-	}
-
-	admin := models.User{
-		Email:        email,
-		FullName:     fullName,
-		PasswordHash: string(hashedPassword),
-		Role:         "admin",
-		IsActive:     true,
-	}
-
-	if err := db.Create(&admin).Error; err != nil {
-		log.Printf("⚠️ Failed to create bootstrap admin user: %v", err)
-		return
-	}
-
-	log.Printf("✅ Bootstrapped admin user: %s", email)
-=======
 		&models.HomeownerAddress{},
 		&models.TradespersonProfile{},
 		&models.VerificationDocument{},
 		&models.UserProfilePhoto{},
-		&models.Booking{},
-		&models.Conversation{},
-		&models.ConversationMessage{},
-		&models.BookingReview{},
-		&models.BookingIssue{},
+		&models.ActivityLog{},
 	); err != nil {
 		log.Fatal("❌ Failed to migrate database:", err)
 	}
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
+
+	if err := migrateBookingsTable(db); err != nil {
+		log.Fatal("❌ Failed to migrate bookings table:", err)
+	}
+
+	if err := migrateConversationsTable(db); err != nil {
+		log.Fatal("❌ Failed to migrate conversations table:", err)
+	}
+
+	if err := db.AutoMigrate(
+		&models.BookingReview{},
+		&models.BookingIssue{},
+		&models.ConversationMessage{},
+	); err != nil {
+		log.Fatal("❌ Failed to migrate database:", err)
+	}
+}
+
+func migrateBookingsTable(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&models.Booking{}) {
+		return db.AutoMigrate(&models.Booking{})
+	}
+
+	renames := []struct {
+		oldName string
+		newName string
+	}{
+		{oldName: "homeowner_user_id", newName: "homeowner_id"},
+		{oldName: "tradesperson_user_id", newName: "tradesperson_id"},
+		{oldName: "trade", newName: "trade_category"},
+		{oldName: "date_label", newName: "preferred_date"},
+		{oldName: "time_label", newName: "preferred_time"},
+	}
+
+	for _, item := range renames {
+		oldExists, err := bookingColumnExists(db, item.oldName)
+		if err != nil {
+			return err
+		}
+		newExists, err := bookingColumnExists(db, item.newName)
+		if err != nil {
+			return err
+		}
+
+		switch {
+		case oldExists && !newExists:
+			if err := db.Exec(
+				fmt.Sprintf(`ALTER TABLE "bookings" RENAME COLUMN "%s" TO "%s"`, item.oldName, item.newName),
+			).Error; err != nil {
+				return err
+			}
+		case oldExists && newExists:
+			if err := db.Exec(
+				fmt.Sprintf(
+					`UPDATE "bookings" SET "%s" = COALESCE("%s", "%s") WHERE "%s" IS NULL`,
+					item.newName,
+					item.newName,
+					item.oldName,
+					item.newName,
+				),
+			).Error; err != nil {
+				return err
+			}
+		}
+	}
+
+	return db.AutoMigrate(&models.Booking{})
+}
+
+func bookingColumnExists(db *gorm.DB, columnName string) (bool, error) {
+	var exists bool
+	err := db.Raw(
+		`SELECT EXISTS (
+			SELECT 1
+			FROM information_schema.columns
+			WHERE table_schema = CURRENT_SCHEMA()
+			  AND table_name = 'bookings'
+			  AND column_name = ?
+		)`,
+		columnName,
+	).Scan(&exists).Error
+	return exists, err
+}
+
+func migrateConversationsTable(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&models.Conversation{}) {
+		return db.AutoMigrate(&models.Conversation{})
+	}
+
+	renames := []struct {
+		oldName string
+		newName string
+	}{
+		{oldName: "homeowner_user_id", newName: "homeowner_id"},
+		{oldName: "tradesperson_user_id", newName: "tradesperson_id"},
+	}
+
+	for _, item := range renames {
+		oldExists, err := conversationColumnExists(db, item.oldName)
+		if err != nil {
+			return err
+		}
+		newExists, err := conversationColumnExists(db, item.newName)
+		if err != nil {
+			return err
+		}
+
+		switch {
+		case oldExists && !newExists:
+			if err := db.Exec(
+				fmt.Sprintf(`ALTER TABLE "conversations" RENAME COLUMN "%s" TO "%s"`, item.oldName, item.newName),
+			).Error; err != nil {
+				return err
+			}
+		case oldExists && newExists:
+			if err := db.Exec(
+				fmt.Sprintf(
+					`UPDATE "conversations" SET "%s" = COALESCE("%s", "%s") WHERE "%s" IS NULL`,
+					item.newName,
+					item.newName,
+					item.oldName,
+					item.newName,
+				),
+			).Error; err != nil {
+				return err
+			}
+		}
+	}
+
+	return db.AutoMigrate(&models.Conversation{})
+}
+
+func conversationColumnExists(db *gorm.DB, columnName string) (bool, error) {
+	var exists bool
+	err := db.Raw(
+		`SELECT EXISTS (
+			SELECT 1
+			FROM information_schema.columns
+			WHERE table_schema = CURRENT_SCHEMA()
+			  AND table_name = 'conversations'
+			  AND column_name = ?
+		)`,
+		columnName,
+	).Scan(&exists).Error
+	return exists, err
 }

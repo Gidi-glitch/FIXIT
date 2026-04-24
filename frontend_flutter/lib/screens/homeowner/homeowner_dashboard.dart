@@ -32,10 +32,6 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
   String? _messageTradespersonName;
   String? _messageTrade;
   String? _messageAvatar;
-<<<<<<< HEAD
-  String? _messageTradespersonUserId;
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   int _messageChatRequestId = 0;
 
   late AnimationController _fadeController;
@@ -51,11 +47,7 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
   static const Color _successGreen = Color(0xFF10B981);
   static const Color _warningYellow = Color(0xFFF59E0B);
 
-<<<<<<< HEAD
-  // ── Sample Data ────────────────────────────────────────────────
-=======
   // ── Service Category Data ─────────────────────────────────────
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   final List<Map<String, dynamic>> _serviceCategories = [
     {
       'name': 'Plumbing',
@@ -85,10 +77,7 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
   ];
 
   List<Map<String, dynamic>> _availablePros = [];
-<<<<<<< HEAD
-=======
   bool _isLoadingAvailablePros = false;
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
   List<BookingModel> get _myBookings => BookingStore.all.take(3).toList();
 
@@ -104,15 +93,6 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
       curve: Curves.easeOut,
     );
     _fadeController.forward();
-<<<<<<< HEAD
-    _loadProfileData();
-    _loadAvailablePros();
-    _syncBookings();
-  }
-
-  Future<void> _syncBookings() async {
-    await BookingStore.syncFromBackend();
-=======
     BookingStore.notifier.addListener(_onBookingStoreChanged);
     _loadBookingsPreview();
     _loadAvailablePros();
@@ -211,16 +191,10 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
   }
 
   void _onBookingStoreChanged() {
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     if (!mounted) return;
     setState(() {});
   }
 
-<<<<<<< HEAD
-  void _handleBookingConfirmed() {
-    setState(() => _currentNavIndex = 1);
-    _syncBookings();
-=======
   Future<void> _loadBookingsPreview() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -235,7 +209,6 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
     } catch (_) {
       // Keep existing values when preview refresh fails.
     }
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   Future<void> _loadProfileData() async {
@@ -273,13 +246,6 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
         if (barangayFromApi.isNotEmpty) {
           await prefs.setString('barangay', barangayFromApi);
         }
-<<<<<<< HEAD
-        final userId = (user['id'] ?? '').toString().trim();
-        if (userId.isNotEmpty) {
-          await prefs.setString('user_id', userId);
-        }
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       } catch (_) {
         // Fallback to cached values.
       }
@@ -324,10 +290,7 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
 
   @override
   void dispose() {
-<<<<<<< HEAD
-=======
     BookingStore.notifier.removeListener(_onBookingStoreChanged);
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     _searchController.dispose();
     _fadeController.dispose();
     super.dispose();
@@ -352,11 +315,6 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
 
   List<Map<String, dynamic>> get _filteredAvailablePros {
     final query = _searchQuery.trim().toLowerCase();
-<<<<<<< HEAD
-    if (query.isEmpty) return _availablePros;
-
-    return _availablePros.where((pro) {
-=======
     final source = _availablePros
         .where((pro) => pro['isOnDuty'] == true)
         .take(5)
@@ -365,7 +323,6 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
     if (query.isEmpty) return source;
 
     return source.where((pro) {
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       final name = (pro['name'] as String).toLowerCase();
       final trade = (pro['trade'] as String).toLowerCase();
       final barangay = (pro['barangay'] as String).toLowerCase();
@@ -411,62 +368,11 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
     }
   }
 
-<<<<<<< HEAD
-  Future<void> _loadAvailablePros() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token')?.trim();
-    if (token == null || token.isEmpty) {
-      return;
-    }
-
-    try {
-      final result = await ApiService.getTradespeople(token);
-      final rows = (result['tradespeople'] as List? ?? const <dynamic>[])
-          .whereType<Map>()
-          .map((row) => row.cast<String, dynamic>())
-          .map(
-            (row) => <String, dynamic>{
-              'name': (row['name'] ?? 'Tradesperson').toString(),
-              'trade': (row['trade'] ?? row['specialization'] ?? 'Tradesperson')
-                  .toString(),
-              'rating': (row['rating'] as num?)?.toDouble() ?? 0.0,
-              'barangay': (row['barangay'] ?? '').toString(),
-              'isOnDuty': row['is_on_duty'] == true,
-              'avatar': _buildInitials((row['name'] ?? '').toString()),
-              'userId': (row['user_id'] ?? '').toString(),
-            },
-          )
-          .toList();
-
-      if (!mounted) return;
-      setState(() {
-        _availablePros = rows;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _availablePros = [];
-      });
-    }
-  }
-
-  void _openMessagesForTradesperson(
-    String name,
-    String trade,
-    String avatar, [
-    String? userId,
-  ]) {
-=======
   void _openMessagesForTradesperson(String name, String trade, String avatar) {
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     setState(() {
       _messageTradespersonName = name.trim();
       _messageTrade = trade.trim();
       _messageAvatar = avatar.trim();
-<<<<<<< HEAD
-      _messageTradespersonUserId = userId?.trim();
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       _messageChatRequestId++;
       _currentNavIndex = 2;
     });
@@ -490,18 +396,10 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
               initialTradespersonName: _messageTradespersonName,
               initialTrade: _messageTrade,
               initialAvatar: _messageAvatar,
-<<<<<<< HEAD
-              initialTradespersonUserId: _messageTradespersonUserId,
-              autoOpenChat: _messageChatRequestId > 0,
-              chatRequestId: _messageChatRequestId,
-            ),
-            const ProfileScreen(),
-=======
               autoOpenChat: _messageChatRequestId > 0,
               chatRequestId: _messageChatRequestId,
             ),
             ProfileScreen(onMessageRequested: _openMessagesForTradesperson),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
           ],
         ),
         bottomNavigationBar: _buildBottomNavigation(),
@@ -509,23 +407,6 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
     );
   }
 
-<<<<<<< HEAD
-  String _buildInitials(String name) {
-    final parts = name
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .toList();
-    if (parts.isEmpty) return 'TP';
-    if (parts.length == 1) {
-      return parts.first.substring(0, 1).toUpperCase();
-    }
-    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
-        .toUpperCase();
-  }
-
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   // ═══════════════════════════════════════════════════════════════
   //  HOME CONTENT (Extracted from original body)
   // ═══════════════════════════════════════════════════════════════
@@ -792,12 +673,8 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                       builder: (_) => TradespersonListScreen(
                         onDutyOnly: true,
                         onMessageRequested: _openMessagesForTradesperson,
-<<<<<<< HEAD
-                        onBookingConfirmed: _handleBookingConfirmed,
-=======
                         onBookingConfirmed: () =>
                             setState(() => _currentNavIndex = 1),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                       ),
                     ),
                   ),
@@ -834,12 +711,8 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                     MaterialPageRoute(
                       builder: (_) => TradespersonListScreen(
                         onMessageRequested: _openMessagesForTradesperson,
-<<<<<<< HEAD
-                        onBookingConfirmed: _handleBookingConfirmed,
-=======
                         onBookingConfirmed: () =>
                             setState(() => _currentNavIndex = 1),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                       ),
                     ),
                   ),
@@ -998,12 +871,8 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                       builder: (_) => TradespersonListScreen(
                         serviceCategory: category['name'] as String,
                         onMessageRequested: _openMessagesForTradesperson,
-<<<<<<< HEAD
-                        onBookingConfirmed: _handleBookingConfirmed,
-=======
                         onBookingConfirmed: () =>
                             setState(() => _currentNavIndex = 1),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                       ),
                     ),
                   ),
@@ -1085,12 +954,8 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                     builder: (_) => TradespersonListScreen(
                       onDutyOnly: true,
                       onMessageRequested: _openMessagesForTradesperson,
-<<<<<<< HEAD
-                      onBookingConfirmed: _handleBookingConfirmed,
-=======
                       onBookingConfirmed: () =>
                           setState(() => _currentNavIndex = 1),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                     ),
                   ),
                 ),
@@ -1119,16 +984,12 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
             ],
           ),
         ),
-<<<<<<< HEAD
-        if (visiblePros.isEmpty)
-=======
         if (_isLoadingAvailablePros && visiblePros.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Center(child: CircularProgressIndicator()),
           )
         else if (visiblePros.isEmpty)
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 20),
             child: Text(
@@ -1150,12 +1011,9 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
               itemCount: visiblePros.length,
               itemBuilder: (context, index) {
                 final pro = visiblePros[index];
-<<<<<<< HEAD
-=======
                 final profileImageUrl = (pro['profileImageUrl'] ?? '')
                     .toString()
                     .trim();
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                 return GestureDetector(
                   onTap: () => Navigator.push(
                     context,
@@ -1164,12 +1022,8 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                         onDutyOnly: true,
                         initialTradespersonName: (pro['name'] ?? '').toString(),
                         onMessageRequested: _openMessagesForTradesperson,
-<<<<<<< HEAD
-                        onBookingConfirmed: _handleBookingConfirmed,
-=======
                         onBookingConfirmed: () =>
                             setState(() => _currentNavIndex = 1),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                       ),
                     ),
                   ),
@@ -1204,17 +1058,6 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                                 ),
                                 borderRadius: BorderRadius.circular(12),
                               ),
-<<<<<<< HEAD
-                              child: Center(
-                                child: Text(
-                                  pro['avatar'] as String,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                  ),
-                                ),
-=======
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(12),
                                 child: profileImageUrl.isNotEmpty
@@ -1245,7 +1088,6 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                                           ),
                                         ),
                                       ),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                               ),
                             ),
                             const Spacer(),

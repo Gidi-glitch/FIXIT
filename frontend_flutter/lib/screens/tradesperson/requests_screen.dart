@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
-<<<<<<< HEAD
-
-=======
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/api_service.dart';
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 import 'tradesperson_work_store.dart';
 
 /// Requests Screen for the Fix It Marketplace Tradesperson App.
@@ -46,11 +42,7 @@ class _RequestsScreenState extends State<RequestsScreen>
   void initState() {
     super.initState();
     TradespersonWorkStore.notifier.addListener(_handleStoreChanged);
-<<<<<<< HEAD
-    _refreshFromBackend();
-=======
     _refreshRequests();
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   @override
@@ -64,25 +56,13 @@ class _RequestsScreenState extends State<RequestsScreen>
     setState(() {});
   }
 
-<<<<<<< HEAD
-  Future<void> _refreshFromBackend() async {
-    await TradespersonWorkStore.syncFromBackend();
-    if (!mounted) return;
-    setState(() {});
-  }
-
-  String _activeFilter = 'All';
-=======
   String _activeFilter = 'All';
   bool _isLoading = true;
   String? _errorMessage;
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   final List<String> _filters = ['All', 'High', 'Medium', 'Low'];
 
   List<Map<String, dynamic>> get _requests => TradespersonWorkStore.requests;
 
-<<<<<<< HEAD
-=======
   Future<String> _readToken() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token')?.trim() ?? '';
@@ -115,7 +95,6 @@ class _RequestsScreenState extends State<RequestsScreen>
     }
   }
 
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   // ── Urgency helpers ────────────────────────────────────────────
   Color _urgencyColor(String urgency) {
     switch (urgency) {
@@ -150,44 +129,6 @@ class _RequestsScreenState extends State<RequestsScreen>
 
   // ── Accept / Decline Actions ───────────────────────────────────
   Future<void> _acceptRequest(Map<String, dynamic> request) async {
-<<<<<<< HEAD
-    final accepted = await TradespersonWorkStore.acceptRequestById(
-      request['id'] as String,
-    );
-    if (!accepted || !mounted) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              'Unable to accept request right now.',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            backgroundColor: _errorRed,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            margin: const EdgeInsets.all(16),
-          ),
-        );
-      }
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Request from ${request['homeowner']} accepted!',
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        backgroundColor: _successGreen,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
-      ),
-    );
-    widget.onNavigateToJobs();
-=======
     try {
       final token = await _readToken();
       final requestId = (request['bookingId'] as int?) ?? 0;
@@ -239,7 +180,6 @@ class _RequestsScreenState extends State<RequestsScreen>
         ),
       );
     }
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   void _declineRequest(Map<String, dynamic> request) {
@@ -355,44 +295,6 @@ class _RequestsScreenState extends State<RequestsScreen>
       ),
     ).then((confirmed) async {
       if (confirmed == true) {
-<<<<<<< HEAD
-        final declined = await TradespersonWorkStore.declineRequestById(
-          request['id'] as String,
-        );
-        if (!declined || !mounted) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text(
-                  'Unable to decline request right now.',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                backgroundColor: _errorRed,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                margin: const EdgeInsets.all(16),
-              ),
-            );
-          }
-          return;
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              'Request declined.',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            backgroundColor: _textMuted,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            margin: const EdgeInsets.all(16),
-          ),
-        );
-=======
         try {
           final token = await _readToken();
           final requestId = (request['bookingId'] as int?) ?? 0;
@@ -437,7 +339,6 @@ class _RequestsScreenState extends State<RequestsScreen>
             ),
           );
         }
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       }
     });
   }
@@ -469,15 +370,11 @@ class _RequestsScreenState extends State<RequestsScreen>
             _buildAppBar(),
             _buildFilterTabs(),
             Expanded(
-<<<<<<< HEAD
-              child: requests.isEmpty
-=======
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _errorMessage != null
                   ? _buildErrorState()
                   : requests.isEmpty
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                   ? _buildEmptyState()
                   : ListView.builder(
                       physics: const BouncingScrollPhysics(),
@@ -554,11 +451,7 @@ class _RequestsScreenState extends State<RequestsScreen>
               ],
             ),
             child: IconButton(
-<<<<<<< HEAD
-              onPressed: () => _refreshFromBackend(),
-=======
               onPressed: _refreshRequests,
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
               icon: const Icon(
                 Icons.refresh_rounded,
                 color: _textDark,
@@ -660,12 +553,9 @@ class _RequestsScreenState extends State<RequestsScreen>
   Widget _buildRequestCard(Map<String, dynamic> request) {
     final urgencyColor = _urgencyColor(request['urgency'] as String);
     final isNew = request['isNew'] == true;
-<<<<<<< HEAD
-=======
     final homeownerProfileImageUrl = (request['homeownerProfileImageUrl'] ?? '')
         .toString()
         .trim();
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -706,17 +596,6 @@ class _RequestsScreenState extends State<RequestsScreen>
                     ),
                     borderRadius: BorderRadius.circular(14),
                   ),
-<<<<<<< HEAD
-                  child: Center(
-                    child: Text(
-                      request['avatar'] as String,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-=======
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(14),
                     child: homeownerProfileImageUrl.isNotEmpty
@@ -745,7 +624,6 @@ class _RequestsScreenState extends State<RequestsScreen>
                               ),
                             ),
                           ),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1046,8 +924,6 @@ class _RequestsScreenState extends State<RequestsScreen>
   }
 
   // ═══════════════════════════════════════════════════════════════
-<<<<<<< HEAD
-=======
   //  ERROR STATE
   // ═══════════════════════════════════════════════════════════════
 
@@ -1108,7 +984,6 @@ class _RequestsScreenState extends State<RequestsScreen>
   }
 
   // ═══════════════════════════════════════════════════════════════
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   //  EMPTY STATE
   // ═══════════════════════════════════════════════════════════════
 

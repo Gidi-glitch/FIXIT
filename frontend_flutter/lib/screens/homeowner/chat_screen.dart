@@ -1,18 +1,12 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
-<<<<<<< HEAD
-=======
 import 'package:http/http.dart' as http;
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
-<<<<<<< HEAD
-=======
 import 'package:path_provider/path_provider.dart';
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/attachment_saver.dart';
@@ -45,26 +39,17 @@ class _ChatScreenState extends State<ChatScreen> {
   Map<String, dynamic>? _pendingAttachment;
   final Map<String, double> _imageAspectRatios = {};
   bool _hasConversationChanges = false;
-<<<<<<< HEAD
-  String? _token;
-  String _currentUserId = '';
-  bool _isLoadingMessages = true;
-=======
   bool _isSending = false;
   String _authToken = '';
   int? _conversationIdInt;
   final Map<String, String> _downloadedAttachmentPaths = {};
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
   late List<Map<String, dynamic>> _messages;
 
   String get _conversationId {
-<<<<<<< HEAD
-=======
     if (_conversationIdInt != null) {
       return _conversationIdInt.toString();
     }
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     final id = (widget.conversation['id'] ?? '').toString().trim();
     if (id.isNotEmpty) return id;
     return (widget.conversation['name'] ?? 'chat').toString().trim();
@@ -93,11 +78,6 @@ class _ChatScreenState extends State<ChatScreen> {
       'id': _conversationId,
       'name': (widget.conversation['name'] ?? '').toString(),
       'avatar': (widget.conversation['avatar'] ?? '').toString(),
-<<<<<<< HEAD
-      'counterpartUserId': (widget.conversation['counterpartUserId'] ?? '')
-          .toString(),
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       'trade': (widget.conversation['trade'] ?? '').toString(),
       'isOnline': widget.conversation['isOnline'] ?? false,
       'lastMessage': latest != null
@@ -106,10 +86,7 @@ class _ChatScreenState extends State<ChatScreen> {
       'time': latest != null
           ? (latest['time'] ?? '').toString()
           : (widget.conversation['time'] ?? '').toString(),
-<<<<<<< HEAD
-=======
       'unreadCount': 0,
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     };
   }
 
@@ -128,62 +105,13 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _messages = <Map<String, dynamic>>[];
-<<<<<<< HEAD
-    _loadMessages();
-=======
     _initializeChat();
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     _messageController.addListener(() {
       final hasText = _messageController.text.trim().isNotEmpty;
       if (hasText != _hasText) setState(() => _hasText = hasText);
     });
   }
 
-<<<<<<< HEAD
-  Future<void> _loadMessages() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token')?.trim();
-    var userId = prefs.getString('user_id')?.trim() ?? '';
-
-    if (token == null || token.isEmpty) {
-      if (!mounted) return;
-      setState(() {
-        _isLoadingMessages = false;
-      });
-      return;
-    }
-
-    if (userId.isEmpty) {
-      try {
-        final profile = await ApiService.getProfile(token);
-        userId = ((profile['user'] as Map?)?['id'] ?? '').toString().trim();
-        if (userId.isNotEmpty) {
-          await prefs.setString('user_id', userId);
-        }
-      } catch (_) {}
-    }
-
-    List<Map<String, dynamic>> loaded = <Map<String, dynamic>>[];
-    try {
-      final result = await ApiService.getConversationMessages(
-        token: token,
-        conversationId: _conversationId,
-      );
-      loaded = (result['messages'] as List? ?? const <dynamic>[])
-          .whereType<Map>()
-          .map((row) => _mapBackendMessage(row.cast<String, dynamic>(), userId))
-          .toList();
-    } catch (_) {
-      loaded = <Map<String, dynamic>>[];
-    }
-
-    if (!mounted) return;
-    setState(() {
-      _token = token;
-      _currentUserId = userId;
-      _messages = loaded;
-      _isLoadingMessages = false;
-=======
   Future<void> _initializeChat() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -250,14 +178,11 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!mounted) return;
     setState(() {
       _messages = loaded;
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
   }
 
-<<<<<<< HEAD
-=======
   Map<String, dynamic> _normalizeMessage(Map<String, dynamic> row) {
     final sender = (row['sender'] ?? 'other').toString().trim().toLowerCase();
     final text = (row['text'] ?? '').toString();
@@ -349,7 +274,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return localPath;
   }
 
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   @override
   void dispose() {
     _messageController.dispose();
@@ -357,25 +281,6 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-<<<<<<< HEAD
-  Map<String, dynamic> _mapBackendMessage(
-    Map<String, dynamic> row,
-    String currentUserId,
-  ) {
-    final createdAt = (row['created_at'] ?? '').toString();
-    final senderUserId = (row['sender_user_id'] ?? '').toString();
-    return {
-      'id': (row['id'] ?? '').toString(),
-      'sender': senderUserId == currentUserId ? 'me' : 'pro',
-      'text': (row['text'] ?? '').toString(),
-      'time': _formatMessageTime(createdAt),
-      'isAttachment': false,
-      'sentAtIso': createdAt,
-    };
-  }
-
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   bool get _showConversationStartDivider {
     if (_messages.isEmpty) return false;
     final firstMessageIso = (_messages.first['sentAtIso'] ?? '')
@@ -506,16 +411,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _sendMessage() async {
-<<<<<<< HEAD
-    final text = _messageController.text.trim();
-    if (text.isEmpty && _pendingAttachment == null) return;
-
-    if (_pendingAttachment != null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Live chat currently supports text messages only.'),
-=======
     if (_isSending) return;
 
     final text = _messageController.text.trim();
@@ -528,7 +423,6 @@ class _ChatScreenState extends State<ChatScreen> {
           content: const Text(
             'Conversation is not ready yet. Please try again.',
           ),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
           behavior: SnackBarBehavior.floating,
           backgroundColor: _accentOrange,
         ),
@@ -536,27 +430,6 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-<<<<<<< HEAD
-    if (_token == null || _token!.isEmpty) return;
-
-    try {
-      final result = await ApiService.sendConversationMessage(
-        token: _token!,
-        conversationId: _conversationId,
-        text: text,
-      );
-      final sent = _mapBackendMessage(
-        (result['message'] as Map?)?.cast<String, dynamic>() ??
-            <String, dynamic>{},
-        _currentUserId,
-      );
-
-      if (!mounted) return;
-      setState(() {
-        _messages.add(sent);
-        _messageController.clear();
-        _hasConversationChanges = true;
-=======
     final pending = _pendingAttachment;
     final appended = <Map<String, dynamic>>[];
     _isSending = true;
@@ -612,7 +485,6 @@ class _ChatScreenState extends State<ChatScreen> {
           _pendingAttachment = null;
         }
         _messageController.clear();
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       });
 
       WidgetsBinding.instance.addPostFrameCallback(
@@ -622,13 +494,6 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-<<<<<<< HEAD
-          content: const Text('Could not send your message right now.'),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: Colors.red,
-        ),
-      );
-=======
           content: const Text('Could not send message right now.'),
           behavior: SnackBarBehavior.floating,
           backgroundColor: _accentOrange,
@@ -639,17 +504,13 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted && pending == null && text.isNotEmpty && appended.isEmpty) {
         _messageController.clear();
       }
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     }
   }
 
   Future<void> _promptDeleteConversation() async {
-<<<<<<< HEAD
-=======
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
 
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     final shouldDelete = await showDialog<bool>(
       context: context,
       barrierDismissible: true,
@@ -755,39 +616,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (shouldDelete != true || !mounted) return;
 
-<<<<<<< HEAD
-    if (_token == null || _token!.isEmpty) return;
-
-    try {
-      await ApiService.deleteConversation(
-        token: _token!,
-        conversationId: _conversationId,
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Could not delete this conversation right now.'),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (!mounted) return;
-    Navigator.of(context).pop({'deletedConversationId': _conversationId});
-  }
-
-  String _formatMessageTime(String isoText) {
-    final parsed = DateTime.tryParse(isoText);
-    if (parsed == null) return _currentTime();
-    final local = parsed.toLocal();
-    final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
-    final minute = local.minute.toString().padLeft(2, '0');
-    final period = local.hour >= 12 ? 'PM' : 'AM';
-    return '$hour:$minute $period';
-=======
     if (_authToken.isNotEmpty && _conversationIdInt != null) {
       try {
         await ApiService.deleteConversation(
@@ -809,7 +637,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (!mounted) return;
     navigator.pop({'deletedConversationId': _conversationId});
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   Future<void> _openAttachmentSheet() async {
@@ -961,11 +788,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _pickFileOrImageAttachment() async {
     try {
-<<<<<<< HEAD
-      final result = await FilePicker.platform.pickFiles(
-=======
       final result = await FilePicker.pickFiles(
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
         type: FileType.any,
         allowMultiple: false,
       );
@@ -1030,13 +853,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _showImagePreview(Map<String, dynamic> msg) async {
     final path = (msg['attachmentPath'] ?? '').toString().trim();
-<<<<<<< HEAD
-    if (path.isEmpty || !File(path).existsSync()) {
-=======
     final hasLocalFile = path.isNotEmpty && File(path).existsSync();
     final hasRemoteFile = _isRemotePath(path);
     if (path.isEmpty || (!hasLocalFile && !hasRemoteFile)) {
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1063,13 +882,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: InteractiveViewer(
                   minScale: 0.8,
                   maxScale: 4,
-<<<<<<< HEAD
-                  child: Image.file(File(path), fit: BoxFit.contain),
-=======
                   child: hasRemoteFile
                       ? Image.network(path, fit: BoxFit.contain)
                       : Image.file(File(path), fit: BoxFit.contain),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                 ),
               ),
               Positioned(
@@ -1134,12 +949,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final fileName = (msg['attachmentName'] ?? 'attachment').toString();
     final type = (msg['attachmentType'] ?? 'file').toString();
 
-<<<<<<< HEAD
-    if (sourcePath.isEmpty || !File(sourcePath).existsSync()) {
-=======
     final localPath = await _resolveAttachmentSourcePath(sourcePath, fileName);
     if (localPath == null || !File(localPath).existsSync()) {
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1153,15 +964,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       if (type == 'image') {
-<<<<<<< HEAD
-        await _attachmentSaver.saveImageToGallery(sourcePath, fileName);
-      } else {
-        await _attachmentSaver.saveFileToDownloads(sourcePath, fileName);
-=======
         await _attachmentSaver.saveImageToGallery(localPath, fileName);
       } else {
         await _attachmentSaver.saveFileToDownloads(localPath, fileName);
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       }
 
       if (!mounted) return;
@@ -1364,17 +1169,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return last.isNotEmpty ? last : fallback;
   }
 
-<<<<<<< HEAD
-  String _currentTime() {
-    final now = TimeOfDay.now();
-    final hour = now.hourOfPeriod == 0 ? 12 : now.hourOfPeriod;
-    final minute = now.minute.toString().padLeft(2, '0');
-    final period = now.period == DayPeriod.am ? 'AM' : 'PM';
-    return '$hour:$minute $period';
-  }
-
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   // ═══════════════════════════════════════════════════════════════
   //  BUILD
   // ═══════════════════════════════════════════════════════════════
@@ -1390,16 +1184,9 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       child: PopScope(
         canPop: false,
-<<<<<<< HEAD
-        onPopInvokedWithResult: (didPop, result) {
-          if (!didPop) {
-            _closeChatWithResult();
-          }
-=======
         onPopInvokedWithResult: (didPop, _) {
           if (didPop) return;
           _closeChatWithResult();
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
         },
         child: Scaffold(
           backgroundColor: _backgroundGray,
@@ -1616,13 +1403,7 @@ class _ChatScreenState extends State<ChatScreen> {
       duration: const Duration(milliseconds: 280),
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
-<<<<<<< HEAD
-      child: _isLoadingMessages
-          ? const Center(child: CircularProgressIndicator())
-          : _messages.isEmpty
-=======
       child: _messages.isEmpty
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
           ? _buildEmptyConversationPrompt()
           : ListView.builder(
               key: const ValueKey('conversation-message-list'),
@@ -1805,16 +1586,11 @@ class _ChatScreenState extends State<ChatScreen> {
         .toString();
     final isImage = type == 'image';
     final path = (msg['attachmentPath'] ?? '').toString().trim();
-<<<<<<< HEAD
-    final hasImagePreview =
-        isImage && path.isNotEmpty && File(path).existsSync();
-=======
     final isRemoteImage = isImage && _isRemotePath(path);
     final hasImagePreview =
         isImage &&
         path.isNotEmpty &&
         (isRemoteImage || File(path).existsSync());
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
     if (isImage) {
       _cacheImageAspectRatio(path);
@@ -1839,13 +1615,9 @@ class _ChatScreenState extends State<ChatScreen> {
         child: AspectRatio(
           aspectRatio: imageRatio.toDouble(),
           child: hasImagePreview
-<<<<<<< HEAD
-              ? Image.file(File(path), fit: BoxFit.cover)
-=======
               ? (isRemoteImage
                     ? Image.network(path, fit: BoxFit.cover)
                     : Image.file(File(path), fit: BoxFit.cover))
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
               : Icon(
                   Icons.image_rounded,
                   size: 34,
@@ -1881,13 +1653,9 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           clipBehavior: Clip.antiAlias,
           child: hasImagePreview
-<<<<<<< HEAD
-              ? Image.file(File(path), fit: BoxFit.cover)
-=======
               ? (isRemoteImage
                     ? Image.network(path, fit: BoxFit.cover)
                     : Image.file(File(path), fit: BoxFit.cover))
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
               : Icon(
                   isImage
                       ? Icons.image_rounded

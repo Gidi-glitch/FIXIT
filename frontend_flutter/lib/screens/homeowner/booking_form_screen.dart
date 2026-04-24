@@ -1,8 +1,3 @@
-<<<<<<< HEAD
-import 'dart:io';
-
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,8 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
 import 'booking_store.dart';
 
-<<<<<<< HEAD
-=======
 class _MyAddressOption {
   final int id;
   final String label;
@@ -55,7 +48,6 @@ class _MyAddressOption {
   }
 }
 
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 class BookingFormScreen extends StatefulWidget {
   final Map<String, dynamic> pro;
   final VoidCallback onBookingConfirmed;
@@ -93,20 +85,14 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
   bool _isSubmitting = false;
-<<<<<<< HEAD
-=======
   bool _isLoadingAddresses = false;
   List<_MyAddressOption> _myAddresses = <_MyAddressOption>[];
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
   @override
   void initState() {
     super.initState();
     _serviceOptions = _extractServiceOptions();
-<<<<<<< HEAD
-=======
     _loadAddressOptions();
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   @override
@@ -119,23 +105,6 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
 
   // ── Helpers ─────────────────────────────────────────────────────
 
-<<<<<<< HEAD
-  List<String> _extractServiceOptions() {
-    final raw = <dynamic>[
-      if (widget.pro['skills'] is List) ...(widget.pro['skills'] as List),
-      if (widget.pro['services'] is List) ...(widget.pro['services'] as List),
-      if ((widget.pro['specialization'] ?? '').toString().trim().isNotEmpty)
-        widget.pro['specialization'],
-    ];
-
-    final seen = <String>{};
-    final result = <String>[];
-
-    for (final item in raw) {
-      final value = item.toString().trim();
-      if (value.isEmpty) continue;
-
-=======
   List<String> _toStringList(dynamic raw) {
     final out = <String>[];
     final seen = <String>{};
@@ -178,15 +147,12 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     final specializations = _toStringList(widget.pro['specializations']);
 
     void addValue(String value) {
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       final normalized = value.toLowerCase();
       if (seen.add(normalized)) {
         result.add(value);
       }
     }
 
-<<<<<<< HEAD
-=======
     if (trade.isNotEmpty) {
       addValue(trade);
     }
@@ -204,7 +170,6 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
       }
     }
 
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     return result;
   }
 
@@ -285,8 +250,6 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     if (picked != null) setState(() => _selectedTime = picked);
   }
 
-<<<<<<< HEAD
-=======
   Future<void> _loadAddressOptions() async {
     setState(() => _isLoadingAddresses = true);
 
@@ -442,7 +405,6 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     });
   }
 
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   Future<void> _confirmBooking() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedServices.isEmpty) {
@@ -460,83 +422,6 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
 
     setState(() => _isSubmitting = true);
 
-<<<<<<< HEAD
-    // Simulate network delay
-    await Future.delayed(const Duration(milliseconds: 800));
-
-    final selectedDateLabel = _formatDate(_selectedDate!);
-    final selectedTimeLabel = _formatTime(_selectedTime!);
-    final offeredBudget = double.tryParse(_budgetController.text.trim()) ?? 0;
-
-    final booking = BookingModel(
-      id: 'BK-${DateTime.now().millisecondsSinceEpoch}',
-      tradespersonName: widget.pro['name'] as String,
-      tradespersonAvatar: widget.pro['avatar'] as String,
-      trade: widget.pro['trade'] as String,
-      specialization: _selectedServices.join(', '),
-      problemDescription: _descriptionController.text.trim(),
-      address: _addressController.text.trim(),
-      date: selectedDateLabel,
-      time: selectedTimeLabel,
-      offeredBudget: offeredBudget,
-      status: 'Pending',
-      createdAt: DateTime.now(),
-    );
-
-    var persisted = false;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token')?.trim() ?? '';
-      final tradespersonUserId = int.tryParse(
-        (widget.pro['userId'] ?? widget.pro['user_id'] ?? '').toString(),
-      );
-
-      if (token.isNotEmpty && (tradespersonUserId ?? 0) > 0) {
-        final urgency = selectedDateLabel == 'Today'
-            ? 'High'
-            : selectedDateLabel == 'Tomorrow'
-            ? 'Medium'
-            : 'Low';
-        final result = await ApiService.createBooking(
-          token: token,
-          tradespersonUserId: tradespersonUserId!,
-          trade: (widget.pro['trade'] ?? '').toString(),
-          specialization: _selectedServices.join(', '),
-          problemDescription: _descriptionController.text.trim(),
-          address: _addressController.text.trim(),
-          date: selectedDateLabel,
-          time: selectedTimeLabel,
-          offeredBudget: offeredBudget,
-          urgency: urgency,
-        );
-
-        final bookingRow = (result['booking'] as Map?)?.cast<String, dynamic>();
-        if (bookingRow != null) {
-          BookingStore.upsertBackendBooking(
-            BookingStore.fromBackendRow(bookingRow),
-          );
-          persisted = true;
-        }
-      }
-    } on HttpException {
-      persisted = false;
-    } catch (_) {
-      persisted = false;
-    }
-
-    if (!persisted) {
-      BookingStore.add(booking);
-    }
-
-    if (!mounted) return;
-    setState(() => _isSubmitting = false);
-
-    // Pop all the way back to the dashboard root
-    Navigator.of(context).popUntil((route) => route.isFirst);
-
-    // Switch dashboard to Bookings tab (index 1)
-    widget.onBookingConfirmed();
-=======
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token')?.trim();
@@ -586,7 +471,6 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     if (value is int) return value;
     if (value is double) return value.toInt();
     return int.tryParse(value?.toString() ?? '') ?? 0;
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   void _showError(String message) {
@@ -1114,25 +998,6 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   }
 
   Widget _buildAddressField() {
-<<<<<<< HEAD
-    return TextFormField(
-      controller: _addressController,
-      style: const TextStyle(
-        fontSize: 14,
-        color: _textDark,
-        fontWeight: FontWeight.w500,
-      ),
-      decoration: _inputDecoration(
-        hint: 'e.g. Blk 4 Lot 12, Dayap, Calauan, Laguna',
-        prefixIcon: Icons.home_rounded,
-      ),
-      validator: (val) {
-        if (val == null || val.trim().isEmpty) {
-          return 'Please enter your service address.';
-        }
-        return null;
-      },
-=======
     final hasSavedAddresses = _myAddresses.isNotEmpty;
 
     return Column(
@@ -1189,7 +1054,6 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
             ),
           ),
       ],
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     );
   }
 

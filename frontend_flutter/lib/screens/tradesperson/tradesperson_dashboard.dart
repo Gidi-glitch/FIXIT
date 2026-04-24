@@ -27,28 +27,18 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
     with SingleTickerProviderStateMixin {
   int _currentNavIndex = 0;
   final ValueNotifier<bool> _onDutyNotifier = ValueNotifier<bool>(true);
-<<<<<<< HEAD
-  String _displayName = 'Tradesperson';
-  String _firstName = 'Tradesperson';
-=======
   bool _isUpdatingOnDuty = false;
   String _displayName = 'Tradesperson';
   String _firstName = 'Tradesperson';
   String _trade = 'Tradesperson';
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   String? _profileImagePath;
   String? _messageHomeownerName;
   String? _messageService;
   String? _messageAvatar;
-<<<<<<< HEAD
-  String? _messageHomeownerUserId;
-  int _messageChatRequestId = 0;
-=======
   int _messageChatRequestId = 0;
   double _averageRating = 0;
   int _reviewCount = 0;
   String _verificationStatus = 'pending';
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
@@ -65,17 +55,6 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
   static const Color _errorRed = Color(0xFFEF4444);
   static const Color _infoBlue = Color(0xFF3B82F6);
 
-<<<<<<< HEAD
-  // ── Sample Data ────────────────────────────────────────────────
-  final Map<String, dynamic> _stats = {
-    'newRequests': 3,
-    'activeJobs': 2,
-    'completedJobs': 47,
-    'rating': 4.9,
-  };
-
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   List<Map<String, dynamic>> get _incomingRequests =>
       TradespersonWorkStore.dashboardRequests();
 
@@ -111,10 +90,6 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
     _onDutyNotifier.addListener(_handleOnDutyChanged);
     TradespersonWorkStore.notifier.addListener(_handleStoreChanged);
     _loadProfileData();
-<<<<<<< HEAD
-    _syncWorkItems();
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   void _handleOnDutyChanged() {
@@ -127,21 +102,10 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
     setState(() {});
   }
 
-<<<<<<< HEAD
-  Future<void> _syncWorkItems() async {
-    await TradespersonWorkStore.syncFromBackend();
-    if (!mounted) return;
-    setState(() {});
-  }
-
-  Future<void> _loadProfileData() async {
-    final prefs = await SharedPreferences.getInstance();
-=======
   Future<void> _loadProfileData() async {
     final prefs = await SharedPreferences.getInstance();
     bool? onDutyFromApi;
     var verificationStatus = _verificationStatus;
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
     final token = prefs.getString('token')?.trim();
     if (token != null && token.isNotEmpty) {
@@ -150,25 +114,19 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
         final user =
             (result['user'] as Map?)?.cast<String, dynamic>() ??
             <String, dynamic>{};
-<<<<<<< HEAD
-=======
         final profile =
             (result['profile'] as Map?)?.cast<String, dynamic>() ??
             const <String, dynamic>{};
         onDutyFromApi = _readOnDutyFromProfilePayload(result, user);
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
         final firstNameFromApi = (user['first_name'] ?? '').toString().trim();
         final lastNameFromApi = (user['last_name'] ?? '').toString().trim();
         final fullNameFromApi = '$firstNameFromApi $lastNameFromApi'.trim();
         final profileImageUrl = (user['profile_image_url'] ?? '')
             .toString()
             .trim();
-<<<<<<< HEAD
-=======
         final tradeFromApi = (user['trade'] ?? profile['trade_category'])
             .toString()
             .trim();
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
         if (firstNameFromApi.isNotEmpty) {
           await prefs.setString('first_name', firstNameFromApi);
@@ -184,20 +142,6 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
         } else {
           await prefs.remove('profile_image_url');
         }
-<<<<<<< HEAD
-        final userId = (user['id'] ?? '').toString().trim();
-        if (userId.isNotEmpty) {
-          await prefs.setString('user_id', userId);
-        }
-      } catch (_) {
-        // Keep cached profile values if profile refresh fails.
-      }
-    }
-
-    final firstName = prefs.getString('first_name')?.trim();
-    final lastName = prefs.getString('last_name')?.trim();
-    final fullNameFromPrefs = prefs.getString('full_name')?.trim();
-=======
         if (tradeFromApi.isNotEmpty) {
           await prefs.setString('trade', tradeFromApi);
         } else {
@@ -224,7 +168,6 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
     final lastName = prefs.getString('last_name')?.trim();
     final fullNameFromPrefs = prefs.getString('full_name')?.trim();
     final tradeFromPrefs = prefs.getString('trade')?.trim();
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     final fullName = fullNameFromPrefs?.isNotEmpty == true
         ? fullNameFromPrefs!
         : '${firstName ?? ''} ${lastName ?? ''}'.trim();
@@ -236,10 +179,6 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
           ? firstName!
           : (fullName.isNotEmpty ? fullName.split(' ').first : 'Tradesperson');
       _displayName = fullName.isNotEmpty ? fullName : 'Tradesperson';
-<<<<<<< HEAD
-      _profileImagePath = prefs.getString('profile_image_url');
-    });
-=======
       _trade = tradeFromPrefs != null && tradeFromPrefs.isNotEmpty
           ? tradeFromPrefs
           : 'Tradesperson';
@@ -434,7 +373,6 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
         setState(() => _isUpdatingOnDuty = false);
       }
     }
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   String get _initials {
@@ -458,24 +396,11 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
     super.dispose();
   }
 
-<<<<<<< HEAD
-  void _openMessagesForHomeowner(
-    String name,
-    String service,
-    String avatar, [
-    String? userId,
-  ]) {
-=======
   void _openMessagesForHomeowner(String name, String service, String avatar) {
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     setState(() {
       _messageHomeownerName = name.trim();
       _messageService = service.trim();
       _messageAvatar = avatar.trim();
-<<<<<<< HEAD
-      _messageHomeownerUserId = userId?.trim();
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       _messageChatRequestId++;
       _currentNavIndex = 3;
     });
@@ -560,10 +485,6 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
               initialHomeownerName: _messageHomeownerName,
               initialService: _messageService,
               initialAvatar: _messageAvatar,
-<<<<<<< HEAD
-              initialHomeownerUserId: _messageHomeownerUserId,
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
               autoOpenChat: _messageChatRequestId > 0,
               chatRequestId: _messageChatRequestId,
             ),
@@ -618,10 +539,7 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildHeader() {
-<<<<<<< HEAD
-=======
     final verificationColor = _verificationColor(_verificationStatus);
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
       child: Row(
@@ -701,30 +619,13 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-<<<<<<< HEAD
-                        color: _successGreen.withValues(alpha: 0.12),
-=======
                         color: verificationColor.withValues(alpha: 0.12),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-<<<<<<< HEAD
-                            Icons.verified_rounded,
-                            size: 12,
-                            color: _successGreen,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Verified',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: _successGreen,
-=======
                             _verificationIcon(_verificationStatus),
                             size: 12,
                             color: verificationColor,
@@ -736,7 +637,6 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
                               color: verificationColor,
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                             ),
                           ),
                         ],
@@ -744,11 +644,7 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                     ),
                     const SizedBox(width: 8),
                     Text(
-<<<<<<< HEAD
-                      'Plumber',
-=======
                       _trade,
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -880,11 +776,7 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
             scale: 1.2,
             child: Switch(
               value: isOnDuty,
-<<<<<<< HEAD
-              onChanged: (value) => _onDutyNotifier.value = value,
-=======
               onChanged: _isUpdatingOnDuty ? null : _setOnDutyStatus,
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
               activeThumbColor: Colors.white,
               activeTrackColor: Colors.white.withValues(alpha: 0.4),
               inactiveThumbColor: Colors.white,
@@ -903,12 +795,9 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
   Widget _buildStatsSection() {
     final requestCount = TradespersonWorkStore.requests.length;
     final jobs = TradespersonWorkStore.jobs;
-<<<<<<< HEAD
-=======
     final ratingLabel = _reviewCount > 0
         ? _averageRating.toStringAsFixed(1)
         : '0.0';
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     final activeJobs = jobs
         .where(
           (j) =>
@@ -946,11 +835,7 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
           const SizedBox(width: 10),
           _buildStatCard(
             'Rating',
-<<<<<<< HEAD
-            '${_stats['rating']}',
-=======
             ratingLabel,
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
             Icons.star_rounded,
             _warningYellow,
           ),
@@ -1094,8 +979,6 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
           itemCount: _incomingRequests.length,
           itemBuilder: (context, index) {
             final request = _incomingRequests[index];
-<<<<<<< HEAD
-=======
             final urgency = (request['urgency'] ?? '').toString();
             final homeownerProfileImageUrl =
                 (request['homeownerProfileImageUrl'] ?? '').toString().trim();
@@ -1103,7 +986,6 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
             final urgencyColor = urgencyColorRaw is Color
                 ? urgencyColorRaw
                 : _urgencyColor(urgency);
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(16),
@@ -1133,17 +1015,6 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                           ),
                           borderRadius: BorderRadius.circular(12),
                         ),
-<<<<<<< HEAD
-                        child: Center(
-                          child: Text(
-                            request['avatar'] as String,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
-=======
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
                           child: homeownerProfileImageUrl.isNotEmpty
@@ -1172,7 +1043,6 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                                     ),
                                   ),
                                 ),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -1206,19 +1076,6 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                           vertical: 5,
                         ),
                         decoration: BoxDecoration(
-<<<<<<< HEAD
-                          color: (request['urgencyColor'] as Color).withValues(
-                            alpha: 0.12,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          request['urgency'] as String,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: request['urgencyColor'] as Color,
-=======
                           color: urgencyColor.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -1228,7 +1085,6 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
                             color: urgencyColor,
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                           ),
                         ),
                       ),
@@ -1273,41 +1129,11 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                     children: [
                       Expanded(
                         child: OutlinedButton(
-<<<<<<< HEAD
-                          onPressed: () async {
-                            final messenger = ScaffoldMessenger.of(context);
-                            final declined =
-                                await TradespersonWorkStore.declineRequestById(
-                                  request['id'] as String,
-                                );
-                            if (!mounted) return;
-                            if (!declined) {
-                              messenger.showSnackBar(
-                                SnackBar(
-                                  content: const Text(
-                                    'Unable to decline request right now.',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  backgroundColor: _errorRed,
-                                  behavior: SnackBarBehavior.floating,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  margin: const EdgeInsets.all(16),
-                                ),
-                              );
-                              return;
-                            }
-                            messenger.showSnackBar(
-=======
                           onPressed: () {
                             TradespersonWorkStore.declineRequestById(
                               request['id'] as String,
                             );
                             ScaffoldMessenger.of(context).showSnackBar(
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                               SnackBar(
                                 content: const Text(
                                   'Request declined.',
@@ -1377,41 +1203,11 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                       const SizedBox(width: 10),
                       Expanded(
                         child: ElevatedButton.icon(
-<<<<<<< HEAD
-                          onPressed: () async {
-                            final messenger = ScaffoldMessenger.of(context);
-                            final accepted =
-                                await TradespersonWorkStore.acceptRequestById(
-                                  request['id'] as String,
-                                );
-                            if (!mounted) return;
-                            if (!accepted) {
-                              messenger.showSnackBar(
-                                SnackBar(
-                                  content: const Text(
-                                    'Unable to accept request right now.',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  backgroundColor: _errorRed,
-                                  behavior: SnackBarBehavior.floating,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  margin: const EdgeInsets.all(16),
-                                ),
-                              );
-                              return;
-                            }
-                            messenger.showSnackBar(
-=======
                           onPressed: () {
                             TradespersonWorkStore.acceptRequestById(
                               request['id'] as String,
                             );
                             ScaffoldMessenger.of(context).showSnackBar(
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                               SnackBar(
                                 content: Text(
                                   'Request from ${request['homeowner']} accepted!',
@@ -1465,11 +1261,8 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
 
   Widget _buildCurrentJobSection() {
     final currentJob = _currentJob;
-<<<<<<< HEAD
-=======
     final currentJobProfileImageUrl =
         (currentJob?['homeownerProfileImageUrl'] ?? '').toString().trim();
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1561,17 +1354,6 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                         ),
                         borderRadius: BorderRadius.circular(14),
                       ),
-<<<<<<< HEAD
-                      child: Center(
-                        child: Text(
-                          (currentJob['avatar'] ?? 'TP').toString(),
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-=======
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(14),
                         child: currentJobProfileImageUrl.isNotEmpty
@@ -1601,7 +1383,6 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                                   ),
                                 ),
                               ),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -1753,12 +1534,9 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildPerformanceSection() {
-<<<<<<< HEAD
-=======
     final customerSatisfaction = _reviewCount > 0
         ? _averageRating.clamp(0.0, 5.0)
         : 0.0;
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1802,13 +1580,8 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                 const SizedBox(height: 16),
                 _buildPerformanceRow(
                   'Customer Satisfaction',
-<<<<<<< HEAD
-                  '4.9/5',
-                  0.98,
-=======
                   '${customerSatisfaction.toStringAsFixed(1)}/5',
                   customerSatisfaction / 5,
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                   _warningYellow,
                 ),
                 const SizedBox(height: 16),

@@ -8,10 +8,6 @@ import 'chat_screen.dart';
 /// Displays a chat list UI similar to Messenger with conversations.
 class MessagesScreen extends StatefulWidget {
   final String? initialTradespersonName;
-<<<<<<< HEAD
-  final String? initialTradespersonUserId;
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   final String? initialTrade;
   final String? initialAvatar;
   final bool autoOpenChat;
@@ -20,10 +16,6 @@ class MessagesScreen extends StatefulWidget {
   const MessagesScreen({
     super.key,
     this.initialTradespersonName,
-<<<<<<< HEAD
-    this.initialTradespersonUserId,
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     this.initialTrade,
     this.initialAvatar,
     this.autoOpenChat = false,
@@ -44,27 +36,16 @@ class _MessagesScreenState extends State<MessagesScreen> {
   static const Color _cardWhite = Color(0xFFFFFFFF);
   static const Color _successGreen = Color(0xFF10B981);
 
-<<<<<<< HEAD
-  List<Map<String, dynamic>> _conversations = [];
-=======
   late List<Map<String, dynamic>> _conversations;
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   bool _hasAutoOpenedChat = false;
   bool _isLoading = true;
-<<<<<<< HEAD
-  String? _token;
-=======
   String? _loadError;
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
   @override
   void initState() {
     super.initState();
-<<<<<<< HEAD
-    _loadConversations();
-=======
     _conversations = [];
     _loadConversations();
 
@@ -74,7 +55,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
         _openChatForInitialTradesperson();
       });
     }
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   }
 
   @override
@@ -95,19 +75,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
     final normalized = name.trim().toLowerCase();
     if (normalized.isEmpty) return null;
 
-<<<<<<< HEAD
-    final requestedUserId = (widget.initialTradespersonUserId ?? '').trim();
-
     for (final conversation in _conversations) {
-      final conversationUserId = (conversation['counterpartUserId'] ?? '')
-          .toString()
-          .trim();
-      if (requestedUserId.isNotEmpty && requestedUserId == conversationUserId) {
-        return conversation;
-      }
-=======
-    for (final conversation in _conversations) {
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
       final conversationName = (conversation['name'] ?? '')
           .toString()
           .trim()
@@ -117,8 +85,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
     return null;
   }
 
-<<<<<<< HEAD
-=======
   Map<String, dynamic> _buildBookingConversation() {
     final name = (widget.initialTradespersonName ?? '').trim();
     final avatar = (widget.initialAvatar ?? '').trim();
@@ -239,41 +205,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
     return raw == '1' || raw == 'true' || raw == 'yes';
   }
 
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   Future<void> _openChatForInitialTradesperson() async {
     final name = (widget.initialTradespersonName ?? '').trim();
     if (name.isEmpty) return;
 
-<<<<<<< HEAD
-    Map<String, dynamic>? targetConversation = _findConversationByTradesperson(
-      name,
-    );
-
-    if (targetConversation == null) {
-      final counterpartUserId = (widget.initialTradespersonUserId ?? '').trim();
-      if (_token == null || _token!.isEmpty || counterpartUserId.isEmpty) {
-        return;
-      }
-
-      try {
-        final result = await ApiService.ensureConversation(
-          token: _token!,
-          counterpartUserId: counterpartUserId,
-        );
-        final conversation = _mapConversation(
-          (result['conversation'] as Map?)?.cast<String, dynamic>() ??
-              <String, dynamic>{},
-          fallbackName: name,
-          fallbackAvatar: widget.initialAvatar,
-          fallbackSubtitle: widget.initialTrade,
-        );
-        if (!mounted) return;
-        _upsertConversationToTop(conversation);
-        targetConversation = conversation;
-      } catch (_) {
-        return;
-      }
-=======
     final targetConversation =
         _findConversationByTradesperson(name) ?? _buildBookingConversation();
 
@@ -285,7 +220,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
       setState(() {
         _conversations.insert(0, targetConversation);
       });
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
     }
 
     _hasAutoOpenedChat = true;
@@ -374,104 +308,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
     }).toList();
   }
 
-<<<<<<< HEAD
-  Future<void> _loadConversations() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token')?.trim();
-    if (token == null || token.isEmpty) {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
-      return;
-    }
-
-    try {
-      final result = await ApiService.getConversations(token);
-      final rows = (result['conversations'] as List? ?? const <dynamic>[])
-          .whereType<Map>()
-          .map((row) => _mapConversation(row.cast<String, dynamic>()))
-          .toList();
-
-      if (!mounted) return;
-      setState(() {
-        _token = token;
-        _conversations = rows;
-        _isLoading = false;
-      });
-
-      if (widget.autoOpenChat && !_hasAutoOpenedChat) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted || _hasAutoOpenedChat) return;
-          _openChatForInitialTradesperson();
-        });
-      }
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _token = token;
-        _isLoading = false;
-      });
-    }
-  }
-
-  Map<String, dynamic> _mapConversation(
-    Map<String, dynamic> row, {
-    String? fallbackName,
-    String? fallbackAvatar,
-    String? fallbackSubtitle,
-  }) {
-    final name = (row['name'] ?? fallbackName ?? 'Conversation').toString();
-    final avatar = (row['avatar'] ?? fallbackAvatar ?? _initialsFromName(name))
-        .toString();
-    final trade = (row['trade'] ?? fallbackSubtitle ?? 'Tradesperson')
-        .toString();
-
-    return {
-      'id': (row['id'] ?? '').toString(),
-      'counterpartUserId': (row['counterpart_user_id'] ?? '').toString(),
-      'name': name,
-      'avatar': avatar,
-      'lastMessage': (row['last_message'] ?? '').toString(),
-      'time': _formatConversationTime((row['last_message_at'] ?? '').toString()),
-      'unreadCount': (row['unread_count'] as num?)?.toInt() ?? 0,
-      'isOnline': row['is_online'] == true,
-      'trade': trade,
-    };
-  }
-
-  String _formatConversationTime(String isoText) {
-    final parsed = DateTime.tryParse(isoText);
-    if (parsed == null) return '';
-    final local = parsed.toLocal();
-    final now = DateTime.now();
-    final isSameDay =
-        local.year == now.year &&
-        local.month == now.month &&
-        local.day == now.day;
-    if (isSameDay) {
-      final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
-      final minute = local.minute.toString().padLeft(2, '0');
-      final period = local.hour >= 12 ? 'PM' : 'AM';
-      return '$hour:$minute $period';
-    }
-    return '${local.month}/${local.day}';
-  }
-
-  String _initialsFromName(String name) {
-    final parts = name
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .toList();
-    if (parts.isEmpty) return 'TP';
-    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
-        .toUpperCase();
-  }
-
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   @override
   void dispose() {
     _searchController.dispose();
@@ -493,44 +329,13 @@ class _MessagesScreenState extends State<MessagesScreen> {
             _buildSearchBar(),
 
             // ── Messages List ───────────────────────────────────────
-<<<<<<< HEAD
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _filteredConversations.isEmpty
-                  ? Center(
-                      child: Text(
-                        'No conversations yet.',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: _textMuted.withValues(alpha: 0.85),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    )
-                  : ListView.builder(
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(0, 8, 0, 100),
-                      itemCount: _filteredConversations.length,
-                      itemBuilder: (context, index) {
-                        return _buildMessageTile(
-                          context,
-                          _filteredConversations[index],
-                        );
-                      },
-                    ),
-            ),
-=======
             Expanded(child: _buildConversationListBody()),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
           ],
         ),
       ),
     );
   }
 
-<<<<<<< HEAD
-=======
   Widget _buildConversationListBody() {
     if (_isLoading) {
       return const Center(
@@ -594,7 +399,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
     );
   }
 
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
   Widget _buildAppBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
@@ -699,13 +503,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
     BuildContext context,
     Map<String, dynamic> conversation,
   ) {
-<<<<<<< HEAD
-    final hasUnread = (conversation['unreadCount'] as int) > 0;
-    final isOnline = conversation['isOnline'] as bool;
-=======
     final hasUnread = _asInt(conversation['unreadCount']) > 0;
     final isOnline = _asBool(conversation['isOnline']);
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 
     return Material(
       color: hasUnread
@@ -735,11 +534,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                     ),
                     child: Center(
                       child: Text(
-<<<<<<< HEAD
-                        conversation['avatar'] as String,
-=======
                         (conversation['avatar'] ?? 'TP').toString(),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
@@ -775,11 +570,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                       children: [
                         Expanded(
                           child: Text(
-<<<<<<< HEAD
-                            conversation['name'] as String,
-=======
                             (conversation['name'] ?? 'Conversation').toString(),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: hasUnread
@@ -792,11 +583,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                           ),
                         ),
                         Text(
-<<<<<<< HEAD
-                          conversation['time'] as String,
-=======
                           (conversation['time'] ?? '').toString(),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: hasUnread
@@ -812,11 +599,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                       children: [
                         Expanded(
                           child: Text(
-<<<<<<< HEAD
-                            conversation['lastMessage'] as String,
-=======
                             (conversation['lastMessage'] ?? '').toString(),
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: hasUnread

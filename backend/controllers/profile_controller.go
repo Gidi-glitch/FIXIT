@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"fixit-backend/config"
 	"fixit-backend/middleware"
@@ -13,12 +14,18 @@ import (
 	"fixit-backend/services"
 
 	"github.com/golang-jwt/jwt/v5"
-<<<<<<< HEAD
 	"golang.org/x/crypto/bcrypt"
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 	"gorm.io/gorm"
 )
+
+type updateProfileNameRequest struct {
+	FullName string `json:"full_name"`
+}
+
+type updateProfileEmailRequest struct {
+	Email           string `json:"email"`
+	CurrentPassword string `json:"current_password"`
+}
 
 type updateMyProfileRequest struct {
 	FirstName *string `json:"first_name"`
@@ -30,23 +37,6 @@ type updateMyProfileRequest struct {
 	Barangay  *string `json:"barangay"`
 }
 
-<<<<<<< HEAD
-type updateMyNameRequest struct {
-	FullName string `json:"full_name"`
-}
-
-type updateMyEmailRequest struct {
-	Email           string `json:"email"`
-	CurrentPassword string `json:"current_password"`
-}
-
-type updateMyPasswordRequest struct {
-	CurrentPassword string `json:"current_password"`
-	NewPassword     string `json:"new_password"`
-}
-
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 func ProfileMe(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -59,7 +49,7 @@ func ProfileMe(w http.ResponseWriter, r *http.Request) {
 }
 
 func buildPublicFileURL(r *http.Request, filePath string) string {
-	trimmed := strings.TrimPrefix(filepath.ToSlash(filePath), "uploads/")
+	trimmed := publicUploadRelativePath(filePath)
 	if trimmed == "" {
 		return ""
 	}
@@ -73,6 +63,78 @@ func buildPublicFileURL(r *http.Request, filePath string) string {
 	}
 
 	return scheme + "://" + r.Host + "/uploads/" + trimmed
+}
+
+func adminDisplayNameFromEmail(email string) string {
+	local := strings.TrimSpace(strings.Split(email, "@")[0])
+	if local == "" {
+		return "Admin User"
+	}
+
+	parts := strings.FieldsFunc(local, func(r rune) bool {
+		return r == '.' || r == '_' || r == '-'
+	})
+	if len(parts) == 0 {
+		return "Admin User"
+	}
+
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		parts[i] = strings.ToUpper(part[:1]) + strings.ToLower(part[1:])
+	}
+
+	return strings.TrimSpace(strings.Join(parts, " "))
+}
+
+func getCurrentUserFromRequest(r *http.Request) (models.User, bool) {
+	claims, ok := r.Context().Value(middleware.UserContextKey).(jwt.MapClaims)
+	if !ok {
+		return models.User{}, false
+	}
+
+	userID, ok := claims["user_id"].(float64)
+	if !ok {
+		return models.User{}, false
+	}
+
+	var user models.User
+	if err := config.DB.First(&user, uint(userID)).Error; err != nil {
+		return models.User{}, false
+	}
+
+	return user, true
+}
+
+func getOrCreateAdminProfile(user models.User) (models.AdminProfile, error) {
+	var profile models.AdminProfile
+	if err := config.DB.Where("user_id = ?", user.ID).First(&profile).Error; err == nil {
+		return profile, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return models.AdminProfile{}, err
+	}
+
+	profile = models.AdminProfile{
+		UserID:   user.ID,
+		FullName: adminDisplayNameFromEmail(user.Email),
+	}
+	if err := config.DB.Create(&profile).Error; err != nil {
+		return models.AdminProfile{}, err
+	}
+
+	return profile, nil
+}
+
+func splitFullName(fullName string) (string, string) {
+	parts := strings.Fields(strings.TrimSpace(fullName))
+	if len(parts) == 0 {
+		return "", ""
+	}
+	if len(parts) == 1 {
+		return parts[0], ""
+	}
+	return parts[0], strings.Join(parts[1:], " ")
 }
 
 func getUserProfileDetails(userID uint, role string) (string, string, string, string, string) {
@@ -125,10 +187,6 @@ func GetMyProfile(w http.ResponseWriter, r *http.Request) {
 		"user": map[string]any{
 			"id":                user.ID,
 			"email":             user.Email,
-<<<<<<< HEAD
-			"full_name":         buildDisplayName(user.FullName, firstName, lastName, user.Email),
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 			"role":              user.Role,
 			"is_active":         user.IsActive,
 			"first_name":        firstName,
@@ -137,12 +195,29 @@ func GetMyProfile(w http.ResponseWriter, r *http.Request) {
 			"gender":            gender,
 			"barangay":          barangay,
 			"profile_image_url": profileImageURL,
-<<<<<<< HEAD
-			"updated_at":        user.UpdatedAt,
-=======
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 		},
 		"documents": documents,
+	}
+
+	if user.Role == "admin" {
+		adminProfile, err := getOrCreateAdminProfile(user)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load admin profile")
+			return
+		}
+
+		response["user"] = map[string]any{
+			"id":                user.ID,
+			"email":             user.Email,
+			"role":              user.Role,
+			"is_active":         user.IsActive,
+			"full_name":         adminProfile.FullName,
+			"updated_at":        adminProfile.UpdatedAt,
+			"profile_image_url": profileImageURL,
+		}
+		response["profile"] = adminProfile
+		writeJSON(w, http.StatusOK, response)
+		return
 	}
 
 	if user.Role == "homeowner" {
@@ -158,6 +233,198 @@ func GetMyProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, response)
+}
+
+func UpdateMyProfileName(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	user, ok := getCurrentUserFromRequest(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req updateProfileNameRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	fullName := strings.TrimSpace(req.FullName)
+	if fullName == "" {
+		writeError(w, http.StatusBadRequest, "full_name cannot be empty")
+		return
+	}
+
+	now := time.Now()
+	switch user.Role {
+	case "admin":
+		profile, err := getOrCreateAdminProfile(user)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to update admin profile")
+			return
+		}
+
+		if err := config.DB.Model(&profile).Updates(map[string]any{
+			"full_name":  fullName,
+			"updated_at": now,
+		}).Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to update admin profile")
+			return
+		}
+		recordActivity(nil, "Admin profile updated", "Updated admin display name", "admin_updated")
+
+	case "homeowner":
+		var profile models.HomeownerProfile
+		if err := config.DB.Where("user_id = ?", user.ID).First(&profile).Error; err != nil {
+			writeError(w, http.StatusNotFound, "homeowner profile not found")
+			return
+		}
+
+		firstName, lastName := splitFullName(fullName)
+		updates := map[string]any{
+			"first_name": firstName,
+			"last_name":  lastName,
+			"updated_at": now,
+		}
+		if err := config.DB.Model(&profile).Updates(updates).Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to update homeowner profile")
+			return
+		}
+		recordActivity(nil, "Homeowner profile updated", "Updated profile name", "profile_updated")
+
+	case "tradesperson":
+		var profile models.TradespersonProfile
+		if err := config.DB.Where("user_id = ?", user.ID).First(&profile).Error; err != nil {
+			writeError(w, http.StatusNotFound, "tradesperson profile not found")
+			return
+		}
+
+		firstName, lastName := splitFullName(fullName)
+		updates := map[string]any{
+			"first_name": firstName,
+			"last_name":  lastName,
+			"updated_at": now,
+		}
+		if err := config.DB.Model(&profile).Updates(updates).Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to update tradesperson profile")
+			return
+		}
+		recordActivity(nil, "Tradesperson profile updated", "Updated profile name", "profile_updated")
+
+	default:
+		writeError(w, http.StatusBadRequest, "unsupported user role")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "profile name updated successfully"})
+}
+
+func UpdateMyProfileEmail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	user, ok := getCurrentUserFromRequest(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req updateProfileEmailRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	email := normalizeEmail(req.Email)
+	currentPassword := strings.TrimSpace(req.CurrentPassword)
+	if email == "" || currentPassword == "" {
+		writeError(w, http.StatusBadRequest, "email and current_password are required")
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword)); err != nil {
+		writeError(w, http.StatusUnauthorized, "current password is incorrect")
+		return
+	}
+
+	var existing models.User
+	if err := config.DB.Where("email = ? AND id <> ?", email, user.ID).First(&existing).Error; err == nil {
+		writeError(w, http.StatusConflict, "email is already in use")
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		writeError(w, http.StatusInternalServerError, "failed to validate email")
+		return
+	}
+
+	if err := config.DB.Model(&user).Update("email", email).Error; err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update email")
+		return
+	}
+	recordActivity(nil, "Account email updated", email, "admin_updated")
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "email updated successfully"})
+}
+
+func UpdateMyPassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch && r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	user, ok := getCurrentUserFromRequest(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req changePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	currentPassword := strings.TrimSpace(req.CurrentPassword)
+	newPassword := strings.TrimSpace(req.NewPassword)
+
+	if currentPassword == "" || newPassword == "" {
+		writeError(w, http.StatusBadRequest, "current_password and new_password are required")
+		return
+	}
+
+	if len(newPassword) < 8 {
+		writeError(w, http.StatusBadRequest, "new_password must be at least 8 characters")
+		return
+	}
+
+	if currentPassword == newPassword {
+		writeError(w, http.StatusBadRequest, "new_password must be different from current_password")
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword)); err != nil {
+		writeError(w, http.StatusUnauthorized, "current password is incorrect")
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to hash password")
+		return
+	}
+
+	if err := config.DB.Model(&user).Update("password_hash", string(hashedPassword)).Error; err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update password")
+		return
+	}
+	recordActivity(nil, "Password updated", "Changed account password", "admin_updated")
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "password updated successfully"})
 }
 
 func UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
@@ -314,9 +581,6 @@ func UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusBadRequest, "barangay cannot be empty")
 				return
 			}
-<<<<<<< HEAD
-			updates["service_barangay"] = barangay
-=======
 
 			serviceAreas := syncServiceAreasWithNewHomeBarangay(
 				profile.ServiceAreas,
@@ -332,7 +596,6 @@ func UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
 
 			updates["service_barangay"] = barangay
 			updates["service_areas"] = string(encodedAreas)
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 		}
 		if req.Bio != nil {
 			updates["bio"] = strings.TrimSpace(*req.Bio)
@@ -348,6 +611,37 @@ func UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+	case "admin":
+		if req.Email != nil {
+			email := normalizeEmail(*req.Email)
+			if email == "" {
+				writeError(w, http.StatusBadRequest, "email cannot be empty")
+				return
+			}
+
+			var existing models.User
+			err := config.DB.Where("email = ? AND id <> ?", email, user.ID).First(&existing).Error
+			if err == nil {
+				writeError(w, http.StatusConflict, "email is already in use")
+				return
+			}
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				writeError(w, http.StatusInternalServerError, "failed to validate email")
+				return
+			}
+
+			if user.Email != email {
+				userUpdates["email"] = email
+			}
+		}
+
+		if len(userUpdates) > 0 {
+			if err := config.DB.Model(&user).Updates(userUpdates).Error; err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to update user")
+				return
+			}
+		}
+
 	default:
 		writeError(w, http.StatusBadRequest, "unsupported user role")
 		return
@@ -356,196 +650,6 @@ func UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
 	GetMyProfile(w, r)
 }
 
-<<<<<<< HEAD
-func UpdateMyName(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPatch {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	user, ok := getAuthenticatedUser(w, r)
-	if !ok {
-		return
-	}
-
-	var req updateMyNameRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	fullName := strings.TrimSpace(req.FullName)
-	if fullName == "" {
-		writeError(w, http.StatusBadRequest, "full_name is required")
-		return
-	}
-
-	if err := config.DB.Model(&user).Update("full_name", fullName).Error; err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update name")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{
-		"message": "name updated successfully",
-	})
-}
-
-func UpdateMyEmail(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPatch {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	user, ok := getAuthenticatedUser(w, r)
-	if !ok {
-		return
-	}
-
-	var req updateMyEmailRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	email := normalizeEmail(req.Email)
-	currentPassword := strings.TrimSpace(req.CurrentPassword)
-	if email == "" || currentPassword == "" {
-		writeError(w, http.StatusBadRequest, "email and current_password are required")
-		return
-	}
-
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword)); err != nil {
-		writeError(w, http.StatusUnauthorized, "current password is incorrect")
-		return
-	}
-
-	var existing models.User
-	err := config.DB.Where("email = ? AND id <> ?", email, user.ID).First(&existing).Error
-	if err == nil {
-		writeError(w, http.StatusConflict, "email is already in use")
-		return
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		writeError(w, http.StatusInternalServerError, "failed to validate email")
-		return
-	}
-
-	if err := config.DB.Model(&user).Update("email", email).Error; err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update email")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{
-		"message": "email updated successfully",
-	})
-}
-
-func UpdateMyPassword(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPatch {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	user, ok := getAuthenticatedUser(w, r)
-	if !ok {
-		return
-	}
-
-	var req updateMyPasswordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	currentPassword := strings.TrimSpace(req.CurrentPassword)
-	newPassword := strings.TrimSpace(req.NewPassword)
-	if currentPassword == "" || newPassword == "" {
-		writeError(w, http.StatusBadRequest, "current_password and new_password are required")
-		return
-	}
-	if len(newPassword) < 8 {
-		writeError(w, http.StatusBadRequest, "new_password must be at least 8 characters")
-		return
-	}
-	if currentPassword == newPassword {
-		writeError(w, http.StatusBadRequest, "new_password must be different from current_password")
-		return
-	}
-
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword)); err != nil {
-		writeError(w, http.StatusUnauthorized, "current password is incorrect")
-		return
-	}
-
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to hash password")
-		return
-	}
-
-	if err := config.DB.Model(&user).Update("password_hash", string(hashedPassword)).Error; err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update password")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{
-		"message": "password updated successfully",
-	})
-}
-
-func getAuthenticatedUser(w http.ResponseWriter, r *http.Request) (models.User, bool) {
-	claims, ok := r.Context().Value(middleware.UserContextKey).(jwt.MapClaims)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
-		return models.User{}, false
-	}
-
-	userID, ok := claims["user_id"].(float64)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "invalid token claims")
-		return models.User{}, false
-	}
-
-	var user models.User
-	if err := config.DB.First(&user, uint(userID)).Error; err != nil {
-		writeError(w, http.StatusNotFound, "user not found")
-		return models.User{}, false
-	}
-
-	return user, true
-}
-
-func buildDisplayName(fullName, firstName, lastName, email string) string {
-	if trimmed := strings.TrimSpace(fullName); trimmed != "" {
-		return trimmed
-	}
-
-	name := strings.TrimSpace(strings.TrimSpace(firstName) + " " + strings.TrimSpace(lastName))
-	if name != "" {
-		return name
-	}
-
-	local := strings.TrimSpace(strings.Split(email, "@")[0])
-	if local == "" {
-		return "User"
-	}
-
-	parts := strings.FieldsFunc(local, func(r rune) bool {
-		return r == '.' || r == '_' || r == '-'
-	})
-	if len(parts) == 0 {
-		return strings.Title(local)
-	}
-
-	for i, part := range parts {
-		if part == "" {
-			continue
-		}
-		parts[i] = strings.ToUpper(part[:1]) + strings.ToLower(part[1:])
-	}
-
-	return strings.Join(parts, " ")
-=======
 func syncServiceAreasWithNewHomeBarangay(
 	rawServiceAreas string,
 	previousBarangay string,
@@ -589,7 +693,6 @@ func syncServiceAreasWithNewHomeBarangay(
 	}
 
 	return cleanUniqueStrings(serviceAreas)
->>>>>>> f0d4a22e6fea9d12bc1190946d9e81ce85a01ebe
 }
 
 func UploadProfilePhoto(w http.ResponseWriter, r *http.Request) {

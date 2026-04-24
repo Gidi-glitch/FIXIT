@@ -414,7 +414,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           Switch.adaptive(
             value: _pushAll,
             onChanged: _toggleMaster,
-            activeColor: _primaryBlue,
+            activeThumbColor: _primaryBlue,
           ),
         ],
       ),
@@ -549,7 +549,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           Switch.adaptive(
             value: disabled ? false : item.value,
             onChanged: disabled ? null : item.onChanged,
-            activeColor: _successGreen,
+            activeThumbColor: _successGreen,
           ),
         ],
       ),
