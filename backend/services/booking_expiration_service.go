@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"fixit-backend/config"
@@ -46,11 +47,128 @@ func ComputeExpirationTime(createdAt time.Time, preferredDate string, preferredT
 }
 
 // ParseScheduledTime combines the preferred date and time strings into a single time.Time
-// Expects date in YYYY-MM-DD format and time in HH:MM format
+// Expects date in YYYY-MM-DD format (also accepts Today/Tomorrow or month names)
+// and time in 24-hour or 12-hour formats (HH:MM, HH:MM:SS, 3:04 PM).
 func ParseScheduledTime(dateStr, timeStr string) (time.Time, error) {
-	layout := "2006-01-02 15:04:05"
-	dateTimeStr := fmt.Sprintf("%s %s", dateStr, timeStr)
-	return time.ParseInLocation(layout, dateTimeStr, time.Local)
+	dateStr = strings.TrimSpace(dateStr)
+	timeStr = strings.TrimSpace(timeStr)
+	if dateStr == "" || timeStr == "" {
+		return time.Time{}, fmt.Errorf("date or time is empty")
+	}
+
+	dateOnly, err := parseDateOnly(dateStr)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	hour, minute, second, nsec, err := parseTimeOnly(timeStr)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	return time.Date(
+		dateOnly.Year(),
+		dateOnly.Month(),
+		dateOnly.Day(),
+		hour,
+		minute,
+		second,
+		nsec,
+		time.Local,
+	), nil
+}
+
+func parseDateOnly(dateStr string) (time.Time, error) {
+	trimmed := strings.TrimSpace(dateStr)
+	if trimmed == "" {
+		return time.Time{}, fmt.Errorf("date is empty")
+	}
+
+	now := time.Now().In(time.Local)
+	dateLower := strings.ToLower(trimmed)
+	if dateLower == "today" {
+		return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local), nil
+	}
+	if dateLower == "tomorrow" {
+		tomorrow := now.AddDate(0, 0, 1)
+		return time.Date(tomorrow.Year(), tomorrow.Month(), tomorrow.Day(), 0, 0, 0, 0, time.Local), nil
+	}
+
+	// Full dates with year
+	dateLayouts := []string{
+		"2006-01-02",
+		"2006-1-2",
+		"2006/01/02",
+		"2006/1/2",
+		"01/02/2006",
+		"1/2/2006",
+		"02/01/2006",
+		"2/1/2006",
+		"Jan 2 2006",
+		"January 2 2006",
+		"Jan 2, 2006",
+		"January 2, 2006",
+	}
+	for _, layout := range dateLayouts {
+		if parsed, err := time.ParseInLocation(layout, trimmed, time.Local); err == nil {
+			return time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 0, 0, 0, 0, time.Local), nil
+		}
+	}
+
+	// Dates without year (assume current year)
+	dateLayoutsNoYear := []string{
+		"Jan 2",
+		"January 2",
+		"Jan 02",
+		"January 02",
+		"02 Jan",
+		"02 January",
+	}
+	for _, layout := range dateLayoutsNoYear {
+		if parsed, err := time.ParseInLocation(layout, trimmed, time.Local); err == nil {
+			return time.Date(now.Year(), parsed.Month(), parsed.Day(), 0, 0, 0, 0, time.Local), nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("invalid date format")
+}
+
+func parseTimeOnly(timeStr string) (int, int, int, int, error) {
+	trimmed := strings.TrimSpace(timeStr)
+	if trimmed == "" {
+		return 0, 0, 0, 0, fmt.Errorf("time is empty")
+	}
+
+	layouts := []string{
+		"15:04:05",
+		"15:04",
+		"15:04:05.000",
+		"15:04:05.000Z07:00",
+		"15:04:05Z07:00",
+		"15:04Z07:00",
+		"3:04 PM",
+		"03:04 PM",
+		"3 PM",
+		"03 PM",
+		"3:04PM",
+		"03:04PM",
+		"3PM",
+		"03PM",
+	}
+
+	candidates := []string{trimmed, strings.ToUpper(trimmed)}
+	var parseErr error
+	for _, candidate := range candidates {
+		for _, layout := range layouts {
+			if parsed, err := time.Parse(layout, candidate); err == nil {
+				return parsed.Hour(), parsed.Minute(), parsed.Second(), parsed.Nanosecond(), nil
+			} else {
+				parseErr = err
+			}
+		}
+	}
+
+	return 0, 0, 0, 0, parseErr
 }
 
 // parseScheduledTime combines the preferred date and time strings into a single time.Time

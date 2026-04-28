@@ -93,14 +93,21 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     super.initState();
     _serviceOptions = _extractServiceOptions();
     _loadAddressOptions();
+    _budgetController.addListener(_onBudgetChanged);
   }
 
   @override
   void dispose() {
+    _budgetController.removeListener(_onBudgetChanged);
     _descriptionController.dispose();
     _addressController.dispose();
     _budgetController.dispose();
     super.dispose();
+  }
+
+  void _onBudgetChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   // ── Helpers ─────────────────────────────────────────────────────
@@ -203,6 +210,18 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     final minute = time.minute.toString().padLeft(2, '0');
     final period = time.period == DayPeriod.am ? 'AM' : 'PM';
     return '$hour:$minute $period';
+  }
+
+  /// Format date for API submission (YYYY-MM-DD format)
+  String _formatDateForAPI(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  /// Format time for API submission (HH:MM:SS format in 24-hour)
+  String _formatTimeForAPI(TimeOfDay time) {
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute:00';
   }
 
   /// Validates that the selected schedule is at least 40 minutes in the future
@@ -472,8 +491,8 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         'specialization': _selectedServices.join(', '),
         'problem_description': _descriptionController.text.trim(),
         'address': _addressController.text.trim(),
-        'date': _formatDate(_selectedDate!),
-        'time': _formatTime(_selectedTime!),
+        'date': _formatDateForAPI(_selectedDate!),
+        'time': _formatTimeForAPI(_selectedTime!),
         'offered_budget': double.tryParse(_budgetController.text.trim()) ?? 0,
       };
 
@@ -1226,6 +1245,9 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   }
 
   Widget _buildBudgetField() {
+    final hasValue = _budgetController.text.trim().isNotEmpty;
+    final iconColor =
+        hasValue ? _successGreen : _textMuted.withValues(alpha: 0.5);
     return TextFormField(
       controller: _budgetController,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -1239,7 +1261,22 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
       ),
       decoration: _inputDecoration(
         hint: '0.00',
-        prefixIcon: Icons.attach_money_rounded,
+        prefixIconWidget: Padding(
+          padding: EdgeInsets.only(left: 16, right: 8),
+          child: SizedBox(
+            width: 20,
+            child: Center(
+              child: Text(
+                '₱',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: iconColor,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
       validator: (val) {
         if (val == null || val.trim().isEmpty) {
@@ -1309,6 +1346,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   InputDecoration _inputDecoration({
     required String hint,
     IconData? prefixIcon,
+    Widget? prefixIconWidget,
   }) {
     return InputDecoration(
       hintText: hint,
@@ -1317,9 +1355,14 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         fontSize: 14,
         fontWeight: FontWeight.w400,
       ),
-      prefixIcon: prefixIcon != null
-          ? Icon(prefixIcon, color: _textMuted.withValues(alpha: 0.5), size: 20)
-          : null,
+      prefixIcon: prefixIconWidget ??
+          (prefixIcon != null
+              ? Icon(
+                  prefixIcon,
+                  color: _textMuted.withValues(alpha: 0.5),
+                  size: 20,
+                )
+              : null),
       filled: true,
       fillColor: _cardWhite,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),

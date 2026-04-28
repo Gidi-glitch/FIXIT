@@ -917,18 +917,7 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
                     size: 20,
                   ),
                 )
-              : Container(
-                  margin: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: _primaryBlue.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.tune_rounded,
-                    color: _primaryBlue,
-                    size: 20,
-                  ),
-                ),
+              : null,
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,

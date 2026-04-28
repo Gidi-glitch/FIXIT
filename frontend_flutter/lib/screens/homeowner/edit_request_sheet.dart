@@ -276,6 +276,18 @@ class _EditRequestSheetState extends State<EditRequestSheet>
     return '$h:$m $p';
   }
 
+  /// Format date for API submission (YYYY-MM-DD format)
+  String _formatDateForAPI(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  /// Format time for API submission (HH:MM:SS format in 24-hour)
+  String _formatTimeForAPI(TimeOfDay time) {
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute:00';
+  }
+
   // ── Pickers ────────────────────────────────────────────────────
 
   Future<void> _pickDate() async {
@@ -359,8 +371,8 @@ class _EditRequestSheetState extends State<EditRequestSheet>
       specialization: _selectedServices.join(', '),
       problemDescription: _descriptionCtrl.text.trim(),
       address: _addressCtrl.text.trim(),
-      date: _formatDate(_selectedDate),
-      time: _formatTime(_selectedTime),
+      date: _formatDateForAPI(_selectedDate),
+      time: _formatTimeForAPI(_selectedTime),
       offeredBudget: budget,
     );
 

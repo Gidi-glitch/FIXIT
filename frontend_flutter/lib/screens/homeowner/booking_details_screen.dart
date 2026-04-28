@@ -1626,10 +1626,15 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
               color: _successGreen.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(
-              Icons.attach_money_rounded,
-              color: _successGreen,
-              size: 22,
+            child: const Center(
+              child: Text(
+                '₱',
+                style: TextStyle(
+                  color: _successGreen,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 14),
