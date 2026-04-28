@@ -648,9 +648,10 @@ class _BookingsScreenState extends State<BookingsScreen>
                     ),
                     const SizedBox(width: 16),
                     _buildDetailItem(
-                      Icons.attach_money_rounded,
+                      Icons.currency_exchange,
                       booking.offeredBudget.toStringAsFixed(0),
                       isCompleted: isCompleted,
+                      usePesoIcon: true,
                     ),
                     const Spacer(),
                     Container(
@@ -713,15 +714,26 @@ class _BookingsScreenState extends State<BookingsScreen>
     IconData icon,
     String text, {
     bool isCompleted = false,
+    bool usePesoIcon = false,
   }) {
+    final iconColor = _textMuted.withValues(alpha: isCompleted ? 0.3 : 0.6);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          icon,
-          size: 15,
-          color: _textMuted.withValues(alpha: isCompleted ? 0.3 : 0.6),
-        ),
+        usePesoIcon
+            ? Text(
+                '₱',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: iconColor,
+                ),
+              )
+            : Icon(
+                icon,
+                size: 15,
+                color: iconColor,
+              ),
         const SizedBox(width: 5),
         Text(
           text,
