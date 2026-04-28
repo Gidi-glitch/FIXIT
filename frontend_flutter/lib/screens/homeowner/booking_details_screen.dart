@@ -596,6 +596,8 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
   int get _currentStepIndex => _statusSteps.indexOf(_currentBooking.status);
   bool get _requiresCompletionConfirmation =>
       _currentBooking.status == 'Completed' && !_currentBooking.isReviewed;
+  bool get _hasCancellationReason =>
+      _currentBooking.cancellationReason.trim().isNotEmpty;
 
   Future<void> _showReviewOverlay() async {
     if (_isShowingReview || _isShowingReportModal || !mounted) return;
@@ -1043,6 +1045,9 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
                   // ── Status Stepper ────────────────────────────────
                   _buildStatusStepper(),
 
+                  // ── Cancellation Notice ───────────────────────────
+                  _buildCancellationNoticeCard(),
+
                   // ── Tradesperson Card ─────────────────────────────
                   _buildTradespersonCard(),
 
@@ -1175,6 +1180,110 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
               );
             }),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCancellationNoticeCard() {
+    if (_currentBooking.status != 'Cancelled') {
+      return const SizedBox.shrink();
+    }
+
+    final reason = _currentBooking.cancellationReason.trim();
+    final hasReason = reason.isNotEmpty;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _errorRed.withValues(alpha: 0.08),
+        border: Border.all(color: _errorRed.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: _errorRed.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.report_off_rounded,
+                  color: _errorRed,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      hasReason ? 'Report Cancelled' : 'Booking Cancelled',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: _textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      hasReason
+                          ? 'Admin cancelled your report, so this booking was cancelled.'
+                          : 'This booking has been cancelled.',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: _textMuted,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (reason.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _errorRed.withValues(alpha: 0.18)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Reason',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: _errorRed,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    reason,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: _textDark,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1757,6 +1866,56 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
                 ],
               ),
             ],
+          ] else if (_currentBooking.status == 'Cancelled') ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
+              decoration: BoxDecoration(
+                color: _errorRed.withValues(alpha: 0.08),
+                border: Border.all(color: _errorRed.withValues(alpha: 0.3)),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.cancel_outlined, color: _errorRed, size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _hasCancellationReason
+                          ? 'This booking was cancelled after admin cancelled your report.'
+                          : 'This booking has been cancelled.',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: _textDark,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () => Navigator.pop(context),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _textMuted,
+                  side: BorderSide(
+                    color: _textMuted.withValues(alpha: 0.35),
+                    width: 1.3,
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  'Back to Bookings',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
           ] else if (_currentBooking.status == 'Under Review' ||
               _currentBooking.status == 'Disputed') ...[
             Container(

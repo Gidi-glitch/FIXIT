@@ -145,6 +145,7 @@ interface ReportEntry {
   reason: string;
   details: string;
   status: "Open" | "Reviewing" | "Resolved";
+  resolutionNote?: string;
   submittedAt: string;
 }
 
@@ -6026,11 +6027,71 @@ export default function DashboardPage() {
             : String(report.status ?? report.Status ?? "Open") === "Reviewing"
               ? "Reviewing"
               : "Open",
+        resolutionNote: String(
+          report.resolution_note ?? report.ResolutionNote ?? "",
+        ),
         submittedAt: report.submitted_at ?? report.SubmittedAt,
       })) as ReportEntry[];
       setReportsData(mapped);
     } catch {
       if (!silent) showToast("Failed to load reports.", "error");
+    }
+  };
+
+  const cancelReport = async (report: ReportEntry) => {
+    if (!authToken) {
+      showToast("Please sign in again.", "error");
+      return;
+    }
+
+    const note = window.prompt(
+      `Reason for cancelling report ${formatReportId(report.id)}:`,
+    );
+    const reason = note?.trim() ?? "";
+    if (!reason) {
+      showToast("Cancellation reason is required.", "error");
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        `${apiBase}/api/admin/reports/${report.id}/cancel`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ note: reason }),
+        },
+      );
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          logoutAndRedirect();
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        const message =
+          typeof data?.error === "string"
+            ? data.error
+            : "Failed to cancel report.";
+        showToast(message, "error");
+        return;
+      }
+
+      closeInfoModal();
+      setReportsData((prev) =>
+        prev.map((item) =>
+          item.id === report.id
+            ? { ...item, status: "Resolved", resolutionNote: reason }
+            : item,
+        ),
+      );
+      loadReports(true);
+      loadRequestAnalyticsBookings(true);
+      showToast("Report cancelled and booking cancelled.", "success");
+    } catch {
+      showToast("Failed to cancel report.", "error");
     }
   };
 
@@ -8480,7 +8541,24 @@ export default function DashboardPage() {
                               value: report.status,
                               highlight: report.status === "Resolved",
                             },
+                            ...(report.resolutionNote
+                              ? [
+                                  {
+                                    label: "Resolution Reason",
+                                    value: report.resolutionNote,
+                                  },
+                                ]
+                              : []),
                           ],
+                          actions:
+                            report.status === "Resolved" ? undefined : (
+                              <Btn
+                                variant="reject"
+                                onClick={() => cancelReport(report)}
+                              >
+                                {icons.x} Cancel Report
+                              </Btn>
+                            ),
                         })
                       }
                     >

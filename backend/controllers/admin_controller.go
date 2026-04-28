@@ -6,9 +6,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"fixit-backend/config"
 	"fixit-backend/models"
+
+	"gorm.io/gorm"
 )
 
 type reviewVerificationRequest struct {
@@ -22,6 +25,11 @@ type activityEntry struct {
 	Title     string
 	Sub       string
 	CreatedAt any
+}
+
+type cancelAdminReportRequest struct {
+	Note   string `json:"note"`
+	Reason string `json:"reason"`
 }
 
 // ListDocuments handles GET /api/admin/documents
@@ -725,20 +733,125 @@ func ListAdminReports(w http.ResponseWriter, r *http.Request) {
 		}
 
 		rows = append(rows, map[string]any{
-			"id":            issue.ID,
-			"target_type":   "Tradesman",
-			"target_name":   buildUserDisplayName(targetUser, targetProfile.FirstName, targetProfile.LastName),
-			"target_email":  targetUser.Email,
-			"reporter_name": buildUserDisplayName(usersByID[issue.HomeownerID], reporterProfile.FirstName, reporterProfile.LastName),
-			"reporter_role": "Homeowner",
-			"reason":        issue.Category,
-			"details":       issue.Details,
-			"status":        status,
-			"submitted_at":  issue.CreatedAt,
+			"id":              issue.ID,
+			"target_type":     "Tradesman",
+			"target_name":     buildUserDisplayName(targetUser, targetProfile.FirstName, targetProfile.LastName),
+			"target_email":    targetUser.Email,
+			"reporter_name":   buildUserDisplayName(usersByID[issue.HomeownerID], reporterProfile.FirstName, reporterProfile.LastName),
+			"reporter_role":   "Homeowner",
+			"reason":          issue.Category,
+			"details":         issue.Details,
+			"status":          status,
+			"resolution_note": issue.ResolutionNote,
+			"submitted_at":    issue.CreatedAt,
 		})
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"reports": rows})
+}
+
+func AdminReportByIDRouter(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) != 5 || parts[0] != "api" || parts[1] != "admin" || parts[2] != "reports" {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	reportID, err := strconv.ParseUint(parts[3], 10, 64)
+	if err != nil || reportID == 0 {
+		writeError(w, http.StatusBadRequest, "invalid report id")
+		return
+	}
+
+	if r.Method != http.MethodPost && r.Method != http.MethodPatch {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	switch parts[4] {
+	case "cancel":
+		var req cancelAdminReportRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		note := strings.TrimSpace(req.Note)
+		if note == "" {
+			note = strings.TrimSpace(req.Reason)
+		}
+
+		if err := cancelAdminReport(uint(reportID), note); err != nil {
+			handleReportMutationError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"message": "report cancelled and booking cancelled"})
+	default:
+		writeError(w, http.StatusNotFound, "not found")
+	}
+}
+
+func cancelAdminReport(reportID uint, note string) error {
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return errConflict("cancellation reason is required")
+	}
+
+	return config.DB.Transaction(func(tx *gorm.DB) error {
+		var issue models.BookingIssue
+		if err := tx.First(&issue, reportID).Error; err != nil {
+			return err
+		}
+
+		if strings.EqualFold(strings.TrimSpace(issue.Status), "resolved") {
+			return errConflict("report is already resolved")
+		}
+
+		now := time.Now()
+		if err := tx.Model(&issue).Updates(map[string]any{
+			"status":          "Resolved",
+			"resolved_at":     &now,
+			"resolution_note": note,
+		}).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Model(&models.Booking{}).
+			Where("id = ?", issue.BookingID).
+			Updates(map[string]any{
+				"status":              "Cancelled",
+				"cancelled_at":        &now,
+				"cancellation_reason": note,
+			}).Error; err != nil {
+			return err
+		}
+
+		notification := models.Notification{
+			UserID:  issue.HomeownerID,
+			Title:   "Report cancelled",
+			Message: "Your report was cancelled by admin. Reason: " + note,
+			Type:    "report_cancelled",
+			IsRead:  false,
+		}
+		return tx.Create(&notification).Error
+	})
+}
+
+func handleReportMutationError(w http.ResponseWriter, err error) {
+	if err == nil {
+		return
+	}
+
+	switch err.(type) {
+	case conflictError:
+		writeError(w, http.StatusConflict, err.Error())
+	default:
+		if strings.Contains(strings.ToLower(err.Error()), "record not found") {
+			writeError(w, http.StatusNotFound, "report not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to update report")
+	}
 }
 
 func applyVerificationStatus(verificationID uint, status string) error {

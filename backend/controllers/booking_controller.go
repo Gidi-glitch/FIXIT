@@ -731,6 +731,8 @@ func buildBookingResponse(
 		"offered_budget":                 booking.OfferedBudget,
 		"offeredBudget":                  booking.OfferedBudget,
 		"status":                         booking.Status,
+		"cancelled_at":                   booking.CancelledAt,
+		"cancellation_reason":            booking.CancellationReason,
 		"created_at":                     booking.CreatedAt,
 		"expiration_time":                expirationTime,
 		"is_reviewed":                    isReviewed,

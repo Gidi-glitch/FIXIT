@@ -14,6 +14,8 @@ class BookingModel {
   final String time;
   final double offeredBudget;
   final String status;
+  final DateTime? cancelledAt;
+  final String cancellationReason;
   final DateTime createdAt;
   final bool isReviewed;
   final double? reviewRating;
@@ -34,6 +36,8 @@ class BookingModel {
     required this.time,
     required this.offeredBudget,
     required this.status,
+    this.cancelledAt,
+    this.cancellationReason = '',
     required this.createdAt,
     this.isReviewed = false,
     this.reviewRating,
@@ -84,6 +88,10 @@ class BookingModel {
       status: _asString(json['status']).isNotEmpty
           ? _asString(json['status'])
           : 'Pending',
+      cancelledAt: _asDateTime(json['cancelled_at']),
+      cancellationReason: _asString(json['cancellation_reason']).isNotEmpty
+          ? _asString(json['cancellation_reason'])
+          : _asString(json['cancellationReason']),
       createdAt: _asDateTime(json['created_at']) ?? DateTime.now(),
       isReviewed: _asBool(json['is_reviewed']) || _asBool(json['isReviewed']),
       reviewRating: _asNullableDouble(json['review_rating']),
@@ -105,6 +113,8 @@ class BookingModel {
     String? time,
     double? offeredBudget,
     String? status,
+    DateTime? cancelledAt,
+    String? cancellationReason,
     DateTime? createdAt,
     bool? isReviewed,
     double? reviewRating,
@@ -126,6 +136,8 @@ class BookingModel {
       time: time ?? this.time,
       offeredBudget: offeredBudget ?? this.offeredBudget,
       status: status ?? this.status,
+      cancelledAt: cancelledAt ?? this.cancelledAt,
+      cancellationReason: cancellationReason ?? this.cancellationReason,
       createdAt: createdAt ?? this.createdAt,
       isReviewed: isReviewed ?? this.isReviewed,
       reviewRating: reviewRating ?? this.reviewRating,
@@ -169,9 +181,9 @@ class BookingStore {
     _bookings
       ..clear()
       ..addAll(
-        rows
-            .whereType<Map>()
-            .map((row) => BookingModel.fromApi(row.cast<String, dynamic>())),
+        rows.whereType<Map>().map(
+          (row) => BookingModel.fromApi(row.cast<String, dynamic>()),
+        ),
       );
     _sortByCreatedAt();
     _notify();

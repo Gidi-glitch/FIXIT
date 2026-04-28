@@ -32,4 +32,5 @@ func RegisterAdminRoutes() {
 	http.Handle("/api/admin/activity", admin(http.HandlerFunc(controllers.ListActivity)))
 	http.Handle("/api/admin/reviews", admin(http.HandlerFunc(controllers.ListAdminReviews)))
 	http.Handle("/api/admin/reports", admin(http.HandlerFunc(controllers.ListAdminReports)))
+	http.Handle("/api/admin/reports/", admin(http.HandlerFunc(controllers.AdminReportByIDRouter)))
 }
