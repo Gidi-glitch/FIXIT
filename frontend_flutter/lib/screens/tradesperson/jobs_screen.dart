@@ -1142,6 +1142,31 @@ class _JobsScreenState extends State<JobsScreen>
                     ],
                   ),
                 ],
+                if (isCancelled && job['cancelledAt'] != null) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.cancel_outlined,
+                        size: 14,
+                        color: _errorRed.withValues(alpha: 0.75),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          'Cancelled: ${job['cancelledAt']}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _errorRed.withValues(alpha: 0.85),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
 
                 // ── Mark as Complete (In Progress) ─────────────────
                 if (isInProgress) ...[

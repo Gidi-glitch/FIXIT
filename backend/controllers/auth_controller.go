@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math/big"
 	"net/http"
@@ -94,6 +95,36 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	if err := config.DB.Where("email = ?", email).First(&user).Error; err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid email or password")
 		return
+	}
+
+	now := time.Now()
+	if !user.IsActive {
+		if user.SuspendedUntil != nil && user.SuspendedUntil.Before(now) {
+			if err := config.DB.Model(&user).Updates(map[string]any{
+				"is_active":         true,
+				"suspended_until":   nil,
+				"suspension_reason": "",
+			}).Error; err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to restore account status")
+				return
+			}
+			user.IsActive = true
+			user.SuspendedUntil = nil
+			user.SuspensionReason = ""
+		} else {
+			message := "account suspended"
+			if user.SuspendedUntil != nil {
+				message = fmt.Sprintf(
+					"account suspended until %s",
+					user.SuspendedUntil.Local().Format("Jan 2, 2006 3:04 PM"),
+				)
+			}
+			if strings.TrimSpace(user.SuspensionReason) != "" {
+				message = message + ". Reason: " + strings.TrimSpace(user.SuspensionReason)
+			}
+			writeError(w, http.StatusForbidden, message)
+			return
+		}
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {

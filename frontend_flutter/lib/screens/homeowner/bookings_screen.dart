@@ -76,6 +76,34 @@ class _BookingsScreenState extends State<BookingsScreen>
     }
   }
 
+  String _formatDateTime(DateTime? value) {
+    if (value == null) return '';
+    const months = <String>[
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final local = value.toLocal();
+    final month = months[local.month - 1];
+    final day = local.day;
+    final year = local.year;
+    final hour12 = local.hour == 0
+        ? 12
+        : (local.hour > 12 ? local.hour - 12 : local.hour);
+    final minute = local.minute.toString().padLeft(2, '0');
+    final period = local.hour >= 12 ? 'PM' : 'AM';
+    return '$month $day, $year · $hour12:$minute $period';
+  }
+
   List<BookingModel> get _filtered {
     final all = BookingStore.all;
     if (_activeFilter == 'All') return all.toList();
@@ -599,6 +627,53 @@ class _BookingsScreenState extends State<BookingsScreen>
                       ),
                   ],
                 ),
+                if (isCompleted && booking.completedAt != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.task_alt_rounded,
+                        size: 14,
+                        color: _successGreen.withValues(alpha: 0.75),
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          'Completed ${_formatDateTime(booking.completedAt)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _successGreen.withValues(alpha: 0.85),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (booking.status == 'Cancelled' &&
+                    booking.cancelledAt != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.cancel_outlined,
+                        size: 14,
+                        color: _errorRed.withValues(alpha: 0.75),
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          'Cancelled ${_formatDateTime(booking.cancelledAt)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _errorRed.withValues(alpha: 0.85),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
 
                 const SizedBox(height: 14),
                 Container(
@@ -729,11 +804,7 @@ class _BookingsScreenState extends State<BookingsScreen>
                   color: iconColor,
                 ),
               )
-            : Icon(
-                icon,
-                size: 15,
-                color: iconColor,
-              ),
+            : Icon(icon, size: 15, color: iconColor),
         const SizedBox(width: 5),
         Text(
           text,

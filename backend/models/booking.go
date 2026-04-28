@@ -21,6 +21,7 @@ type Booking struct {
 
 	Status             string     `json:"status" gorm:"not null;default:Pending"`
 	CancelledAt        *time.Time `json:"cancelled_at"`
+	CompletedAt        *time.Time `json:"completed_at"`
 	CancellationReason string     `json:"cancellation_reason,omitempty" gorm:"default:''"`
 	ExpirationTime     *time.Time `json:"expiration_time,omitempty" gorm:"index"`
 

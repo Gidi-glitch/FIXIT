@@ -15,6 +15,7 @@ class BookingModel {
   final double offeredBudget;
   final String status;
   final DateTime? cancelledAt;
+  final DateTime? completedAt;
   final String cancellationReason;
   final DateTime createdAt;
   final bool isReviewed;
@@ -37,6 +38,7 @@ class BookingModel {
     required this.offeredBudget,
     required this.status,
     this.cancelledAt,
+    this.completedAt,
     this.cancellationReason = '',
     required this.createdAt,
     this.isReviewed = false,
@@ -89,6 +91,7 @@ class BookingModel {
           ? _asString(json['status'])
           : 'Pending',
       cancelledAt: _asDateTime(json['cancelled_at']),
+      completedAt: _asDateTime(json['completed_at']),
       cancellationReason: _asString(json['cancellation_reason']).isNotEmpty
           ? _asString(json['cancellation_reason'])
           : _asString(json['cancellationReason']),
@@ -114,6 +117,7 @@ class BookingModel {
     double? offeredBudget,
     String? status,
     DateTime? cancelledAt,
+    DateTime? completedAt,
     String? cancellationReason,
     DateTime? createdAt,
     bool? isReviewed,
@@ -137,6 +141,7 @@ class BookingModel {
       offeredBudget: offeredBudget ?? this.offeredBudget,
       status: status ?? this.status,
       cancelledAt: cancelledAt ?? this.cancelledAt,
+      completedAt: completedAt ?? this.completedAt,
       cancellationReason: cancellationReason ?? this.cancellationReason,
       createdAt: createdAt ?? this.createdAt,
       isReviewed: isReviewed ?? this.isReviewed,

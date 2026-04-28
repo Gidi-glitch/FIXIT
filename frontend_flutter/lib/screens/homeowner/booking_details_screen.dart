@@ -599,6 +599,34 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
   bool get _hasCancellationReason =>
       _currentBooking.cancellationReason.trim().isNotEmpty;
 
+  String _formatDateTime(DateTime? value) {
+    if (value == null) return '';
+    const months = <String>[
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final local = value.toLocal();
+    final month = months[local.month - 1];
+    final day = local.day;
+    final year = local.year;
+    final hour12 = local.hour == 0
+        ? 12
+        : (local.hour > 12 ? local.hour - 12 : local.hour);
+    final minute = local.minute.toString().padLeft(2, '0');
+    final period = local.hour >= 12 ? 'PM' : 'AM';
+    return '$month $day, $year · $hour12:$minute $period';
+  }
+
   Future<void> _showReviewOverlay() async {
     if (_isShowingReview || _isShowingReportModal || !mounted) return;
 
@@ -1249,6 +1277,17 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
               ),
             ],
           ),
+          if (_currentBooking.cancelledAt != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Cancelled on ${_formatDateTime(_currentBooking.cancelledAt)}',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: _errorRed.withValues(alpha: 0.85),
+              ),
+            ),
+          ],
           if (reason.isNotEmpty) ...[
             const SizedBox(height: 14),
             Container(
@@ -1823,6 +1862,20 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
                 ],
               ),
             ),
+            if (_currentBooking.completedAt != null) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Completed on ${_formatDateTime(_currentBooking.completedAt)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _successGreen.withValues(alpha: 0.85),
+                  ),
+                ),
+              ),
+            ],
             if (!_currentBooking.isReviewed) ...[
               const SizedBox(height: 12),
               Row(
@@ -1899,6 +1952,20 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen>
                 ],
               ),
             ),
+            if (_currentBooking.cancelledAt != null) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Cancelled on ${_formatDateTime(_currentBooking.cancelledAt)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _errorRed.withValues(alpha: 0.85),
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,

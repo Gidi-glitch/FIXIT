@@ -32,6 +32,11 @@ type cancelAdminReportRequest struct {
 	Reason string `json:"reason"`
 }
 
+type revokeAdminReportRequest struct {
+	Reason         string `json:"reason"`
+	SuspensionDays int    `json:"suspension_days"`
+}
+
 // ListDocuments handles GET /api/admin/documents
 // Optional query param: ?status=pending|approved|rejected|archived  (omit to return all)
 func ListDocuments(w http.ResponseWriter, r *http.Request) {
@@ -735,6 +740,7 @@ func ListAdminReports(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, map[string]any{
 			"id":              issue.ID,
 			"target_type":     "Tradesman",
+			"target_user_id":  booking.TradespersonID,
 			"target_name":     buildUserDisplayName(targetUser, targetProfile.FirstName, targetProfile.LastName),
 			"target_email":    targetUser.Email,
 			"reporter_name":   buildUserDisplayName(usersByID[issue.HomeownerID], reporterProfile.FirstName, reporterProfile.LastName),
@@ -786,6 +792,18 @@ func AdminReportByIDRouter(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"message": "report cancelled and booking cancelled"})
+	case "revoke":
+		var req revokeAdminReportRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		if err := revokeUserFromAdminReport(uint(reportID), req.Reason, req.SuspensionDays); err != nil {
+			handleReportMutationError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"message": "reported user revoked"})
 	default:
 		writeError(w, http.StatusNotFound, "not found")
 	}
@@ -834,6 +852,86 @@ func cancelAdminReport(reportID uint, note string) error {
 			IsRead:  false,
 		}
 		return tx.Create(&notification).Error
+	})
+}
+
+func revokeUserFromAdminReport(reportID uint, reason string, suspensionDays int) error {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return errConflict("revocation reason is required")
+	}
+	if suspensionDays <= 0 {
+		return errConflict("suspension days must be greater than zero")
+	}
+	if suspensionDays > 3650 {
+		return errConflict("suspension days is too large")
+	}
+
+	return config.DB.Transaction(func(tx *gorm.DB) error {
+		var issue models.BookingIssue
+		if err := tx.First(&issue, reportID).Error; err != nil {
+			return err
+		}
+
+		var booking models.Booking
+		if err := tx.First(&booking, issue.BookingID).Error; err != nil {
+			return err
+		}
+
+		var reportedUser models.User
+		if err := tx.First(&reportedUser, booking.TradespersonID).Error; err != nil {
+			return err
+		}
+		if !strings.EqualFold(strings.TrimSpace(reportedUser.Role), "tradesperson") {
+			return errConflict("reported user is not a tradesperson")
+		}
+
+		now := time.Now()
+		suspendedUntil := now.Add(time.Duration(suspensionDays) * 24 * time.Hour)
+
+		if err := tx.Model(&reportedUser).Updates(map[string]any{
+			"is_active":         false,
+			"suspended_until":   &suspendedUntil,
+			"suspension_reason": reason,
+		}).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Model(&issue).Updates(map[string]any{
+			"status":          "Resolved",
+			"resolved_at":     &now,
+			"resolution_note": "Report validated. User suspended for " + strconv.Itoa(suspensionDays) + " day(s). Reason: " + reason,
+		}).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Model(&booking).Updates(map[string]any{
+			"status":              "Cancelled",
+			"cancelled_at":        &now,
+			"cancellation_reason": "report_validated: " + reason,
+		}).Error; err != nil {
+			return err
+		}
+
+		homeownerNotification := models.Notification{
+			UserID:  issue.HomeownerID,
+			Title:   "Report validated",
+			Message: "Your report was validated. The reported user was suspended for " + strconv.Itoa(suspensionDays) + " day(s).",
+			Type:    "report_validated",
+			IsRead:  false,
+		}
+		if err := tx.Create(&homeownerNotification).Error; err != nil {
+			return err
+		}
+
+		reportedUserNotification := models.Notification{
+			UserID:  reportedUser.ID,
+			Title:   "Account suspended",
+			Message: "Your account has been suspended for " + strconv.Itoa(suspensionDays) + " day(s). Reason: " + reason,
+			Type:    "account_suspended",
+			IsRead:  false,
+		}
+		return tx.Create(&reportedUserNotification).Error
 	})
 }
 

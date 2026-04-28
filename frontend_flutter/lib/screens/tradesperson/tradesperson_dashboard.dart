@@ -460,6 +460,109 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
     return null;
   }
 
+  Future<String> _readToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token')?.trim() ?? '';
+    if (token.isEmpty) {
+      throw Exception('Session expired. Please log in again.');
+    }
+    return token;
+  }
+
+  Future<void> _acceptDashboardRequest(Map<String, dynamic> request) async {
+    try {
+      final token = await _readToken();
+      final requestId = _asInt(request['bookingId']);
+      if (requestId <= 0) {
+        throw Exception('Invalid request id.');
+      }
+
+      final response = await ApiService.acceptRequest(
+        token: token,
+        requestId: requestId,
+      );
+      final jobRow = (response['job'] as Map?)?.cast<String, dynamic>();
+      TradespersonWorkStore.acceptRequestByApiResult(
+        (request['id'] ?? '').toString(),
+        jobRow,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Request from ${request['homeowner']} accepted!',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: _successGreen,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+      setState(() => _currentNavIndex = 2);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: _errorRed,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    }
+  }
+
+  Future<void> _declineDashboardRequest(Map<String, dynamic> request) async {
+    try {
+      final token = await _readToken();
+      final requestId = _asInt(request['bookingId']);
+      if (requestId <= 0) {
+        throw Exception('Invalid request id.');
+      }
+
+      await ApiService.declineRequest(token: token, requestId: requestId);
+      TradespersonWorkStore.declineRequestById(
+        (request['id'] ?? '').toString(),
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Request declined.',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: _textMuted,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: _errorRed,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    }
+  }
+
   Future<void> _setOnDutyStatus(bool value) async {
     if (_isUpdatingOnDuty || _onDutyNotifier.value == value) return;
 
@@ -469,10 +572,7 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token')?.trim() ?? '';
-      if (token.isEmpty) {
-        throw Exception('Session expired. Please log in again.');
-      }
+      final token = await _readToken();
 
       await ApiService.updateMyOnDutyStatus(token: token, isOnDuty: value);
       await prefs.setBool('on_duty', value);
@@ -1251,25 +1351,7 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                     children: [
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: () {
-                            TradespersonWorkStore.declineRequestById(
-                              request['id'] as String,
-                            );
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: const Text(
-                                  'Request declined.',
-                                  style: TextStyle(fontWeight: FontWeight.w600),
-                                ),
-                                backgroundColor: _textMuted,
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                margin: const EdgeInsets.all(16),
-                              ),
-                            );
-                          },
+                          onPressed: () => _declineDashboardRequest(request),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: _errorRed,
                             side: BorderSide(
@@ -1326,28 +1408,7 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                       const SizedBox(width: 10),
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: () {
-                            TradespersonWorkStore.acceptRequestById(
-                              request['id'] as String,
-                            );
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'Request from ${request['homeowner']} accepted!',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                backgroundColor: _successGreen,
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                margin: const EdgeInsets.all(16),
-                              ),
-                            );
-                            setState(() => _currentNavIndex = 2);
-                          },
+                          onPressed: () => _acceptDashboardRequest(request),
                           icon: const Icon(Icons.check_rounded, size: 18),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _primaryBlue,

@@ -138,6 +138,7 @@ type AnalyticsRange = "today" | "week" | "month";
 interface ReportEntry {
   id: string;
   targetType: "Homeowner" | "Tradesman";
+  targetUserId?: string;
   targetName: string;
   targetEmail: string;
   reporterName: string;
@@ -1557,6 +1558,7 @@ const Modal = ({
   hero,
   rows,
   actions,
+  closeLabel = "Close",
 }: {
   open: boolean;
   onClose: () => void;
@@ -1564,6 +1566,7 @@ const Modal = ({
   hero?: ReactNode;
   rows: { label: string; value: string; highlight?: boolean }[];
   actions?: ReactNode;
+  closeLabel?: string;
 }) => {
   if (!open) return null;
   return (
@@ -1703,7 +1706,7 @@ const Modal = ({
             (e.currentTarget.style.background = "var(--accent)")
           }
         >
-          Close
+          {closeLabel}
         </button>
       </div>
     </div>
@@ -1787,6 +1790,165 @@ const ConfirmModal = ({
           </button>
           <Btn variant="reject" onClick={onConfirm}>
             {confirmLabel}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ReportActionModal = ({
+  open,
+  mode,
+  reportLabel,
+  reason,
+  suspensionDays,
+  submitting,
+  onReasonChange,
+  onSuspensionDaysChange,
+  onSubmit,
+  onClose,
+}: {
+  open: boolean;
+  mode: "cancel" | "revoke";
+  reportLabel: string;
+  reason: string;
+  suspensionDays: string;
+  submitting: boolean;
+  onReasonChange: (value: string) => void;
+  onSuspensionDaysChange: (value: string) => void;
+  onSubmit: () => void;
+  onClose: () => void;
+}) => {
+  if (!open) return null;
+
+  const title = mode === "cancel" ? "Cancel Report" : "Revoke User";
+  const submitLabel = mode === "cancel" ? "Cancel Report" : "Revoke User";
+  const reasonLabel = mode === "cancel" ? "Cancellation Reason" : "Revocation Reason";
+  const reasonPlaceholder =
+    mode === "cancel"
+      ? "Explain why this report is being cancelled."
+      : "Explain why this user is being revoked.";
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "var(--overlay)",
+        backdropFilter: "blur(4px)",
+        zIndex: 230,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface)",
+          borderRadius: 16,
+          padding: 24,
+          width: "100%",
+          maxWidth: 460,
+          boxShadow: "var(--elevated-shadow)",
+          animation: "mIn .3s cubic-bezier(.16,1,.3,1)",
+        }}
+      >
+        <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text)" }}>
+          {title}
+        </div>
+        <div
+          style={{ fontSize: 12, color: "var(--muted)", marginTop: 6, marginBottom: 16 }}
+        >
+          {reportLabel}
+        </div>
+
+        <label
+          style={{
+            display: "block",
+            fontSize: 12,
+            fontWeight: 700,
+            color: "var(--text)",
+            marginBottom: 8,
+          }}
+        >
+          {reasonLabel}
+        </label>
+        <textarea
+          value={reason}
+          onChange={(e) => onReasonChange(e.target.value)}
+          placeholder={reasonPlaceholder}
+          rows={4}
+          style={{
+            width: "100%",
+            padding: "10px 12px",
+            border: "1.5px solid var(--border)",
+            borderRadius: 8,
+            fontFamily: "inherit",
+            fontSize: 13,
+            color: "var(--text)",
+            resize: "vertical",
+            background: "var(--surface)",
+          }}
+        />
+
+        {mode === "revoke" && (
+          <div style={{ marginTop: 14 }}>
+            <label
+              style={{
+                display: "block",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "var(--text)",
+                marginBottom: 8,
+              }}
+            >
+              Suspension Days
+            </label>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={suspensionDays}
+              onChange={(e) => onSuspensionDaysChange(e.target.value)}
+              placeholder="Enter number of days"
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                border: "1.5px solid var(--border)",
+                borderRadius: 8,
+                fontFamily: "inherit",
+                fontSize: 13,
+                color: "var(--text)",
+                background: "var(--surface)",
+              }}
+            />
+          </div>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            style={{
+              padding: "9px 14px",
+              background: "var(--surface-2)",
+              border: "1.5px solid var(--border)",
+              borderRadius: 8,
+              fontFamily: "inherit",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "var(--text)",
+              cursor: "pointer",
+              opacity: submitting ? 0.7 : 1,
+            }}
+          >
+            Cancel
+          </button>
+          <Btn variant="reject" onClick={onSubmit} disabled={submitting}>
+            {submitting ? "Saving..." : submitLabel}
           </Btn>
         </div>
       </div>
@@ -4964,7 +5126,8 @@ export default function DashboardPage() {
     hero?: ReactNode;
     rows: { label: string; value: string; highlight?: boolean }[];
     actions?: ReactNode;
-  }>({ open: false, title: "", rows: [] });
+    closeLabel?: string;
+  }>({ open: false, title: "", rows: [], closeLabel: "Close" });
   const [idModal, setIdModal] = useState<{
     open: boolean;
     title: string;
@@ -4983,6 +5146,21 @@ export default function DashboardPage() {
     message: "",
     confirmLabel: "Confirm",
     onConfirm: () => {},
+  });
+  const [reportAction, setReportAction] = useState<{
+    open: boolean;
+    mode: "cancel" | "revoke";
+    report: ReportEntry | null;
+    reason: string;
+    suspensionDays: string;
+    submitting: boolean;
+  }>({
+    open: false,
+    mode: "cancel",
+    report: null,
+    reason: "",
+    suspensionDays: "",
+    submitting: false,
   });
   const [searchVerification, setSearchVerification] = useState("");
   const [searchTradesmen, setSearchTradesmen] = useState("");
@@ -6007,6 +6185,9 @@ export default function DashboardPage() {
           "Homeowner"
             ? "Homeowner"
             : "Tradesman",
+        targetUserId: String(
+          report.target_user_id ?? report.TargetUserID ?? report.user_id ?? "",
+        ),
         targetName: String(
           report.target_name ?? report.TargetName ?? "Unknown User",
         ),
@@ -6038,33 +6219,68 @@ export default function DashboardPage() {
     }
   };
 
-  const cancelReport = async (report: ReportEntry) => {
+  const openReportAction = (report: ReportEntry, mode: "cancel" | "revoke") => {
+    closeInfoModal();
+    setReportAction({
+      open: true,
+      mode,
+      report,
+      reason: "",
+      suspensionDays: "",
+      submitting: false,
+    });
+  };
+
+  const closeReportAction = () => {
+    setReportAction((prev) =>
+      prev.submitting ? prev : { ...prev, open: false, report: null },
+    );
+  };
+
+  const submitReportAction = async () => {
     if (!authToken) {
       showToast("Please sign in again.", "error");
       return;
     }
 
-    const note = window.prompt(
-      `Reason for cancelling report ${formatReportId(report.id)}:`,
-    );
-    const reason = note?.trim() ?? "";
-    if (!reason) {
-      showToast("Cancellation reason is required.", "error");
+    const report = reportAction.report;
+    if (!report) {
+      showToast("Missing report context.", "error");
       return;
     }
 
+    const reason = reportAction.reason.trim();
+    if (!reason) {
+      showToast("Reason is required.", "error");
+      return;
+    }
+
+    const isRevoke = reportAction.mode === "revoke";
+    const suspensionDays = Number.parseInt(reportAction.suspensionDays, 10);
+    if (isRevoke) {
+      if (!Number.isFinite(suspensionDays) || suspensionDays <= 0) {
+        showToast("Suspension days must be greater than zero.", "error");
+        return;
+      }
+    }
+
+    setReportAction((prev) => ({ ...prev, submitting: true }));
     try {
-      const res = await fetch(
-        `${apiBase}/api/admin/reports/${report.id}/cancel`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ note: reason }),
+      const endpoint = isRevoke
+        ? `${apiBase}/api/admin/reports/${report.id}/revoke`
+        : `${apiBase}/api/admin/reports/${report.id}/cancel`;
+      const payload = isRevoke
+        ? { reason, suspension_days: suspensionDays }
+        : { note: reason };
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify(payload),
+      });
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) {
           logoutAndRedirect();
@@ -6072,14 +6288,24 @@ export default function DashboardPage() {
         }
         const data = await res.json().catch(() => ({}));
         const message =
-          typeof data?.error === "string"
-            ? data.error
-            : "Failed to cancel report.";
+          typeof data?.message === "string"
+            ? data.message
+            : isRevoke
+              ? "Failed to revoke reported user."
+              : "Failed to cancel report.";
         showToast(message, "error");
         return;
       }
 
-      closeInfoModal();
+      setReportAction((prev) => ({
+        ...prev,
+        open: false,
+        report: null,
+        reason: "",
+        suspensionDays: "",
+        submitting: false,
+      }));
+
       setReportsData((prev) =>
         prev.map((item) =>
           item.id === report.id
@@ -6088,10 +6314,23 @@ export default function DashboardPage() {
         ),
       );
       loadReports(true);
+      loadUsers();
       loadRequestAnalyticsBookings(true);
-      showToast("Report cancelled and booking cancelled.", "success");
+      showToast(
+        isRevoke
+          ? "Reported user revoked and report resolved."
+          : "Report cancelled and booking cancelled.",
+        "success",
+      );
     } catch {
-      showToast("Failed to cancel report.", "error");
+      showToast(
+        reportAction.mode === "revoke"
+          ? "Failed to revoke reported user."
+          : "Failed to cancel report.",
+        "error",
+      );
+    } finally {
+      setReportAction((prev) => ({ ...prev, submitting: false }));
     }
   };
 
@@ -8552,13 +8791,22 @@ export default function DashboardPage() {
                           ],
                           actions:
                             report.status === "Resolved" ? undefined : (
-                              <Btn
-                                variant="reject"
-                                onClick={() => cancelReport(report)}
-                              >
-                                {icons.x} Cancel Report
-                              </Btn>
+                              <>
+                                <Btn
+                                  variant="reject"
+                                  onClick={() => openReportAction(report, "cancel")}
+                                >
+                                  {icons.x} Cancel Report
+                                </Btn>
+                                <Btn
+                                  variant="reject"
+                                  onClick={() => openReportAction(report, "revoke")}
+                                >
+                                  {icons.x} Revoke User
+                                </Btn>
+                              </>
                             ),
+                          closeLabel: "Close",
                         })
                       }
                     >
@@ -9239,6 +9487,7 @@ export default function DashboardPage() {
         hero={modal.hero}
         rows={modal.rows}
         actions={modal.actions}
+        closeLabel={modal.closeLabel}
       />
       <ProfileEditorModal
         open={profileEditor.open}
@@ -9267,6 +9516,26 @@ export default function DashboardPage() {
         confirmLabel={confirm.confirmLabel}
         onConfirm={handleConfirm}
         onClose={closeConfirm}
+      />
+      <ReportActionModal
+        open={reportAction.open}
+        mode={reportAction.mode}
+        reportLabel={
+          reportAction.report
+            ? `${reportAction.report.targetName} · ${formatReportId(reportAction.report.id)}`
+            : ""
+        }
+        reason={reportAction.reason}
+        suspensionDays={reportAction.suspensionDays}
+        submitting={reportAction.submitting}
+        onReasonChange={(value) =>
+          setReportAction((prev) => ({ ...prev, reason: value }))
+        }
+        onSuspensionDaysChange={(value) =>
+          setReportAction((prev) => ({ ...prev, suspensionDays: value }))
+        }
+        onSubmit={submitReportAction}
+        onClose={closeReportAction}
       />
       <ImageModal
         open={idModal.open}
