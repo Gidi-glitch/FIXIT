@@ -275,8 +275,6 @@ const monthLabelFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
 });
 const getMonthKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}`;
-const getDateKey = (date: Date) =>
-  `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 const startOfDay = (date: Date) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate());
 const addDays = (date: Date, days: number) =>
@@ -286,12 +284,9 @@ const isSameDay = (left: Date, right: Date) =>
   left.getMonth() === right.getMonth() &&
   left.getDate() === right.getDate();
 
-const formatHourLabel = (hour: number) =>
-  new Intl.DateTimeFormat("en-US", { hour: "numeric" }).format(
-    new Date(2025, 0, 1, hour),
-  );
-
 const ROWS_PER_PAGE = 6;
+const TABLE_BODY_MIN_HEIGHT = 432;
+const TABLE_FILLER_ROW_HEIGHT = 72;
 
 const pageCountFor = (totalItems: number, pageSize = ROWS_PER_PAGE) =>
   Math.max(1, Math.ceil(totalItems / pageSize));
@@ -350,92 +345,6 @@ const buildUserGrowthData = (
     const parsed = parseDashboardDate(tradesman.createdAt);
     if (!parsed) return;
     const bucket = bucketMap.get(getMonthKey(parsed));
-    if (!bucket) return;
-    bucket.tradesmen += 1;
-    bucket.total += 1;
-  });
-
-  return buckets;
-};
-
-const buildRangeAnalyticsData = (
-  homeowners: Homeowner[],
-  tradesmen: Tradesman[],
-  range: AnalyticsRange,
-) => {
-  const now = new Date();
-  const today = startOfDay(now);
-  let buckets: UserGrowthPoint[] = [];
-  let resolveKey: (date: Date) => string | null = () => null;
-
-  if (range === "today") {
-    buckets = Array.from({ length: 24 }, (_, hour) => ({
-      key: String(hour),
-      label: formatHourLabel(hour),
-      homeowners: 0,
-      tradesmen: 0,
-      total: 0,
-    }));
-    resolveKey = (date) =>
-      isSameDay(date, now) ? String(date.getHours()) : null;
-  } else if (range === "week") {
-    const start = addDays(today, -6);
-    buckets = Array.from({ length: 7 }, (_, index) => {
-      const date = addDays(start, index);
-      return {
-        key: getDateKey(date),
-        label: date.toLocaleDateString("en-US", { weekday: "short" }),
-        homeowners: 0,
-        tradesmen: 0,
-        total: 0,
-      };
-    });
-    resolveKey = (date) => {
-      const value = startOfDay(date);
-      if (value < start || value > today) return null;
-      return getDateKey(value);
-    };
-  } else {
-    const start = addDays(today, -29);
-    buckets = Array.from({ length: 30 }, (_, index) => {
-      const date = addDays(start, index);
-      return {
-        key: getDateKey(date),
-        label: date.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        }),
-        homeowners: 0,
-        tradesmen: 0,
-        total: 0,
-      };
-    });
-    resolveKey = (date) => {
-      const value = startOfDay(date);
-      if (value < start || value > today) return null;
-      return getDateKey(value);
-    };
-  }
-
-  const bucketMap = new Map(buckets.map((bucket) => [bucket.key, bucket]));
-
-  homeowners.forEach((homeowner) => {
-    const parsed = parseDashboardDate(homeowner.createdAt);
-    if (!parsed) return;
-    const key = resolveKey(parsed);
-    if (!key) return;
-    const bucket = bucketMap.get(key);
-    if (!bucket) return;
-    bucket.homeowners += 1;
-    bucket.total += 1;
-  });
-
-  tradesmen.forEach((tradesman) => {
-    const parsed = parseDashboardDate(tradesman.createdAt);
-    if (!parsed) return;
-    const key = resolveKey(parsed);
-    if (!key) return;
-    const bucket = bucketMap.get(key);
     if (!bucket) return;
     bucket.tradesmen += 1;
     bucket.total += 1;
@@ -754,93 +663,6 @@ const TRADESMEN_DATA: Tradesman[] = [
   },
 ];
 
-const HOMEOWNERS_DATA: Homeowner[] = [
-  {
-    id: "h1",
-    initials: "SM",
-    color: "linear-gradient(135deg,#A82040,#D03060)",
-    name: "Sofia Mendoza",
-    email: "sofia.m@gmail.com",
-    location: "Quezon City",
-    registered: "Feb 12, 2025",
-    jobs: 4,
-    status: "Pending",
-    idNumber: "HO-2025-0183",
-    idStatus: "Pending",
-    idImageUrl: "/fixit_logo.png",
-  },
-  {
-    id: "h2",
-    initials: "BT",
-    color: "linear-gradient(135deg,#1560B0,#2E82D8)",
-    name: "Ben Torres",
-    email: "bentorres@yahoo.com",
-    location: "Makati",
-    registered: "Jan 4, 2025",
-    jobs: 7,
-    status: "Active",
-    idNumber: "HO-2025-0199",
-    idStatus: "Approved",
-    idImageUrl: "/fixit_logo.png",
-  },
-  {
-    id: "h3",
-    initials: "LV",
-    color: "linear-gradient(135deg,#B85010,#E87722)",
-    name: "Liza Villanueva",
-    email: "liza.v@outlook.com",
-    location: "Pasig City",
-    registered: "Mar 1, 2025",
-    jobs: 2,
-    status: "Pending",
-    idNumber: "HO-2025-02A1",
-    idStatus: "Pending",
-    idImageUrl: "/fixit_logo.png",
-  },
-  {
-    id: "h4",
-    initials: "KS",
-    color: "linear-gradient(135deg,#0F7060,#17A88E)",
-    name: "Karl Santos",
-    email: "karlsantos99@gmail.com",
-    location: "Mandaluyong",
-    registered: "Dec 18, 2024",
-    jobs: 11,
-    status: "Active",
-    idNumber: "HO-2024-5543",
-    idStatus: "Approved",
-    idImageUrl: "/fixit_logo.png",
-  },
-  {
-    id: "h5",
-    initials: "MG",
-    color: "linear-gradient(135deg,#5B2D8E,#8040C0)",
-    name: "Maria Garcia",
-    email: "maria.g@fixit.ph",
-    location: "Taguig",
-    registered: "Nov 5, 2024",
-    jobs: 6,
-    status: "Active",
-    idNumber: "HO-2024-1208",
-    idStatus: "Approved",
-    idImageUrl: "/fixit_logo.png",
-  },
-  {
-    id: "h6",
-    initials: "JR",
-    color: "linear-gradient(135deg,#1B2B5E,#2D44A0)",
-    name: "Jose Ramos",
-    email: "jose.r@gmail.com",
-    location: "Quezon City",
-    registered: "Oct 22, 2024",
-    jobs: 3,
-    status: "Inactive",
-    idNumber: "HO-2024-0X12",
-    idStatus: "Rejected",
-    idImageUrl: "/fixit_logo.png",
-  },
-];
-
 const REPORTS_DATA: ReportEntry[] = [
   {
     id: "r1",
@@ -906,63 +728,6 @@ const REPORTS_DATA: ReportEntry[] = [
       "The final amount requested was higher than the estimate shown in the app conversation.",
     status: "Reviewing",
     submittedAt: "2026-03-24T17:40:00Z",
-  },
-];
-
-const SAMPLE_TRADESMAN_REVIEW_TEMPLATES = [
-  {
-    reviewerName: "Sofia Mendoza",
-    reviewerRole: "Homeowner" as const,
-    rating: 5,
-    jobType: "Electrical outlet repair",
-    comment:
-      "Arrived on time, explained the work clearly, and left the area clean after finishing the repair.",
-    verifiedBooking: true,
-  },
-  {
-    reviewerName: "Ben Torres",
-    reviewerRole: "Homeowner" as const,
-    rating: 4,
-    jobType: "Leak inspection",
-    comment:
-      "The repair quality was solid and communication was smooth, though the visit started a little later than expected.",
-    verifiedBooking: true,
-  },
-  {
-    reviewerName: "Karl Santos",
-    reviewerRole: "Homeowner" as const,
-    rating: 5,
-    jobType: "Aircon maintenance",
-    comment:
-      "Professional from start to finish and gave helpful maintenance tips after the service.",
-    verifiedBooking: true,
-  },
-  {
-    reviewerName: "Maria Garcia",
-    reviewerRole: "Homeowner" as const,
-    rating: 3,
-    jobType: "Interior repainting",
-    comment:
-      "Work was completed well, but there were some delays in updates while materials were being sourced.",
-    verifiedBooking: true,
-  },
-  {
-    reviewerName: "Liza Villanueva",
-    reviewerRole: "Homeowner" as const,
-    rating: 4,
-    jobType: "Appliance diagnosis",
-    comment:
-      "Very courteous and easy to talk to. I would book again for follow-up work.",
-    verifiedBooking: true,
-  },
-  {
-    reviewerName: "Jose Ramos",
-    reviewerRole: "Homeowner" as const,
-    rating: 5,
-    jobType: "Bathroom fixture replacement",
-    comment:
-      "Fast turnaround and the finished installation looked neat and secure.",
-    verifiedBooking: true,
   },
 ];
 
@@ -2446,8 +2211,16 @@ const ProfileEditorModal = ({
 // TABLE WRAPPER
 // ─────────────────────────────────────────────────────────────────
 const Table = ({ children }: { children: ReactNode }) => (
-  <div style={{ overflowX: "auto" }}>
-    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+  <div
+    style={{
+      overflowX: "auto",
+      minHeight: TABLE_BODY_MIN_HEIGHT,
+      scrollbarGutter: "stable both-edges",
+    }}
+  >
+    <table
+      style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}
+    >
       {children}
     </table>
   </div>
@@ -2465,6 +2238,8 @@ const Th = ({ children }: { children: ReactNode }) => (
       background: "var(--table-head)",
       borderBottom: "1px solid var(--border)",
       whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
     }}
   >
     {children}
@@ -2487,12 +2262,37 @@ const Td = ({
       color: "var(--text)",
       borderBottom: "1px solid var(--border)",
       verticalAlign: "middle",
+      overflowWrap: "anywhere",
+      wordBreak: "break-word",
       ...style,
     }}
   >
     {children}
   </td>
 );
+
+const renderTablePaddingRows = (columnCount: number, rowCount: number) => {
+  const fillerCount = Math.max(0, ROWS_PER_PAGE - rowCount);
+  if (rowCount <= 0 || fillerCount === 0) {
+    return null;
+  }
+
+  return Array.from({ length: fillerCount }, (_, index) => (
+    <tr key={`table-filler-${columnCount}-${rowCount}-${index}`} aria-hidden="true">
+      <Td
+        colSpan={columnCount}
+        style={{
+          padding: 0,
+          height: TABLE_FILLER_ROW_HEIGHT,
+          borderBottom:
+            index === fillerCount - 1 ? "1px solid var(--border)" : "1px solid var(--border)",
+        }}
+      >
+        <div style={{ height: TABLE_FILLER_ROW_HEIGHT }} />
+      </Td>
+    </tr>
+  ));
+};
 
 // ─────────────────────────────────────────────────────────────────
 // TOOLBAR (search + filters inside card)
@@ -2769,86 +2569,6 @@ const Toolbar = ({
     </div>
   );
 };
-
-// ─────────────────────────────────────────────────────────────────
-// ACTIVITY FEED ITEM
-// ─────────────────────────────────────────────────────────────────
-const ActivityItem = ({
-  dot,
-  title,
-  sub,
-  time,
-  isLast = false,
-}: {
-  dot: string;
-  title: string;
-  sub: string;
-  time: string;
-  isLast?: boolean;
-}) => (
-  <div
-    style={{
-      display: "flex",
-      alignItems: "flex-start",
-      gap: 14,
-      padding: "14px 24px",
-      borderBottom: isLast ? "none" : "1px solid var(--border)",
-    }}
-  >
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        paddingTop: 3,
-      }}
-    >
-      <div
-        style={{
-          width: 10,
-          height: 10,
-          borderRadius: "50%",
-          background: dot,
-          flexShrink: 0,
-        }}
-      />
-      {!isLast && (
-        <div
-          style={{
-            width: 2,
-            flex: 1,
-            background: "var(--border)",
-            marginTop: 4,
-            minHeight: 24,
-          }}
-        />
-      )}
-    </div>
-    <div style={{ flex: 1 }}>
-      <div
-        style={{
-          fontSize: 13,
-          fontWeight: 700,
-          color: "var(--text)",
-          marginBottom: 3,
-        }}
-      >
-        {title}
-      </div>
-      <div style={{ fontSize: 12, color: "var(--muted)" }}>{sub}</div>
-    </div>
-    <div
-      style={{
-        fontSize: 11,
-        color: "var(--muted)",
-        whiteSpace: "nowrap",
-        paddingTop: 2,
-      }}
-    >
-      {time}
-    </div>
-  </div>
-);
 
 // ─────────────────────────────────────────────────────────────────
 // NOTIFICATION ITEM (Topbar)
@@ -4503,238 +4223,6 @@ const FailedBookingsChart = ({
 };
 
 // ─────────────────────────────────────────────────────────────────
-// VERIFICATION QUEUE CARD (Dashboard)
-// ─────────────────────────────────────────────────────────────────
-const VCard = ({
-  t,
-  onApprove,
-  onReject,
-}: {
-  t: Tradesman;
-  onApprove: () => void;
-  onReject: () => void;
-}) => {
-  const [hov, setHov] = useState(false);
-  return (
-    <div
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        background: "var(--surface-2)",
-        border: "1.5px solid var(--border)",
-        borderRadius: 12,
-        padding: 18,
-        transform: hov ? "translateY(-2px)" : "translateY(0)",
-        boxShadow: hov ? "0 4px 16px rgba(15,25,35,.09)" : "none",
-        transition: "all .2s",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 12,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Avatar initials={t.initials} color={t.color} size={46} />
-          <div>
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 800,
-                color: "var(--text)",
-                marginBottom: 2,
-              }}
-            >
-              {t.name}
-            </div>
-            <div
-              style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}
-            >
-              {t.category}
-            </div>
-          </div>
-        </div>
-        <Badge status={t.status} />
-      </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 7,
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          padding: "8px 12px",
-          marginBottom: 12,
-        }}
-      >
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="var(--muted)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <rect x="2" y="7" width="20" height="14" rx="2" />
-          <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-        </svg>
-        <span style={{ fontSize: 12, color: "var(--text)", fontWeight: 600 }}>
-          <strong
-            style={{ color: "var(--muted)", fontWeight: 600, marginRight: 6 }}
-          >
-            License:
-          </strong>
-          {t.license}
-        </span>
-      </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <Btn variant="approve" onClick={onApprove}>
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-          Approve
-        </Btn>
-        <Btn variant="reject" onClick={onReject}>
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-          Reject
-        </Btn>
-      </div>
-    </div>
-  );
-};
-
-const VerificationCard = ({
-  v,
-  onApprove,
-  onReject,
-  onView,
-  onArchive,
-  name,
-}: {
-  v: Verification;
-  onApprove: () => void;
-  onReject: () => void;
-  onView: () => void;
-  onArchive: () => void;
-  name: string;
-}) => {
-  const [hov, setHov] = useState(false);
-  const statusLabel = toTitle(v.status);
-  return (
-    <div
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        background: "var(--surface-2)",
-        border: "1.5px solid var(--border)",
-        borderRadius: 12,
-        padding: 18,
-        transform: hov ? "translateY(-2px)" : "translateY(0)",
-        boxShadow: hov ? "0 4px 16px rgba(15,25,35,.09)" : "none",
-        transition: "all .2s",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 12,
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 800,
-              color: "var(--text)",
-              marginBottom: 2,
-            }}
-          >
-            {name ? `${name} · User #${v.userId}` : `User #${v.userId}`}
-          </div>
-          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
-            {verificationTypeLabel(v.type)}
-          </div>
-        </div>
-        <Badge status={statusLabel} />
-      </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 7,
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          padding: "8px 12px",
-          marginBottom: 12,
-        }}
-      >
-        {icons.license}
-        <span style={{ fontSize: 12, color: "var(--text)", fontWeight: 600 }}>
-          <strong
-            style={{ color: "var(--muted)", fontWeight: 600, marginRight: 6 }}
-          >
-            Document:
-          </strong>
-          {v.documentUrl ? "Uploaded" : "Missing"}
-        </span>
-      </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {v.status === "pending" ? (
-          <>
-            <Btn variant="approve" onClick={onApprove}>
-              {icons.check} Approve
-            </Btn>
-            <Btn variant="reject" onClick={onReject}>
-              {icons.x} Reject
-            </Btn>
-          </>
-        ) : (
-          <Btn disabled>
-            {icons.check} {statusLabel}
-          </Btn>
-        )}
-        <Btn variant="view" onClick={onView}>
-          {icons.license} View Details
-        </Btn>
-        <Btn variant="reject" onClick={onArchive}>
-          {icons.x} Archive
-        </Btn>
-      </div>
-    </div>
-  );
-};
-
-// ─────────────────────────────────────────────────────────────────
 // SIDEBAR NAV ITEM
 // ─────────────────────────────────────────────────────────────────
 const NavItem = ({
@@ -5093,7 +4581,6 @@ export default function DashboardPage() {
   const [homeowners, setHomeowners] = useState<Homeowner[]>([]);
   const [verifications, setVerifications] = useState<Verification[]>([]);
   const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
-  const [profileLoading, setProfileLoading] = useState(false);
   const [profileEditor, setProfileEditor] = useState<{
     open: boolean;
     mode: ProfileEditorMode | null;
@@ -5167,7 +4654,6 @@ export default function DashboardPage() {
   const [searchHomeowners, setSearchHomeowners] = useState("");
   const [searchReports, setSearchReports] = useState("");
   const [searchRatings, setSearchRatings] = useState("");
-  const [searchDashboard, setSearchDashboard] = useState("");
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [selectedRatingsTradesmanId, setSelectedRatingsTradesmanId] =
     useState("");
@@ -5574,7 +5060,7 @@ export default function DashboardPage() {
   });
 
   const filteredTradesmanRatings = tradesmanRatings.filter(
-    ({ tradesman, reviews, average }) => {
+    ({ tradesman, average }) => {
       const matchesSearch =
         !searchRatings.trim() ||
         matchesQuery(searchRatings, [
@@ -5690,39 +5176,6 @@ export default function DashboardPage() {
     }
   }, [ratingsPage, ratingsPageCount]);
 
-  const filteredDashboardVerifications = verifications.filter((v) => {
-    const statusLabel = toTitle(v.status);
-    const typeLabel = verificationTypeLabel(v.type);
-    return (
-      v.status === "pending" &&
-      matchesQuery(searchDashboard, [
-        v.userId,
-        v.id,
-        statusLabel,
-        typeLabel,
-        getVerificationUserName(v),
-      ])
-    );
-  });
-  const filteredDashboardHomeowners = homeowners.filter((h) =>
-    matchesQuery(searchDashboard, [
-      h.name,
-      h.email,
-      h.idNumber,
-      h.location,
-      h.status,
-      h.idStatus,
-      h.id,
-    ]),
-  );
-  const recentDashboardHomeowners = [...filteredDashboardHomeowners].sort(
-    (a, b) => {
-      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return bTime - aTime;
-    },
-  );
-
   // Toast helper
   const showToast = (msg: string, type: ToastType = "success") => {
     setToast({ show: true, msg, type });
@@ -5743,7 +5196,6 @@ export default function DashboardPage() {
 
   const loadAdminProfile = async () => {
     if (!authToken) return;
-    setProfileLoading(true);
     try {
       const res = await fetch(`${apiBase}/api/profile/me`, {
         headers: { Authorization: `Bearer ${authToken}` },
@@ -5769,8 +5221,6 @@ export default function DashboardPage() {
       });
     } catch {
       showToast("Failed to load admin profile.", "error");
-    } finally {
-      setProfileLoading(false);
     }
   };
 
@@ -6382,36 +5832,6 @@ export default function DashboardPage() {
       showToast("Failed to re-verify tradesman.", "error");
     }
   };
-  const restoreTradesman = async (id: string, name: string) => {
-    if (!authToken) {
-      showToast("Please sign in again.", "error");
-      return;
-    }
-    try {
-      const res = await fetch(
-        `${apiBase}/api/admin/tradespeople/${id}/restore`,
-        {
-          method: "PATCH",
-          headers: { Authorization: `Bearer ${authToken}` },
-        },
-      );
-      if (!res.ok) {
-        if (res.status === 401 || res.status === 403) {
-          logoutAndRedirect();
-          return;
-        }
-        showToast("Failed to restore tradesman.", "error");
-        return;
-      }
-      setTradesmen((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, status: "Verified" } : t)),
-      );
-      loadUsers();
-      showToast(`${name} restored`, "success");
-    } catch {
-      showToast("Failed to restore tradesman.", "error");
-    }
-  };
   const revokeHomeowner = async (id: string, name: string) => {
     if (!authToken) {
       showToast("Please sign in again.", "error");
@@ -6437,33 +5857,6 @@ export default function DashboardPage() {
       showToast(`${name} revoked`, "error");
     } catch {
       showToast("Failed to revoke homeowner.", "error");
-    }
-  };
-  const restoreHomeowner = async (id: string, name: string) => {
-    if (!authToken) {
-      showToast("Please sign in again.", "error");
-      return;
-    }
-    try {
-      const res = await fetch(`${apiBase}/api/admin/homeowners/${id}/restore`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      if (!res.ok) {
-        if (res.status === 401 || res.status === 403) {
-          logoutAndRedirect();
-          return;
-        }
-        showToast("Failed to restore homeowner.", "error");
-        return;
-      }
-      setHomeowners((prev) =>
-        prev.map((h) => (h.id === id ? { ...h, status: "Active" } : h)),
-      );
-      loadUsers();
-      showToast(`${name} restored`, "success");
-    } catch {
-      showToast("Failed to restore homeowner.", "error");
     }
   };
 
@@ -7263,7 +6656,7 @@ export default function DashboardPage() {
   // ── PAGES ──────────────────────────────────────────────────────
 
   const PageDashboard = () => (
-    <div style={{ animation: "fadeUp .35s ease both" }}>
+    <div>
       {/* Stats */}
       <div
         style={{
@@ -7398,7 +6791,7 @@ export default function DashboardPage() {
   );
 
   const PageVerification = () => (
-    <div style={{ animation: "fadeUp .35s ease both" }}>
+    <div>
       <Card style={{ overflow: "visible" }}>
         <CardHead
           title="Verification Requests"
@@ -7500,6 +6893,7 @@ export default function DashboardPage() {
                 </tr>
               );
             })}
+            {renderTablePaddingRows(5, pagedVerifications.length)}
           </tbody>
         </Table>
         <TablePagination
@@ -7513,7 +6907,7 @@ export default function DashboardPage() {
   );
 
   const PageTradesmen = () => (
-    <div style={{ animation: "fadeUp .35s ease both" }}>
+    <div>
       <Card style={{ overflow: "visible" }}>
         <CardHead
           title="All Tradesmen"
@@ -7599,6 +6993,7 @@ export default function DashboardPage() {
                 </Td>
               </tr>
             ))}
+            {renderTablePaddingRows(7, pagedTradesmen.length)}
           </tbody>
         </Table>
         <TablePagination
@@ -7663,7 +7058,7 @@ export default function DashboardPage() {
     const hasAnalyticsData = analyticsReviews.length > 0;
 
     return (
-      <div style={{ animation: "fadeUp .35s ease both" }}>
+      <div>
         <Card style={{ marginBottom: 20 }}>
           <CardHead
             title="Ratings Analytics"
@@ -8413,6 +7808,10 @@ export default function DashboardPage() {
                   </Td>
                 </tr>
               )}
+              {renderTablePaddingRows(
+                6,
+                filteredTradesmanRatings.length > 0 ? pagedTradesmanRatings.length : 0,
+              )}
             </tbody>
           </Table>
           <TablePagination
@@ -8427,7 +7826,7 @@ export default function DashboardPage() {
   };
 
   const PageHomeowners = () => (
-    <div style={{ animation: "fadeUp .35s ease both" }}>
+    <div>
       <Card style={{ overflow: "visible" }}>
         <CardHead
           title="All Homeowners"
@@ -8529,6 +7928,7 @@ export default function DashboardPage() {
                 </Td>
               </tr>
             ))}
+            {renderTablePaddingRows(7, pagedHomeowners.length)}
           </tbody>
         </Table>
         <TablePagination
@@ -8559,7 +7959,7 @@ export default function DashboardPage() {
     ];
 
     return (
-      <div style={{ animation: "fadeUp .35s ease both" }}>
+      <div>
         <Card>
           <CardHead
             title="User Reports"
@@ -8825,6 +8225,10 @@ export default function DashboardPage() {
                   </Td>
                 </tr>
               )}
+              {renderTablePaddingRows(
+                7,
+                filteredReports.length > 0 ? pagedReports.length : 0,
+              )}
             </tbody>
           </Table>
           <TablePagination
@@ -8845,9 +8249,7 @@ export default function DashboardPage() {
     const adminRole = humanizeRole(adminProfile?.role);
 
     return (
-      <div
-        style={{ display: "grid", gap: 20, animation: "fadeUp .35s ease both" }}
-      >
+      <div style={{ display: "grid", gap: 20 }}>
         <Card>
           <CardHead
             title="Account Details"
@@ -9465,7 +8867,10 @@ export default function DashboardPage() {
         </div>
 
         {/* Page content */}
-        <div style={{ padding: "28px 32px", flex: 1 }}>
+        <div
+          key={activePage}
+          style={{ padding: "28px 32px", flex: 1, animation: "fadeUp .35s ease both" }}
+        >
           {activePage === "dashboard" && PageDashboard()}
           {activePage === "verification" && PageVerification()}
           {activePage === "tradesmen" && PageTradesmen()}

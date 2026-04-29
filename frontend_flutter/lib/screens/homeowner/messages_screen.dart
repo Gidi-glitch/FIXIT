@@ -16,6 +16,7 @@ class MessagesScreen extends StatefulWidget {
   final int? initialBookingId;
   final bool autoOpenChat;
   final int chatRequestId;
+  final ValueChanged<int>? onUnreadCountChanged;
 
   const MessagesScreen({
     super.key,
@@ -26,6 +27,7 @@ class MessagesScreen extends StatefulWidget {
     this.initialBookingId,
     this.autoOpenChat = false,
     this.chatRequestId = 0,
+    this.onUnreadCountChanged,
   });
 
   @override
@@ -156,6 +158,7 @@ class _MessagesScreenState extends State<MessagesScreen>
         _isLoading = false;
         _loadError = null;
       });
+      _emitUnreadCount(loaded);
 
       if (widget.autoOpenChat && !_hasAutoOpenedChat) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -347,7 +350,7 @@ class _MessagesScreenState extends State<MessagesScreen>
 
   Future<void> _openConversationChat(Map<String, dynamic> conversation) async {
     final readyConversation = await _resolveConversationForChat(conversation);
-    if (readyConversation == null) return;
+    if (!mounted || readyConversation == null) return;
 
     final result = await Navigator.push<Map<String, dynamic>>(
       context,
@@ -365,6 +368,7 @@ class _MessagesScreenState extends State<MessagesScreen>
           (item) => (item['id'] ?? '').toString() == deletedId,
         );
       });
+      _emitUnreadCount(_conversations);
       return;
     }
 
@@ -414,6 +418,16 @@ class _MessagesScreenState extends State<MessagesScreen>
       }
       _conversations.insert(0, merged);
     });
+    _emitUnreadCount(_conversations);
+  }
+
+  void _emitUnreadCount(List<Map<String, dynamic>> conversations) {
+    if (widget.onUnreadCountChanged == null) return;
+    final total = conversations.fold<int>(
+      0,
+      (sum, item) => sum + _asInt(item['unreadCount']),
+    );
+    widget.onUnreadCountChanged!(total);
   }
 
   List<Map<String, dynamic>> get _filteredConversations {

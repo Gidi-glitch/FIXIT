@@ -222,7 +222,9 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
           'avatar': (data['avatar'] ?? 'TP').toString(),
           'avatarColor': _categoryColor(trade),
           'experience': years > 0 ? '$years years' : 'N/A',
-          'completedJobs': 0,
+          'completedJobs': _asInt(
+            data['completedJobs'] ?? data['completed_jobs'],
+          ),
           'responseTime': '~15 mins',
           'bio': (data['bio'] ?? '').toString().trim(),
           'skills': _buildSkills(trade, specializations),

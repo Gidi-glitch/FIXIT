@@ -14,7 +14,14 @@ import 'job_details_screen.dart';
 ///   → Disabled (with inline warning) when another job is In Progress.
 /// • In-Progress jobs show "Mark as Complete".
 class JobsScreen extends StatefulWidget {
-  const JobsScreen({super.key});
+  const JobsScreen({
+    super.key,
+    this.initialFilter = 'All',
+    this.filterRequestToken = 0,
+  });
+
+  final String initialFilter;
+  final int filterRequestToken;
 
   @override
   State<JobsScreen> createState() => _JobsScreenState();
@@ -45,9 +52,21 @@ class _JobsScreenState extends State<JobsScreen>
   @override
   void initState() {
     super.initState();
+    _activeFilter = _normalizeFilter(widget.initialFilter);
     _handledMutationToken = TradespersonWorkStore.mutationToken;
     TradespersonWorkStore.notifier.addListener(_handleStoreChanged);
     _refreshJobs();
+  }
+
+  @override
+  void didUpdateWidget(covariant JobsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.filterRequestToken != oldWidget.filterRequestToken) {
+      final nextFilter = _normalizeFilter(widget.initialFilter);
+      if (nextFilter != _activeFilter) {
+        setState(() => _activeFilter = nextFilter);
+      }
+    }
   }
 
   @override
@@ -105,6 +124,14 @@ class _JobsScreenState extends State<JobsScreen>
     'Completed',
     'Cancelled',
   ];
+
+  String _normalizeFilter(String? value) {
+    final requested = (value ?? '').trim();
+    if (_filters.contains(requested)) {
+      return requested;
+    }
+    return 'All';
+  }
 
   List<Map<String, dynamic>> get _jobs => TradespersonWorkStore.jobs;
 

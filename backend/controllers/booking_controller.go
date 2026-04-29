@@ -105,6 +105,7 @@ func ListTradespeopleForHomeowner(w http.ResponseWriter, r *http.Request) {
 
 	photoByUserID := getProfilePhotosByUserID(userIDs)
 	ratingByUserID := getTradespersonRatings(userIDs)
+	completedJobsByUserID := getCompletedBookingCountsByColumn("tradesperson_id", userIDs)
 
 	rows := make([]map[string]any, 0, len(profiles))
 	for _, p := range profiles {
@@ -134,6 +135,8 @@ func ListTradespeopleForHomeowner(w http.ResponseWriter, r *http.Request) {
 			"rating":            ratingMeta.AvgRating,
 			"reviews":           ratingMeta.ReviewCount,
 			"review_count":      ratingMeta.ReviewCount,
+			"completed_jobs":    completedJobsByUserID[p.UserID],
+			"completedJobs":     completedJobsByUserID[p.UserID],
 			"barangay":          p.ServiceBarangay,
 			"is_on_duty":        p.IsOnDuty,
 			"isOnDuty":          p.IsOnDuty,
@@ -810,6 +813,33 @@ func getTradespersonRatings(userIDs []uint) map[uint]tradespersonRatingMeta {
 
 	for _, r := range rows {
 		out[r.TradespersonID] = tradespersonRatingMeta{AvgRating: r.AvgRating, ReviewCount: r.ReviewCount}
+	}
+
+	return out
+}
+
+func getCompletedBookingCountsByColumn(column string, userIDs []uint) map[uint]int64 {
+	out := map[uint]int64{}
+	if len(userIDs) == 0 {
+		return out
+	}
+
+	type row struct {
+		UserID uint
+		Count  int64
+	}
+
+	var rows []row
+	if err := config.DB.Model(&models.Booking{}).
+		Select(column+" AS user_id, COUNT(*) AS count").
+		Where(column+" IN ? AND status = ?", userIDs, "Completed").
+		Group(column).
+		Scan(&rows).Error; err != nil {
+		return out
+	}
+
+	for _, row := range rows {
+		out[row.UserID] = row.Count
 	}
 
 	return out

@@ -30,6 +30,8 @@ class TradesmanDashboard extends StatefulWidget {
 class _TradesmanDashboardState extends State<TradesmanDashboard>
     with SingleTickerProviderStateMixin {
   int _currentNavIndex = 0;
+  String _jobsInitialFilter = 'All';
+  int _jobsFilterRequestToken = 0;
   final ValueNotifier<bool> _onDutyNotifier = ValueNotifier<bool>(true);
   bool _isUpdatingOnDuty = false;
   String _displayName = 'Tradesperson';
@@ -42,6 +44,7 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
   int? _messageHomeownerUserId;
   int? _messageBookingId;
   int _messageChatRequestId = 0;
+  int _messageUnreadCount = 0;
   double _averageRating = 0;
   int _reviewCount = 0;
   String _verificationStatus = 'pending';
@@ -66,6 +69,15 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
 
   List<Map<String, dynamic>> get _incomingRequests =>
       TradespersonWorkStore.dashboardRequests();
+  int get _requestNavBadgeCount => TradespersonWorkStore.requests.length;
+  int get _jobNavBadgeCount => TradespersonWorkStore.jobs
+      .where(
+        (job) =>
+            job['status'] == 'Accepted' ||
+            job['status'] == 'In Progress' ||
+            job['status'] == 'Under Review',
+      )
+      .length;
 
   Map<String, dynamic>? get _currentJob {
     try {
@@ -98,6 +110,7 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
     _fadeController.forward();
     _onDutyNotifier.addListener(_handleOnDutyChanged);
     TradespersonWorkStore.notifier.addListener(_handleStoreChanged);
+    _loadWorkSnapshot();
     _loadProfileData();
     _refreshNotificationUnreadCount();
     _startNotificationRefresh();
@@ -107,6 +120,7 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
     _notificationRefreshTimer?.cancel();
     _notificationRefreshTimer = Timer.periodic(const Duration(seconds: 8), (_) {
       _refreshNotificationUnreadCount();
+      _loadWorkSnapshot();
     });
   }
 
@@ -134,6 +148,28 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
       // Keep current badge count if refresh fails.
     } finally {
       _isRefreshingNotificationCount = false;
+    }
+  }
+
+  Future<void> _loadWorkSnapshot() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = (prefs.getString('token') ?? '').trim();
+      if (token.isEmpty) {
+        return;
+      }
+
+      final requestsResponse = await ApiService.getIncomingRequests(
+        token: token,
+      );
+      final requestRows = (requestsResponse['requests'] as List?) ?? const [];
+      TradespersonWorkStore.setRequestsFromApi(requestRows);
+
+      final jobsResponse = await ApiService.getTradespersonJobs(token: token);
+      final jobRows = (jobsResponse['jobs'] as List?) ?? const [];
+      TradespersonWorkStore.setJobsFromApi(jobRows);
+    } catch (_) {
+      // Keep existing dashboard/store values when background refresh fails.
     }
   }
 
@@ -694,6 +730,35 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
     TradespersonWorkStore.requestOpenJobDetails((job['id'] ?? '').toString());
   }
 
+  void _openJobsTab({String filter = 'All'}) {
+    setState(() {
+      _jobsInitialFilter = filter;
+      _jobsFilterRequestToken++;
+      _currentNavIndex = 2;
+    });
+  }
+
+  void _handleStatCardTap(String label) {
+    switch (label) {
+      case 'New Requests':
+        setState(() => _currentNavIndex = 1);
+        break;
+      case 'Active Jobs':
+        _openJobsTab(filter: 'In Progress');
+        break;
+      case 'Completed':
+        _openJobsTab(filter: 'Completed');
+        break;
+      case 'Rating':
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const ViewReviewsScreen()));
+        break;
+      default:
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -711,7 +776,10 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
               onNavigateToJobs: () => setState(() => _currentNavIndex = 2),
               onMessageRequested: _openMessagesForHomeowner,
             ),
-            const JobsScreen(),
+            JobsScreen(
+              initialFilter: _jobsInitialFilter,
+              filterRequestToken: _jobsFilterRequestToken,
+            ),
             TradespersonMessagesScreen(
               initialHomeownerName: _messageHomeownerName,
               initialService: _messageService,
@@ -720,6 +788,10 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
               initialBookingId: _messageBookingId,
               autoOpenChat: _messageChatRequestId > 0,
               chatRequestId: _messageChatRequestId,
+              onUnreadCountChanged: (count) {
+                if (!mounted) return;
+                setState(() => _messageUnreadCount = count);
+              },
             ),
             TradespersonProfileScreen(onDutyNotifier: _onDutyNotifier),
           ],
@@ -1073,50 +1145,57 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
     Color color,
   ) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
-        decoration: BoxDecoration(
-          color: _cardWhite,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _handleStatCardTap(label),
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+          child: Ink(
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
+            decoration: BoxDecoration(
+              color: _cardWhite,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color, size: 18),
+            child: Column(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, color: color, size: 18),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: _textDark,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: _textMuted,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: _textDark,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                color: _textMuted,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -1929,17 +2008,35 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
           child: Row(
             children: [
               Expanded(
-                child: _buildNavItem(0, Icons.dashboard_rounded, 'Dashboard'),
+                child: _buildNavItem(
+                  0,
+                  Icons.dashboard_rounded,
+                  'Dashboard',
+                  showNotificationDot: _notificationUnreadCount > 0,
+                ),
               ),
               Expanded(
-                child: _buildNavItem(1, Icons.inbox_rounded, 'Requests'),
+                child: _buildNavItem(
+                  1,
+                  Icons.inbox_rounded,
+                  'Requests',
+                  badgeCount: _requestNavBadgeCount,
+                ),
               ),
-              Expanded(child: _buildNavItem(2, Icons.handyman_rounded, 'Jobs')),
+              Expanded(
+                child: _buildNavItem(
+                  2,
+                  Icons.handyman_rounded,
+                  'Jobs',
+                  badgeCount: _jobNavBadgeCount,
+                ),
+              ),
               Expanded(
                 child: _buildNavItem(
                   3,
                   Icons.chat_bubble_outline_rounded,
                   'Messages',
+                  badgeCount: _messageUnreadCount,
                 ),
               ),
               Expanded(
@@ -1956,7 +2053,13 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
     );
   }
 
-  Widget _buildNavItem(int index, IconData icon, String label) {
+  Widget _buildNavItem(
+    int index,
+    IconData icon,
+    String label, {
+    int badgeCount = 0,
+    bool showNotificationDot = false,
+  }) {
     final isActive = _currentNavIndex == index;
     return GestureDetector(
       onTap: () => setState(() => _currentNavIndex = index),
@@ -1973,7 +2076,60 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: isActive ? _primaryBlue : _textMuted, size: 24),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(
+                  icon,
+                  color: isActive ? _primaryBlue : _textMuted,
+                  size: 24,
+                ),
+                if (showNotificationDot)
+                  Positioned(
+                    right: -1,
+                    top: -1,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: _accentOrange,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: _cardWhite, width: 1.5),
+                      ),
+                    ),
+                  ),
+                if (badgeCount > 0)
+                  Positioned(
+                    right: -10,
+                    top: -8,
+                    child: Container(
+                      constraints: const BoxConstraints(
+                        minWidth: 18,
+                        minHeight: 18,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _accentOrange,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: _cardWhite, width: 1.5),
+                      ),
+                      child: Text(
+                        badgeCount > 99 ? '99+' : '$badgeCount',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          height: 1,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 4),
             Text(
               label,
