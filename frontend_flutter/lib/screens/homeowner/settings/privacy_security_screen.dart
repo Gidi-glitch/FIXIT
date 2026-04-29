@@ -11,7 +11,7 @@ import '../../login_screen.dart';
 ///   • Change Password
 ///   • Login & Sessions
 ///   • Data & Privacy
-///   • Danger Zone (Delete Account)
+///   • Delete Account
 class PrivacySecurityScreen extends StatefulWidget {
   const PrivacySecurityScreen({super.key});
 
@@ -388,21 +388,28 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
     child: child,
   );
 
-  Widget _sectionHeader(IconData icon, Color color, String title) {
+  Widget _sectionHeader(
+    IconData icon,
+    Color color,
+    String title, {
+    bool showIcon = true,
+  }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       child: Row(
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
+          if (showIcon) ...[
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: color, size: 18),
             ),
-            child: Icon(icon, color: color, size: 18),
-          ),
-          const SizedBox(width: 10),
+            const SizedBox(width: 10),
+          ],
           Text(
             title,
             style: const TextStyle(
@@ -724,7 +731,12 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
     return _buildCard(
       child: Column(
         children: [
-          _sectionHeader(Icons.devices_rounded, _infoBlue, 'Login & Sessions'),
+          _sectionHeader(
+            Icons.devices_rounded,
+            _infoBlue,
+            'Login & Sessions',
+            showIcon: false,
+          ),
           Container(
             height: 1,
             color: Colors.grey.shade100,
@@ -776,7 +788,12 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
     return _buildCard(
       child: Column(
         children: [
-          _sectionHeader(Icons.shield_outlined, _purple, 'Data & Privacy'),
+          _sectionHeader(
+            Icons.shield_outlined,
+            _purple,
+            'Data & Privacy',
+            showIcon: false,
+          ),
           Container(
             height: 1,
             color: Colors.grey.shade100,
@@ -824,123 +841,18 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
     );
   }
 
-  // ── Danger zone ──────────────────────────────────────────────────
+  // ── Delete account ───────────────────────────────────────────────
 
   Widget _buildDangerZone() {
-    return Container(
-      decoration: BoxDecoration(
-        color: _cardWhite,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _errorRed.withValues(alpha: 0.2)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: _errorRed.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.warning_amber_rounded,
-                    color: _errorRed,
-                    size: 18,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                const Text(
-                  'Danger Zone',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: _errorRed,
-                    letterSpacing: -0.2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            height: 1,
-            color: _errorRed.withValues(alpha: 0.1),
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-          ),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: _showDeleteAccountDialog,
-              borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(18),
-                bottomRight: Radius.circular(18),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 16,
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: _errorRed.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(13),
-                      ),
-                      child: const Icon(
-                        Icons.delete_forever_rounded,
-                        color: _errorRed,
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Delete Account',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: _errorRed,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Permanently delete your account and all data.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: _textMuted.withValues(alpha: 0.8),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      color: _errorRed.withValues(alpha: 0.5),
-                      size: 16,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
+    return _buildCard(
+      child: _buildListTile(
+        icon: Icons.delete_forever_rounded,
+        iconColor: _errorRed,
+        title: 'Delete Account',
+        subtitle: 'Permanently delete your account and all data.',
+        titleColor: _errorRed,
+        onTap: _showDeleteAccountDialog,
+        showDivider: false,
       ),
     );
   }

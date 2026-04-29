@@ -15,6 +15,7 @@ import (
 	"fixit-backend/services"
 
 	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 )
 
 type createBookingRequest struct {
@@ -104,6 +105,7 @@ func ListTradespeopleForHomeowner(w http.ResponseWriter, r *http.Request) {
 
 	photoByUserID := getProfilePhotosByUserID(userIDs)
 	ratingByUserID := getTradespersonRatings(userIDs)
+	completedJobsByUserID := getCompletedBookingCountsByColumn("tradesperson_id", userIDs)
 
 	rows := make([]map[string]any, 0, len(profiles))
 	for _, p := range profiles {
@@ -133,6 +135,8 @@ func ListTradespeopleForHomeowner(w http.ResponseWriter, r *http.Request) {
 			"rating":            ratingMeta.AvgRating,
 			"reviews":           ratingMeta.ReviewCount,
 			"review_count":      ratingMeta.ReviewCount,
+			"completed_jobs":    completedJobsByUserID[p.UserID],
+			"completedJobs":     completedJobsByUserID[p.UserID],
 			"barangay":          p.ServiceBarangay,
 			"is_on_duty":        p.IsOnDuty,
 			"isOnDuty":          p.IsOnDuty,
@@ -731,6 +735,9 @@ func buildBookingResponse(
 		"offered_budget":                 booking.OfferedBudget,
 		"offeredBudget":                  booking.OfferedBudget,
 		"status":                         booking.Status,
+		"cancelled_at":                   booking.CancelledAt,
+		"completed_at":                   booking.CompletedAt,
+		"cancellation_reason":            booking.CancellationReason,
 		"created_at":                     booking.CreatedAt,
 		"expiration_time":                expirationTime,
 		"is_reviewed":                    isReviewed,
@@ -806,6 +813,33 @@ func getTradespersonRatings(userIDs []uint) map[uint]tradespersonRatingMeta {
 
 	for _, r := range rows {
 		out[r.TradespersonID] = tradespersonRatingMeta{AvgRating: r.AvgRating, ReviewCount: r.ReviewCount}
+	}
+
+	return out
+}
+
+func getCompletedBookingCountsByColumn(column string, userIDs []uint) map[uint]int64 {
+	out := map[uint]int64{}
+	if len(userIDs) == 0 {
+		return out
+	}
+
+	type row struct {
+		UserID uint
+		Count  int64
+	}
+
+	var rows []row
+	if err := config.DB.Model(&models.Booking{}).
+		Select(column+" AS user_id, COUNT(*) AS count").
+		Where(column+" IN ? AND status = ?", userIDs, "Completed").
+		Group(column).
+		Scan(&rows).Error; err != nil {
+		return out
+	}
+
+	for _, row := range rows {
+		out[row.UserID] = row.Count
 	}
 
 	return out
@@ -1108,6 +1142,7 @@ func buildTradespersonJobResponse(
 		"status":                      booking.Status,
 		"rating":                      rating,
 		"cancelled_at":                booking.CancelledAt,
+		"completed_at":                booking.CompletedAt,
 		"created_at":                  booking.CreatedAt,
 		"updated_at":                  booking.UpdatedAt,
 	}
@@ -1240,7 +1275,53 @@ func acceptTradespersonRequestByID(w http.ResponseWriter, r *http.Request, booki
 		return
 	}
 
-	if err := config.DB.Model(&booking).Update("status", "Accepted").Error; err != nil {
+	err := config.DB.Transaction(func(tx *gorm.DB) error {
+		var slotAlreadyTaken int64
+		if err := tx.Model(&models.Booking{}).
+			Where(
+				"tradesperson_id = ? AND preferred_date = ? AND preferred_time = ? AND id <> ? AND status IN ?",
+				tradespersonID,
+				booking.PreferredDate,
+				booking.PreferredTime,
+				booking.ID,
+				[]string{"Accepted", "In Progress"},
+			).
+			Count(&slotAlreadyTaken).Error; err != nil {
+			return err
+		}
+		if slotAlreadyTaken > 0 {
+			return fmt.Errorf("time slot already taken")
+		}
+
+		if err := tx.Model(&booking).Update("status", "Accepted").Error; err != nil {
+			return err
+		}
+
+		now := time.Now()
+		if err := tx.Model(&models.Booking{}).
+			Where(
+				"tradesperson_id = ? AND preferred_date = ? AND preferred_time = ? AND id <> ? AND status = ?",
+				tradespersonID,
+				booking.PreferredDate,
+				booking.PreferredTime,
+				booking.ID,
+				"Pending",
+			).
+			Updates(map[string]any{
+				"status":              "Cancelled",
+				"cancelled_at":        &now,
+				"cancellation_reason": "Auto-cancelled: the tradesperson accepted another booking for this date and time.",
+			}).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+	if err != nil {
+		if err.Error() == "time slot already taken" {
+			writeError(w, http.StatusConflict, "time slot already has an accepted job")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to accept request")
 		return
 	}
@@ -1459,7 +1540,11 @@ func completeTradespersonJobByID(w http.ResponseWriter, r *http.Request, booking
 		return
 	}
 
-	if err := config.DB.Model(&booking).Update("status", "Completed").Error; err != nil {
+	completedAt := time.Now()
+	if err := config.DB.Model(&booking).Updates(map[string]any{
+		"status":       "Completed",
+		"completed_at": completedAt,
+	}).Error; err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to complete job")
 		return
 	}

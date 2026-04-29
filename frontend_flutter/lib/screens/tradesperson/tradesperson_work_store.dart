@@ -344,6 +344,10 @@ class TradespersonWorkStore {
 
     final startedAtRaw = (row['started_at'] ?? '').toString();
     final completedAtRaw = (row['completed_at'] ?? '').toString();
+    final cancelledAtRaw = (row['cancelled_at'] ?? '').toString();
+    final startedAtLabel = _formatApiDateTime(startedAtRaw);
+    final completedAtLabel = _formatApiDateTime(completedAtRaw);
+    final cancelledAtLabel = _formatApiDateTime(cancelledAtRaw);
 
     return {
       'id': (row['reference_id'] ?? _jobReference(bookingId)).toString(),
@@ -361,13 +365,47 @@ class TradespersonWorkStore {
       'time': (row['time'] ?? '').toString(),
       'budget': budget,
       'status': status,
-      'startedAt': startedAtRaw.isNotEmpty
-          ? startedAtRaw
+      'startedAt': startedAtLabel.isNotEmpty
+          ? startedAtLabel
           : (status == 'In Progress' ? 'Ongoing' : null),
-      'completedAt': completedAtRaw.isNotEmpty
-          ? completedAtRaw
+      'completedAt': completedAtLabel.isNotEmpty
+          ? completedAtLabel
           : (status == 'Completed' ? 'Completed' : null),
+      'cancelledAt': cancelledAtLabel.isNotEmpty ? cancelledAtLabel : null,
       'rating': row['rating'] == null ? null : _asDouble(row['rating']),
     };
+  }
+
+  static String _formatApiDateTime(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return '';
+
+    final parsed = DateTime.tryParse(trimmed);
+    if (parsed == null) return trimmed;
+
+    const months = <String>[
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final local = parsed.toLocal();
+    final month = months[local.month - 1];
+    final day = local.day;
+    final year = local.year;
+    final hour12 = local.hour == 0
+        ? 12
+        : (local.hour > 12 ? local.hour - 12 : local.hour);
+    final minute = local.minute.toString().padLeft(2, '0');
+    final period = local.hour >= 12 ? 'PM' : 'AM';
+    return '$month $day, $year · $hour12:$minute $period';
   }
 }

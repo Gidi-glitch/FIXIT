@@ -969,4 +969,19 @@ class ApiService {
 
     return _decodeResponse(response);
   }
+
+  static Future<Map<String, dynamic>> getTradespersonReviews({
+    required String token,
+    required int tradespersonId,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/tradespeople/$tradespersonId/reviews'),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": 'Bearer $token',
+      },
+    );
+
+    return _decodeResponse(response);
+  }
 }

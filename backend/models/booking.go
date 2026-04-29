@@ -19,10 +19,11 @@ type Booking struct {
 	PreferredTime      string  `json:"preferred_time" gorm:"not null"`
 	OfferedBudget      float64 `json:"offered_budget" gorm:"not null"`
 
-	Status           string     `json:"status" gorm:"not null;default:Pending"`
-	CancelledAt      *time.Time `json:"cancelled_at"`
-	CancellationReason string   `json:"cancellation_reason,omitempty" gorm:"default:''"`
-	ExpirationTime   *time.Time `json:"expiration_time,omitempty" gorm:"index"`
+	Status             string     `json:"status" gorm:"not null;default:Pending"`
+	CancelledAt        *time.Time `json:"cancelled_at"`
+	CompletedAt        *time.Time `json:"completed_at"`
+	CancellationReason string     `json:"cancellation_reason,omitempty" gorm:"default:''"`
+	ExpirationTime     *time.Time `json:"expiration_time,omitempty" gorm:"index"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -53,9 +54,12 @@ type BookingIssue struct {
 
 	HomeownerID uint `json:"homeowner_id" gorm:"not null;index"`
 
-	Category string `json:"category" gorm:"not null"`
-	Details  string `json:"details" gorm:"not null"`
-	Status   string `json:"status" gorm:"not null;default:Under Review"`
+	Category              string     `json:"category" gorm:"not null"`
+	Details               string     `json:"details" gorm:"not null"`
+	Status                string     `json:"status" gorm:"not null;default:Under Review"`
+	PreviousBookingStatus string     `json:"previous_booking_status,omitempty" gorm:"default:''"`
+	ResolvedAt            *time.Time `json:"resolved_at,omitempty" gorm:"index"`
+	ResolutionNote        string     `json:"resolution_note,omitempty" gorm:"type:text;default:''"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
