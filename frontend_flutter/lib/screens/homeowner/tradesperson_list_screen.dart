@@ -49,6 +49,10 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
 
   late AnimationController _listAnimController;
 
+  // ── Reviews Cache ──────────────────────────────────────────────
+  final Map<int, List<Map<String, dynamic>>> _reviewsCache =
+      {}; // Cache reviews by tradesperson ID
+
   // ── Category Definitions ────────────────────────────────────────
   final List<Map<String, dynamic>> _categories = [
     {'name': 'All', 'icon': Icons.grid_view_rounded, 'color': _primaryBlue},
@@ -269,6 +273,61 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
       orElse: () => _categories[0],
     );
     return match['color'] as Color;
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchTradespersonReviews(
+    int tradespersonId,
+  ) async {
+    if (_reviewsCache.containsKey(tradespersonId)) {
+      return _reviewsCache[tradespersonId]!;
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token')?.trim();
+      if (token == null || token.isEmpty) {
+        throw Exception('Session expired');
+      }
+
+      final response = await ApiService.getTradespersonReviews(
+        token: token,
+        tradespersonId: tradespersonId,
+      );
+
+      final reviews =
+          (response['reviews'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+      _reviewsCache[tradespersonId] = reviews;
+      return reviews;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  String _formatTime(dynamic createdAt) {
+    if (createdAt == null) return 'Recently';
+
+    try {
+      final dateTime = createdAt is DateTime
+          ? createdAt
+          : DateTime.parse(createdAt.toString());
+      final now = DateTime.now();
+      final difference = now.difference(dateTime);
+
+      if (difference.inDays >= 7) {
+        final weeks = (difference.inDays / 7).floor();
+        return '$weeks ${weeks == 1 ? 'week' : 'weeks'} ago';
+      } else if (difference.inDays > 0) {
+        return '${difference.inDays} ${difference.inDays == 1 ? 'day' : 'days'} ago';
+      } else if (difference.inHours > 0) {
+        return '${difference.inHours} ${difference.inHours == 1 ? 'hour' : 'hours'} ago';
+      } else if (difference.inMinutes > 0) {
+        return '${difference.inMinutes} ${difference.inMinutes == 1 ? 'minute' : 'minutes'} ago';
+      } else {
+        return 'Just now';
+      }
+    } catch (e) {
+      return 'Recently';
+    }
   }
 
   @override
@@ -1583,18 +1642,61 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
                             ),
                           ),
                           const SizedBox(height: 12),
-                          _buildReviewCard(
-                            'Excellent work! Very fast and professional.',
-                            'Ana Reyes',
-                            5,
-                            '2 days ago',
-                          ),
-                          const SizedBox(height: 10),
-                          _buildReviewCard(
-                            'Fixed our issue quickly. Highly recommend!',
-                            'Bong Lim',
-                            4,
-                            '1 week ago',
+                          FutureBuilder<List<Map<String, dynamic>>>(
+                            future: _fetchTradespersonReviews(
+                              _asInt(pro['tradesperson_id']),
+                            ),
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 20,
+                                  ),
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        _primaryBlue.withValues(alpha: 0.7),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              if (snapshot.hasError ||
+                                  !snapshot.hasData ||
+                                  snapshot.data!.isEmpty) {
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 16,
+                                  ),
+                                  child: Text(
+                                    'No reviews yet',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: _textMuted.withValues(alpha: 0.7),
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              final reviews = snapshot.data!;
+                              return Column(
+                                children: [
+                                  for (int i = 0; i < reviews.length; i++) ...[
+                                    _buildReviewCard(
+                                      reviews[i]['comment'] ?? '',
+                                      reviews[i]['homeowner_name'] ?? 'User',
+                                      (reviews[i]['rating'] ?? 5).toInt(),
+                                      _formatTime(reviews[i]['created_at']),
+                                    ),
+                                    if (i < reviews.length - 1)
+                                      const SizedBox(height: 10),
+                                  ],
+                                ],
+                              );
+                            },
                           ),
                           const SizedBox(height: 28),
 

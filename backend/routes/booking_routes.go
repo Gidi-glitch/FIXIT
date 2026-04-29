@@ -15,6 +15,7 @@ func RegisterBookingRoutes() {
 	http.Handle("/api/tradespeople", auth(http.HandlerFunc(controllers.ListTradespeopleForHomeowner)))
 	http.Handle("/api/tradespeople/me/on-duty", auth(http.HandlerFunc(controllers.UpdateMyOnDutyStatus)))
 	http.Handle("/api/reviews/tradesperson/me", auth(http.HandlerFunc(controllers.TradespersonMyReviews)))
+	http.Handle("/api/tradespeople/", http.HandlerFunc(controllers.TradespersonReviewsByID))
 	http.Handle("/api/tradespeople/me/documents", auth(http.HandlerFunc(controllers.TradespersonMyDocuments)))
 	http.Handle("/api/tradespeople/me/documents/", auth(http.HandlerFunc(controllers.TradespersonMyDocumentByIDRouter)))
 	http.Handle("/api/tradespeople/me/service-area", auth(http.HandlerFunc(controllers.TradespersonServiceArea)))

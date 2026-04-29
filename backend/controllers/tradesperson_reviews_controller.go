@@ -186,3 +186,76 @@ func tagsContain(tags []string, needle string) bool {
 	}
 	return false
 }
+
+func TradespersonReviewsByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	// Path format: /api/tradespeople/{id}/reviews
+	// parts: [api, tradespeople, {id}, reviews]
+	if len(parts) < 4 || parts[3] != "reviews" {
+		writeError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	tradespersonID, err := strconv.ParseUint(parts[2], 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid tradesperson ID")
+		return
+	}
+
+	var reviews []models.BookingReview
+	if err := config.DB.Where("tradesperson_id = ?", uint(tradespersonID)).Find(&reviews).Error; err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load reviews")
+		return
+	}
+
+	// Default to recent reviews, limit to 10
+	sort.Slice(reviews, func(i, j int) bool {
+		return reviews[i].CreatedAt.After(reviews[j].CreatedAt)
+	})
+
+	if len(reviews) > 10 {
+		reviews = reviews[:10]
+	}
+
+	bookingIDs := make([]uint, 0, len(reviews))
+	homeownerIDs := make([]uint, 0, len(reviews))
+	for _, review := range reviews {
+		bookingIDs = append(bookingIDs, review.BookingID)
+		homeownerIDs = append(homeownerIDs, review.HomeownerID)
+	}
+
+	bookingsByID := getBookingsByID(bookingIDs)
+	homeownersByID := getHomeownerProfilesByUserID(homeownerIDs)
+	photosByUserID := getProfilePhotosByUserID(homeownerIDs)
+
+	rows := make([]map[string]any, 0, len(reviews))
+	for _, review := range reviews {
+		_ = bookingsByID[review.BookingID]
+		homeowner := homeownersByID[review.HomeownerID]
+		photo := photosByUserID[review.HomeownerID]
+
+		homeownerName := strings.TrimSpace(homeowner.FirstName + " " + homeowner.LastName)
+		if homeownerName == "" {
+			homeownerName = "Homeowner"
+		}
+
+		rows = append(rows, map[string]any{
+			"id":                          review.ID,
+			"homeowner_name":              homeownerName,
+			"homeowner_avatar":            initialsFromName(homeowner.FirstName, homeowner.LastName, "HO"),
+			"homeowner_profile_image_url": buildPublicUploadURL(r, photo.FilePath),
+			"rating":                      review.Rating,
+			"comment":                     review.Comment,
+			"created_at":                  review.CreatedAt,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"reviews": rows,
+	})
+}
