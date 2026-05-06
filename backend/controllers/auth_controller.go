@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math/big"
 	"net/http"
@@ -94,6 +95,36 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	if err := config.DB.Where("email = ?", email).First(&user).Error; err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid email or password")
 		return
+	}
+
+	now := time.Now()
+	if !user.IsActive {
+		if user.SuspendedUntil != nil && user.SuspendedUntil.Before(now) {
+			if err := config.DB.Model(&user).Updates(map[string]any{
+				"is_active":         true,
+				"suspended_until":   nil,
+				"suspension_reason": "",
+			}).Error; err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to restore account status")
+				return
+			}
+			user.IsActive = true
+			user.SuspendedUntil = nil
+			user.SuspensionReason = ""
+		} else {
+			message := "account suspended"
+			if user.SuspendedUntil != nil {
+				message = fmt.Sprintf(
+					"account suspended until %s",
+					user.SuspendedUntil.Local().Format("Jan 2, 2006 3:04 PM"),
+				)
+			}
+			if strings.TrimSpace(user.SuspensionReason) != "" {
+				message = message + ". Reason: " + strings.TrimSpace(user.SuspensionReason)
+			}
+			writeError(w, http.StatusForbidden, message)
+			return
+		}
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
@@ -255,12 +286,12 @@ func ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	resetCodes.Unlock()
 
 	if err := sendResetOTPEmail(email, code); err != nil {
-		// optional: remove code if email sending fails
+		log.Printf("⚠️ forgot-password email delivery failed for %s: %v", email, err)
 		resetCodes.Lock()
 		delete(resetCodes.ByEmail, email)
 		resetCodes.Unlock()
 
-		writeError(w, http.StatusInternalServerError, "failed to send reset code email")
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -497,7 +528,7 @@ func sendResetOTPEmail(toEmail, otp string) error {
 	fromEmail := os.Getenv("RESEND_FROM_EMAIL")
 
 	if apiKey == "" || fromEmail == "" {
-		return writeSimpleError("missing RESEND_API_KEY or RESEND_FROM_EMAIL")
+		return writeSimpleError("email sending is not configured on the server")
 	}
 
 	payload := map[string]any{
@@ -533,7 +564,17 @@ func sendResetOTPEmail(toEmail, otp string) error {
 		var resendErr map[string]any
 		_ = json.NewDecoder(resp.Body).Decode(&resendErr)
 		log.Printf("Resend API error: status=%d body=%v", resp.StatusCode, resendErr)
-		return writeSimpleError("resend API failed")
+		errorBody := stringifyAny(resendErr)
+		if resp.StatusCode == http.StatusForbidden &&
+			strings.Contains(strings.ToLower(errorBody), "your own email address") {
+			return writeSimpleError(
+				"reset email sending is blocked: verify a domain in Resend and use that domain in RESEND_FROM_EMAIL instead of onboarding@resend.dev",
+			)
+		}
+		if message := extractResendErrorMessage(resendErr); message != "" {
+			return writeSimpleError("failed to send reset email: " + message)
+		}
+		return writeSimpleError("failed to send reset email")
 	}
 
 	return nil
@@ -549,4 +590,28 @@ type simpleError struct {
 
 func (e *simpleError) Error() string {
 	return e.msg
+}
+
+func extractResendErrorMessage(payload map[string]any) string {
+	for _, key := range []string{"message", "error"} {
+		if text, ok := payload[key].(string); ok {
+			return strings.TrimSpace(text)
+		}
+	}
+
+	if nested, ok := payload["error"].(map[string]any); ok {
+		if text, ok := nested["message"].(string); ok {
+			return strings.TrimSpace(text)
+		}
+	}
+
+	return ""
+}
+
+func stringifyAny(value any) string {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
 }

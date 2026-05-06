@@ -39,6 +39,7 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
   int? _messageTradespersonUserId;
   int? _messageBookingId;
   int _messageChatRequestId = 0;
+  int _messageUnreadCount = 0;
   int _notificationUnreadCount = 0;
   bool _isRefreshingNotificationCount = false;
   Timer? _notificationRefreshTimer;
@@ -89,6 +90,17 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
   bool _isLoadingAvailablePros = false;
 
   List<BookingModel> get _myBookings => BookingStore.all.take(3).toList();
+  int get _bookingNavBadgeCount => BookingStore.all.where((booking) {
+    final status = booking.status;
+    if (status == 'Completed') {
+      return !booking.isReviewed;
+    }
+    return status == 'Pending' ||
+        status == 'Accepted' ||
+        status == 'In Progress' ||
+        status == 'Under Review' ||
+        status == 'Disputed';
+  }).length;
 
   @override
   void initState() {
@@ -114,6 +126,7 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
     _notificationRefreshTimer?.cancel();
     _notificationRefreshTimer = Timer.periodic(const Duration(seconds: 8), (_) {
       _refreshNotificationUnreadCount();
+      _loadBookingsPreview();
     });
   }
 
@@ -528,6 +541,10 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
               initialBookingId: _messageBookingId,
               autoOpenChat: _messageChatRequestId > 0,
               chatRequestId: _messageChatRequestId,
+              onUnreadCountChanged: (count) {
+                if (!mounted) return;
+                setState(() => _messageUnreadCount = count);
+              },
             ),
             ProfileScreen(onMessageRequested: _openMessagesForTradesperson),
           ],
@@ -1525,9 +1542,24 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildNavItem(0, Icons.home_rounded, 'Home'),
-              _buildNavItem(1, Icons.calendar_today_rounded, 'Bookings'),
-              _buildNavItem(2, Icons.chat_bubble_outline_rounded, 'Messages'),
+              _buildNavItem(
+                0,
+                Icons.home_rounded,
+                'Home',
+                showNotificationDot: _notificationUnreadCount > 0,
+              ),
+              _buildNavItem(
+                1,
+                Icons.calendar_today_rounded,
+                'Bookings',
+                badgeCount: _bookingNavBadgeCount,
+              ),
+              _buildNavItem(
+                2,
+                Icons.chat_bubble_outline_rounded,
+                'Messages',
+                badgeCount: _messageUnreadCount,
+              ),
               _buildNavItem(3, Icons.person_outline_rounded, 'Profile'),
             ],
           ),
@@ -1536,7 +1568,13 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
     );
   }
 
-  Widget _buildNavItem(int index, IconData icon, String label) {
+  Widget _buildNavItem(
+    int index,
+    IconData icon,
+    String label, {
+    int badgeCount = 0,
+    bool showNotificationDot = false,
+  }) {
     final isActive = _currentNavIndex == index;
     return GestureDetector(
       onTap: () {
@@ -1558,7 +1596,60 @@ class _HomeownerDashboardScreenState extends State<HomeownerDashboardScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: isActive ? _primaryBlue : _textMuted, size: 24),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(
+                  icon,
+                  color: isActive ? _primaryBlue : _textMuted,
+                  size: 24,
+                ),
+                if (showNotificationDot)
+                  Positioned(
+                    right: -1,
+                    top: -1,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: _accentOrange,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: _cardWhite, width: 1.5),
+                      ),
+                    ),
+                  ),
+                if (badgeCount > 0)
+                  Positioned(
+                    right: -10,
+                    top: -8,
+                    child: Container(
+                      constraints: const BoxConstraints(
+                        minWidth: 18,
+                        minHeight: 18,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _accentOrange,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: _cardWhite, width: 1.5),
+                      ),
+                      child: Text(
+                        badgeCount > 99 ? '99+' : '$badgeCount',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          height: 1,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 4),
             Text(
               label,

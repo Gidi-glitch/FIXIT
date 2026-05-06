@@ -138,6 +138,7 @@ type AnalyticsRange = "today" | "week" | "month";
 interface ReportEntry {
   id: string;
   targetType: "Homeowner" | "Tradesman";
+  targetUserId?: string;
   targetName: string;
   targetEmail: string;
   reporterName: string;
@@ -145,6 +146,7 @@ interface ReportEntry {
   reason: string;
   details: string;
   status: "Open" | "Reviewing" | "Resolved";
+  resolutionNote?: string;
   submittedAt: string;
 }
 
@@ -273,8 +275,6 @@ const monthLabelFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
 });
 const getMonthKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}`;
-const getDateKey = (date: Date) =>
-  `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 const startOfDay = (date: Date) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate());
 const addDays = (date: Date, days: number) =>
@@ -284,12 +284,9 @@ const isSameDay = (left: Date, right: Date) =>
   left.getMonth() === right.getMonth() &&
   left.getDate() === right.getDate();
 
-const formatHourLabel = (hour: number) =>
-  new Intl.DateTimeFormat("en-US", { hour: "numeric" }).format(
-    new Date(2025, 0, 1, hour),
-  );
-
 const ROWS_PER_PAGE = 6;
+const TABLE_BODY_MIN_HEIGHT = 432;
+const TABLE_FILLER_ROW_HEIGHT = 72;
 
 const pageCountFor = (totalItems: number, pageSize = ROWS_PER_PAGE) =>
   Math.max(1, Math.ceil(totalItems / pageSize));
@@ -348,92 +345,6 @@ const buildUserGrowthData = (
     const parsed = parseDashboardDate(tradesman.createdAt);
     if (!parsed) return;
     const bucket = bucketMap.get(getMonthKey(parsed));
-    if (!bucket) return;
-    bucket.tradesmen += 1;
-    bucket.total += 1;
-  });
-
-  return buckets;
-};
-
-const buildRangeAnalyticsData = (
-  homeowners: Homeowner[],
-  tradesmen: Tradesman[],
-  range: AnalyticsRange,
-) => {
-  const now = new Date();
-  const today = startOfDay(now);
-  let buckets: UserGrowthPoint[] = [];
-  let resolveKey: (date: Date) => string | null = () => null;
-
-  if (range === "today") {
-    buckets = Array.from({ length: 24 }, (_, hour) => ({
-      key: String(hour),
-      label: formatHourLabel(hour),
-      homeowners: 0,
-      tradesmen: 0,
-      total: 0,
-    }));
-    resolveKey = (date) =>
-      isSameDay(date, now) ? String(date.getHours()) : null;
-  } else if (range === "week") {
-    const start = addDays(today, -6);
-    buckets = Array.from({ length: 7 }, (_, index) => {
-      const date = addDays(start, index);
-      return {
-        key: getDateKey(date),
-        label: date.toLocaleDateString("en-US", { weekday: "short" }),
-        homeowners: 0,
-        tradesmen: 0,
-        total: 0,
-      };
-    });
-    resolveKey = (date) => {
-      const value = startOfDay(date);
-      if (value < start || value > today) return null;
-      return getDateKey(value);
-    };
-  } else {
-    const start = addDays(today, -29);
-    buckets = Array.from({ length: 30 }, (_, index) => {
-      const date = addDays(start, index);
-      return {
-        key: getDateKey(date),
-        label: date.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        }),
-        homeowners: 0,
-        tradesmen: 0,
-        total: 0,
-      };
-    });
-    resolveKey = (date) => {
-      const value = startOfDay(date);
-      if (value < start || value > today) return null;
-      return getDateKey(value);
-    };
-  }
-
-  const bucketMap = new Map(buckets.map((bucket) => [bucket.key, bucket]));
-
-  homeowners.forEach((homeowner) => {
-    const parsed = parseDashboardDate(homeowner.createdAt);
-    if (!parsed) return;
-    const key = resolveKey(parsed);
-    if (!key) return;
-    const bucket = bucketMap.get(key);
-    if (!bucket) return;
-    bucket.homeowners += 1;
-    bucket.total += 1;
-  });
-
-  tradesmen.forEach((tradesman) => {
-    const parsed = parseDashboardDate(tradesman.createdAt);
-    if (!parsed) return;
-    const key = resolveKey(parsed);
-    if (!key) return;
-    const bucket = bucketMap.get(key);
     if (!bucket) return;
     bucket.tradesmen += 1;
     bucket.total += 1;
@@ -752,93 +663,6 @@ const TRADESMEN_DATA: Tradesman[] = [
   },
 ];
 
-const HOMEOWNERS_DATA: Homeowner[] = [
-  {
-    id: "h1",
-    initials: "SM",
-    color: "linear-gradient(135deg,#A82040,#D03060)",
-    name: "Sofia Mendoza",
-    email: "sofia.m@gmail.com",
-    location: "Quezon City",
-    registered: "Feb 12, 2025",
-    jobs: 4,
-    status: "Pending",
-    idNumber: "HO-2025-0183",
-    idStatus: "Pending",
-    idImageUrl: "/fixit_logo.png",
-  },
-  {
-    id: "h2",
-    initials: "BT",
-    color: "linear-gradient(135deg,#1560B0,#2E82D8)",
-    name: "Ben Torres",
-    email: "bentorres@yahoo.com",
-    location: "Makati",
-    registered: "Jan 4, 2025",
-    jobs: 7,
-    status: "Active",
-    idNumber: "HO-2025-0199",
-    idStatus: "Approved",
-    idImageUrl: "/fixit_logo.png",
-  },
-  {
-    id: "h3",
-    initials: "LV",
-    color: "linear-gradient(135deg,#B85010,#E87722)",
-    name: "Liza Villanueva",
-    email: "liza.v@outlook.com",
-    location: "Pasig City",
-    registered: "Mar 1, 2025",
-    jobs: 2,
-    status: "Pending",
-    idNumber: "HO-2025-02A1",
-    idStatus: "Pending",
-    idImageUrl: "/fixit_logo.png",
-  },
-  {
-    id: "h4",
-    initials: "KS",
-    color: "linear-gradient(135deg,#0F7060,#17A88E)",
-    name: "Karl Santos",
-    email: "karlsantos99@gmail.com",
-    location: "Mandaluyong",
-    registered: "Dec 18, 2024",
-    jobs: 11,
-    status: "Active",
-    idNumber: "HO-2024-5543",
-    idStatus: "Approved",
-    idImageUrl: "/fixit_logo.png",
-  },
-  {
-    id: "h5",
-    initials: "MG",
-    color: "linear-gradient(135deg,#5B2D8E,#8040C0)",
-    name: "Maria Garcia",
-    email: "maria.g@fixit.ph",
-    location: "Taguig",
-    registered: "Nov 5, 2024",
-    jobs: 6,
-    status: "Active",
-    idNumber: "HO-2024-1208",
-    idStatus: "Approved",
-    idImageUrl: "/fixit_logo.png",
-  },
-  {
-    id: "h6",
-    initials: "JR",
-    color: "linear-gradient(135deg,#1B2B5E,#2D44A0)",
-    name: "Jose Ramos",
-    email: "jose.r@gmail.com",
-    location: "Quezon City",
-    registered: "Oct 22, 2024",
-    jobs: 3,
-    status: "Inactive",
-    idNumber: "HO-2024-0X12",
-    idStatus: "Rejected",
-    idImageUrl: "/fixit_logo.png",
-  },
-];
-
 const REPORTS_DATA: ReportEntry[] = [
   {
     id: "r1",
@@ -904,63 +728,6 @@ const REPORTS_DATA: ReportEntry[] = [
       "The final amount requested was higher than the estimate shown in the app conversation.",
     status: "Reviewing",
     submittedAt: "2026-03-24T17:40:00Z",
-  },
-];
-
-const SAMPLE_TRADESMAN_REVIEW_TEMPLATES = [
-  {
-    reviewerName: "Sofia Mendoza",
-    reviewerRole: "Homeowner" as const,
-    rating: 5,
-    jobType: "Electrical outlet repair",
-    comment:
-      "Arrived on time, explained the work clearly, and left the area clean after finishing the repair.",
-    verifiedBooking: true,
-  },
-  {
-    reviewerName: "Ben Torres",
-    reviewerRole: "Homeowner" as const,
-    rating: 4,
-    jobType: "Leak inspection",
-    comment:
-      "The repair quality was solid and communication was smooth, though the visit started a little later than expected.",
-    verifiedBooking: true,
-  },
-  {
-    reviewerName: "Karl Santos",
-    reviewerRole: "Homeowner" as const,
-    rating: 5,
-    jobType: "Aircon maintenance",
-    comment:
-      "Professional from start to finish and gave helpful maintenance tips after the service.",
-    verifiedBooking: true,
-  },
-  {
-    reviewerName: "Maria Garcia",
-    reviewerRole: "Homeowner" as const,
-    rating: 3,
-    jobType: "Interior repainting",
-    comment:
-      "Work was completed well, but there were some delays in updates while materials were being sourced.",
-    verifiedBooking: true,
-  },
-  {
-    reviewerName: "Liza Villanueva",
-    reviewerRole: "Homeowner" as const,
-    rating: 4,
-    jobType: "Appliance diagnosis",
-    comment:
-      "Very courteous and easy to talk to. I would book again for follow-up work.",
-    verifiedBooking: true,
-  },
-  {
-    reviewerName: "Jose Ramos",
-    reviewerRole: "Homeowner" as const,
-    rating: 5,
-    jobType: "Bathroom fixture replacement",
-    comment:
-      "Fast turnaround and the finished installation looked neat and secure.",
-    verifiedBooking: true,
   },
 ];
 
@@ -1556,6 +1323,10 @@ const Modal = ({
   hero,
   rows,
   actions,
+  headerAction,
+  footerAction,
+  hideCloseButton = false,
+  closeLabel = "Close",
 }: {
   open: boolean;
   onClose: () => void;
@@ -1563,6 +1334,10 @@ const Modal = ({
   hero?: ReactNode;
   rows: { label: string; value: string; highlight?: boolean }[];
   actions?: ReactNode;
+  headerAction?: ReactNode;
+  footerAction?: ReactNode;
+  hideCloseButton?: boolean;
+  closeLabel?: string;
 }) => {
   if (!open) return null;
   return (
@@ -1609,35 +1384,39 @@ const Modal = ({
           >
             {title}
           </h3>
-          <button
-            onClick={onClose}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: "var(--surface-2)",
-              border: "1.5px solid var(--border)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              color: "var(--muted)",
-            }}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+          {headerAction ?? (
+            !hideCloseButton && (
+              <button
+                onClick={onClose}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  background: "var(--surface-2)",
+                  border: "1.5px solid var(--border)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  color: "var(--muted)",
+                }}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            )
+          )}
         </div>
         {hero && <div style={{ marginBottom: 18 }}>{hero}</div>}
         {rows.map((r, i) => (
@@ -1679,31 +1458,33 @@ const Modal = ({
             {actions}
           </div>
         )}
-        <button
-          onClick={onClose}
-          style={{
-            width: "100%",
-            padding: 13,
-            marginTop: 20,
-            background: "var(--accent)",
-            border: "none",
-            borderRadius: 8,
-            fontFamily: "inherit",
-            fontSize: 14,
-            fontWeight: 800,
-            color: "var(--on-solid)",
-            cursor: "pointer",
-            transition: "background .2s",
-          }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.background = "var(--accent-hover)")
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.background = "var(--accent)")
-          }
-        >
-          Close
-        </button>
+        {footerAction ?? (
+          <button
+            onClick={onClose}
+            style={{
+              width: "100%",
+              padding: 13,
+              marginTop: 20,
+              background: "var(--accent)",
+              border: "none",
+              borderRadius: 8,
+              fontFamily: "inherit",
+              fontSize: 14,
+              fontWeight: 800,
+              color: "var(--on-solid)",
+              cursor: "pointer",
+              transition: "background .2s",
+            }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.background = "var(--accent-hover)")
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.background = "var(--accent)")
+            }
+          >
+            {closeLabel}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1786,6 +1567,165 @@ const ConfirmModal = ({
           </button>
           <Btn variant="reject" onClick={onConfirm}>
             {confirmLabel}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ReportActionModal = ({
+  open,
+  mode,
+  reportLabel,
+  reason,
+  suspensionDays,
+  submitting,
+  onReasonChange,
+  onSuspensionDaysChange,
+  onSubmit,
+  onClose,
+}: {
+  open: boolean;
+  mode: "cancel" | "revoke";
+  reportLabel: string;
+  reason: string;
+  suspensionDays: string;
+  submitting: boolean;
+  onReasonChange: (value: string) => void;
+  onSuspensionDaysChange: (value: string) => void;
+  onSubmit: () => void;
+  onClose: () => void;
+}) => {
+  if (!open) return null;
+
+  const title = mode === "cancel" ? "Cancel Report" : "Revoke User";
+  const submitLabel = mode === "cancel" ? "Cancel Report" : "Revoke User";
+  const reasonLabel = mode === "cancel" ? "Cancellation Reason" : "Revocation Reason";
+  const reasonPlaceholder =
+    mode === "cancel"
+      ? "Explain why this report is being cancelled."
+      : "Explain why this user is being revoked.";
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "var(--overlay)",
+        backdropFilter: "blur(4px)",
+        zIndex: 230,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface)",
+          borderRadius: 16,
+          padding: 24,
+          width: "100%",
+          maxWidth: 460,
+          boxShadow: "var(--elevated-shadow)",
+          animation: "mIn .3s cubic-bezier(.16,1,.3,1)",
+        }}
+      >
+        <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text)" }}>
+          {title}
+        </div>
+        <div
+          style={{ fontSize: 12, color: "var(--muted)", marginTop: 6, marginBottom: 16 }}
+        >
+          {reportLabel}
+        </div>
+
+        <label
+          style={{
+            display: "block",
+            fontSize: 12,
+            fontWeight: 700,
+            color: "var(--text)",
+            marginBottom: 8,
+          }}
+        >
+          {reasonLabel}
+        </label>
+        <textarea
+          value={reason}
+          onChange={(e) => onReasonChange(e.target.value)}
+          placeholder={reasonPlaceholder}
+          rows={4}
+          style={{
+            width: "100%",
+            padding: "10px 12px",
+            border: "1.5px solid var(--border)",
+            borderRadius: 8,
+            fontFamily: "inherit",
+            fontSize: 13,
+            color: "var(--text)",
+            resize: "vertical",
+            background: "var(--surface)",
+          }}
+        />
+
+        {mode === "revoke" && (
+          <div style={{ marginTop: 14 }}>
+            <label
+              style={{
+                display: "block",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "var(--text)",
+                marginBottom: 8,
+              }}
+            >
+              Suspension Days
+            </label>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={suspensionDays}
+              onChange={(e) => onSuspensionDaysChange(e.target.value)}
+              placeholder="Enter number of days"
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                border: "1.5px solid var(--border)",
+                borderRadius: 8,
+                fontFamily: "inherit",
+                fontSize: 13,
+                color: "var(--text)",
+                background: "var(--surface)",
+              }}
+            />
+          </div>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            style={{
+              padding: "9px 14px",
+              background: "var(--surface-2)",
+              border: "1.5px solid var(--border)",
+              borderRadius: 8,
+              fontFamily: "inherit",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "var(--text)",
+              cursor: "pointer",
+              opacity: submitting ? 0.7 : 1,
+            }}
+          >
+            Cancel
+          </button>
+          <Btn variant="reject" onClick={onSubmit} disabled={submitting}>
+            {submitting ? "Saving..." : submitLabel}
           </Btn>
         </div>
       </div>
@@ -2283,8 +2223,16 @@ const ProfileEditorModal = ({
 // TABLE WRAPPER
 // ─────────────────────────────────────────────────────────────────
 const Table = ({ children }: { children: ReactNode }) => (
-  <div style={{ overflowX: "auto" }}>
-    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+  <div
+    style={{
+      overflowX: "auto",
+      minHeight: TABLE_BODY_MIN_HEIGHT,
+      scrollbarGutter: "stable both-edges",
+    }}
+  >
+    <table
+      style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}
+    >
       {children}
     </table>
   </div>
@@ -2302,6 +2250,8 @@ const Th = ({ children }: { children: ReactNode }) => (
       background: "var(--table-head)",
       borderBottom: "1px solid var(--border)",
       whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
     }}
   >
     {children}
@@ -2324,12 +2274,37 @@ const Td = ({
       color: "var(--text)",
       borderBottom: "1px solid var(--border)",
       verticalAlign: "middle",
+      overflowWrap: "anywhere",
+      wordBreak: "break-word",
       ...style,
     }}
   >
     {children}
   </td>
 );
+
+const renderTablePaddingRows = (columnCount: number, rowCount: number) => {
+  const fillerCount = Math.max(0, ROWS_PER_PAGE - rowCount);
+  if (rowCount <= 0 || fillerCount === 0) {
+    return null;
+  }
+
+  return Array.from({ length: fillerCount }, (_, index) => (
+    <tr key={`table-filler-${columnCount}-${rowCount}-${index}`} aria-hidden="true">
+      <Td
+        colSpan={columnCount}
+        style={{
+          padding: 0,
+          height: TABLE_FILLER_ROW_HEIGHT,
+          borderBottom:
+            index === fillerCount - 1 ? "1px solid var(--border)" : "1px solid var(--border)",
+        }}
+      >
+        <div style={{ height: TABLE_FILLER_ROW_HEIGHT }} />
+      </Td>
+    </tr>
+  ));
+};
 
 // ─────────────────────────────────────────────────────────────────
 // TOOLBAR (search + filters inside card)
@@ -2606,86 +2581,6 @@ const Toolbar = ({
     </div>
   );
 };
-
-// ─────────────────────────────────────────────────────────────────
-// ACTIVITY FEED ITEM
-// ─────────────────────────────────────────────────────────────────
-const ActivityItem = ({
-  dot,
-  title,
-  sub,
-  time,
-  isLast = false,
-}: {
-  dot: string;
-  title: string;
-  sub: string;
-  time: string;
-  isLast?: boolean;
-}) => (
-  <div
-    style={{
-      display: "flex",
-      alignItems: "flex-start",
-      gap: 14,
-      padding: "14px 24px",
-      borderBottom: isLast ? "none" : "1px solid var(--border)",
-    }}
-  >
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        paddingTop: 3,
-      }}
-    >
-      <div
-        style={{
-          width: 10,
-          height: 10,
-          borderRadius: "50%",
-          background: dot,
-          flexShrink: 0,
-        }}
-      />
-      {!isLast && (
-        <div
-          style={{
-            width: 2,
-            flex: 1,
-            background: "var(--border)",
-            marginTop: 4,
-            minHeight: 24,
-          }}
-        />
-      )}
-    </div>
-    <div style={{ flex: 1 }}>
-      <div
-        style={{
-          fontSize: 13,
-          fontWeight: 700,
-          color: "var(--text)",
-          marginBottom: 3,
-        }}
-      >
-        {title}
-      </div>
-      <div style={{ fontSize: 12, color: "var(--muted)" }}>{sub}</div>
-    </div>
-    <div
-      style={{
-        fontSize: 11,
-        color: "var(--muted)",
-        whiteSpace: "nowrap",
-        paddingTop: 2,
-      }}
-    >
-      {time}
-    </div>
-  </div>
-);
 
 // ─────────────────────────────────────────────────────────────────
 // NOTIFICATION ITEM (Topbar)
@@ -4340,238 +4235,6 @@ const FailedBookingsChart = ({
 };
 
 // ─────────────────────────────────────────────────────────────────
-// VERIFICATION QUEUE CARD (Dashboard)
-// ─────────────────────────────────────────────────────────────────
-const VCard = ({
-  t,
-  onApprove,
-  onReject,
-}: {
-  t: Tradesman;
-  onApprove: () => void;
-  onReject: () => void;
-}) => {
-  const [hov, setHov] = useState(false);
-  return (
-    <div
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        background: "var(--surface-2)",
-        border: "1.5px solid var(--border)",
-        borderRadius: 12,
-        padding: 18,
-        transform: hov ? "translateY(-2px)" : "translateY(0)",
-        boxShadow: hov ? "0 4px 16px rgba(15,25,35,.09)" : "none",
-        transition: "all .2s",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 12,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Avatar initials={t.initials} color={t.color} size={46} />
-          <div>
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 800,
-                color: "var(--text)",
-                marginBottom: 2,
-              }}
-            >
-              {t.name}
-            </div>
-            <div
-              style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}
-            >
-              {t.category}
-            </div>
-          </div>
-        </div>
-        <Badge status={t.status} />
-      </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 7,
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          padding: "8px 12px",
-          marginBottom: 12,
-        }}
-      >
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="var(--muted)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <rect x="2" y="7" width="20" height="14" rx="2" />
-          <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-        </svg>
-        <span style={{ fontSize: 12, color: "var(--text)", fontWeight: 600 }}>
-          <strong
-            style={{ color: "var(--muted)", fontWeight: 600, marginRight: 6 }}
-          >
-            License:
-          </strong>
-          {t.license}
-        </span>
-      </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <Btn variant="approve" onClick={onApprove}>
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-          Approve
-        </Btn>
-        <Btn variant="reject" onClick={onReject}>
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-          Reject
-        </Btn>
-      </div>
-    </div>
-  );
-};
-
-const VerificationCard = ({
-  v,
-  onApprove,
-  onReject,
-  onView,
-  onArchive,
-  name,
-}: {
-  v: Verification;
-  onApprove: () => void;
-  onReject: () => void;
-  onView: () => void;
-  onArchive: () => void;
-  name: string;
-}) => {
-  const [hov, setHov] = useState(false);
-  const statusLabel = toTitle(v.status);
-  return (
-    <div
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        background: "var(--surface-2)",
-        border: "1.5px solid var(--border)",
-        borderRadius: 12,
-        padding: 18,
-        transform: hov ? "translateY(-2px)" : "translateY(0)",
-        boxShadow: hov ? "0 4px 16px rgba(15,25,35,.09)" : "none",
-        transition: "all .2s",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 12,
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 800,
-              color: "var(--text)",
-              marginBottom: 2,
-            }}
-          >
-            {name ? `${name} · User #${v.userId}` : `User #${v.userId}`}
-          </div>
-          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
-            {verificationTypeLabel(v.type)}
-          </div>
-        </div>
-        <Badge status={statusLabel} />
-      </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 7,
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          padding: "8px 12px",
-          marginBottom: 12,
-        }}
-      >
-        {icons.license}
-        <span style={{ fontSize: 12, color: "var(--text)", fontWeight: 600 }}>
-          <strong
-            style={{ color: "var(--muted)", fontWeight: 600, marginRight: 6 }}
-          >
-            Document:
-          </strong>
-          {v.documentUrl ? "Uploaded" : "Missing"}
-        </span>
-      </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {v.status === "pending" ? (
-          <>
-            <Btn variant="approve" onClick={onApprove}>
-              {icons.check} Approve
-            </Btn>
-            <Btn variant="reject" onClick={onReject}>
-              {icons.x} Reject
-            </Btn>
-          </>
-        ) : (
-          <Btn disabled>
-            {icons.check} {statusLabel}
-          </Btn>
-        )}
-        <Btn variant="view" onClick={onView}>
-          {icons.license} View Details
-        </Btn>
-        <Btn variant="reject" onClick={onArchive}>
-          {icons.x} Archive
-        </Btn>
-      </div>
-    </div>
-  );
-};
-
-// ─────────────────────────────────────────────────────────────────
 // SIDEBAR NAV ITEM
 // ─────────────────────────────────────────────────────────────────
 const NavItem = ({
@@ -4930,7 +4593,6 @@ export default function DashboardPage() {
   const [homeowners, setHomeowners] = useState<Homeowner[]>([]);
   const [verifications, setVerifications] = useState<Verification[]>([]);
   const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
-  const [profileLoading, setProfileLoading] = useState(false);
   const [profileEditor, setProfileEditor] = useState<{
     open: boolean;
     mode: ProfileEditorMode | null;
@@ -4963,7 +4625,11 @@ export default function DashboardPage() {
     hero?: ReactNode;
     rows: { label: string; value: string; highlight?: boolean }[];
     actions?: ReactNode;
-  }>({ open: false, title: "", rows: [] });
+    headerAction?: ReactNode;
+    footerAction?: ReactNode;
+    hideCloseButton?: boolean;
+    closeLabel?: string;
+  }>({ open: false, title: "", rows: [], closeLabel: "Close" });
   const [idModal, setIdModal] = useState<{
     open: boolean;
     title: string;
@@ -4983,12 +4649,43 @@ export default function DashboardPage() {
     confirmLabel: "Confirm",
     onConfirm: () => {},
   });
+  const [reportAction, setReportAction] = useState<{
+    open: boolean;
+    mode: "cancel" | "revoke";
+    report: ReportEntry | null;
+    reason: string;
+    suspensionDays: string;
+    submitting: boolean;
+  }>({
+    open: false,
+    mode: "cancel",
+    report: null,
+    reason: "",
+    suspensionDays: "",
+    submitting: false,
+  });
+  const [userRevoke, setUserRevoke] = useState<{
+    open: boolean;
+    role: "tradesperson" | "homeowner" | "";
+    userId: string;
+    userName: string;
+    reason: string;
+    suspensionDays: string;
+    submitting: boolean;
+  }>({
+    open: false,
+    role: "",
+    userId: "",
+    userName: "",
+    reason: "",
+    suspensionDays: "",
+    submitting: false,
+  });
   const [searchVerification, setSearchVerification] = useState("");
   const [searchTradesmen, setSearchTradesmen] = useState("");
   const [searchHomeowners, setSearchHomeowners] = useState("");
   const [searchReports, setSearchReports] = useState("");
   const [searchRatings, setSearchRatings] = useState("");
-  const [searchDashboard, setSearchDashboard] = useState("");
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [selectedRatingsTradesmanId, setSelectedRatingsTradesmanId] =
     useState("");
@@ -5395,7 +5092,7 @@ export default function DashboardPage() {
   });
 
   const filteredTradesmanRatings = tradesmanRatings.filter(
-    ({ tradesman, reviews, average }) => {
+    ({ tradesman, average }) => {
       const matchesSearch =
         !searchRatings.trim() ||
         matchesQuery(searchRatings, [
@@ -5511,39 +5208,6 @@ export default function DashboardPage() {
     }
   }, [ratingsPage, ratingsPageCount]);
 
-  const filteredDashboardVerifications = verifications.filter((v) => {
-    const statusLabel = toTitle(v.status);
-    const typeLabel = verificationTypeLabel(v.type);
-    return (
-      v.status === "pending" &&
-      matchesQuery(searchDashboard, [
-        v.userId,
-        v.id,
-        statusLabel,
-        typeLabel,
-        getVerificationUserName(v),
-      ])
-    );
-  });
-  const filteredDashboardHomeowners = homeowners.filter((h) =>
-    matchesQuery(searchDashboard, [
-      h.name,
-      h.email,
-      h.idNumber,
-      h.location,
-      h.status,
-      h.idStatus,
-      h.id,
-    ]),
-  );
-  const recentDashboardHomeowners = [...filteredDashboardHomeowners].sort(
-    (a, b) => {
-      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return bTime - aTime;
-    },
-  );
-
   // Toast helper
   const showToast = (msg: string, type: ToastType = "success") => {
     setToast({ show: true, msg, type });
@@ -5564,7 +5228,6 @@ export default function DashboardPage() {
 
   const loadAdminProfile = async () => {
     if (!authToken) return;
-    setProfileLoading(true);
     try {
       const res = await fetch(`${apiBase}/api/profile/me`, {
         headers: { Authorization: `Bearer ${authToken}` },
@@ -5590,8 +5253,6 @@ export default function DashboardPage() {
       });
     } catch {
       showToast("Failed to load admin profile.", "error");
-    } finally {
-      setProfileLoading(false);
     }
   };
 
@@ -6006,6 +5667,9 @@ export default function DashboardPage() {
           "Homeowner"
             ? "Homeowner"
             : "Tradesman",
+        targetUserId: String(
+          report.target_user_id ?? report.TargetUserID ?? report.user_id ?? "",
+        ),
         targetName: String(
           report.target_name ?? report.TargetName ?? "Unknown User",
         ),
@@ -6026,11 +5690,152 @@ export default function DashboardPage() {
             : String(report.status ?? report.Status ?? "Open") === "Reviewing"
               ? "Reviewing"
               : "Open",
+        resolutionNote: String(
+          report.resolution_note ?? report.ResolutionNote ?? "",
+        ),
         submittedAt: report.submitted_at ?? report.SubmittedAt,
       })) as ReportEntry[];
       setReportsData(mapped);
     } catch {
       if (!silent) showToast("Failed to load reports.", "error");
+    }
+  };
+
+  const openReportAction = (report: ReportEntry, mode: "cancel" | "revoke") => {
+    closeInfoModal();
+    setReportAction({
+      open: true,
+      mode,
+      report,
+      reason: "",
+      suspensionDays: "",
+      submitting: false,
+    });
+  };
+
+  const closeReportAction = () => {
+    setReportAction((prev) =>
+      prev.submitting ? prev : { ...prev, open: false, report: null },
+    );
+  };
+
+  const openUserRevoke = (
+    role: "tradesperson" | "homeowner",
+    userId: string,
+    userName: string,
+  ) => {
+    closeInfoModal();
+    setUserRevoke({
+      open: true,
+      role,
+      userId,
+      userName,
+      reason: "",
+      suspensionDays: "",
+      submitting: false,
+    });
+  };
+
+  const closeUserRevoke = () => {
+    setUserRevoke((prev) =>
+      prev.submitting ? prev : { ...prev, open: false, role: "", userId: "" },
+    );
+  };
+
+  const submitReportAction = async () => {
+    if (!authToken) {
+      showToast("Please sign in again.", "error");
+      return;
+    }
+
+    const report = reportAction.report;
+    if (!report) {
+      showToast("Missing report context.", "error");
+      return;
+    }
+
+    const reason = reportAction.reason.trim();
+    if (!reason) {
+      showToast("Reason is required.", "error");
+      return;
+    }
+
+    const isRevoke = reportAction.mode === "revoke";
+    const suspensionDays = Number.parseInt(reportAction.suspensionDays, 10);
+    if (isRevoke) {
+      if (!Number.isFinite(suspensionDays) || suspensionDays <= 0) {
+        showToast("Suspension days must be greater than zero.", "error");
+        return;
+      }
+    }
+
+    setReportAction((prev) => ({ ...prev, submitting: true }));
+    try {
+      const endpoint = isRevoke
+        ? `${apiBase}/api/admin/reports/${report.id}/revoke`
+        : `${apiBase}/api/admin/reports/${report.id}/cancel`;
+      const payload = isRevoke
+        ? { reason, suspension_days: suspensionDays }
+        : { note: reason };
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          logoutAndRedirect();
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        const message =
+          typeof data?.message === "string"
+            ? data.message
+            : isRevoke
+              ? "Failed to revoke reported user."
+              : "Failed to cancel report.";
+        showToast(message, "error");
+        return;
+      }
+
+      setReportAction((prev) => ({
+        ...prev,
+        open: false,
+        report: null,
+        reason: "",
+        suspensionDays: "",
+        submitting: false,
+      }));
+
+      setReportsData((prev) =>
+        prev.map((item) =>
+          item.id === report.id
+            ? { ...item, status: "Resolved", resolutionNote: reason }
+            : item,
+        ),
+      );
+      loadReports(true);
+      loadUsers();
+      loadRequestAnalyticsBookings(true);
+      showToast(
+        isRevoke
+          ? "Reported user revoked and report resolved."
+          : "Report cancelled and booking cancelled.",
+        "success",
+      );
+    } catch {
+      showToast(
+        reportAction.mode === "revoke"
+          ? "Failed to revoke reported user."
+          : "Failed to cancel report.",
+        "error",
+      );
+    } finally {
+      setReportAction((prev) => ({ ...prev, submitting: false }));
     }
   };
 
@@ -6052,118 +5857,152 @@ export default function DashboardPage() {
   }, [authToken, apiBase, router]);
 
   // Approve / Reject
-  const revokeTradesman = async (id: string, name: string) => {
+  const revokeTradesman = async (
+    id: string,
+    name: string,
+    reason: string,
+    suspensionDays: number,
+  ) => {
     if (!authToken) {
       showToast("Please sign in again.", "error");
-      return;
+      return false;
     }
     try {
       const res = await fetch(
         `${apiBase}/api/admin/tradespeople/${id}/revoke`,
         {
           method: "PATCH",
-          headers: { Authorization: `Bearer ${authToken}` },
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            reason,
+            suspension_days: suspensionDays,
+          }),
         },
       );
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) {
           logoutAndRedirect();
-          return;
+          return false;
         }
-        showToast("Failed to re-verify tradesman.", "error");
-        return;
+        const data = await res.json().catch(() => ({}));
+        showToast(data.message || "Failed to suspend tradesman.", "error");
+        return false;
       }
       setTradesmen((prev) =>
         prev.map((t) => (t.id === id ? { ...t, status: "Suspended" } : t)),
       );
       loadUsers();
       showToast(`${name} suspended`, "error");
+      return true;
     } catch {
-      showToast("Failed to re-verify tradesman.", "error");
+      showToast("Failed to suspend tradesman.", "error");
+      return false;
     }
   };
-  const restoreTradesman = async (id: string, name: string) => {
+  const revokeHomeowner = async (
+    id: string,
+    name: string,
+    reason: string,
+    suspensionDays: number,
+  ) => {
     if (!authToken) {
       showToast("Please sign in again.", "error");
-      return;
+      return false;
     }
     try {
       const res = await fetch(
-        `${apiBase}/api/admin/tradespeople/${id}/restore`,
+        `${apiBase}/api/admin/homeowners/${id}/revoke`,
         {
           method: "PATCH",
-          headers: { Authorization: `Bearer ${authToken}` },
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            reason,
+            suspension_days: suspensionDays,
+          }),
         },
       );
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) {
           logoutAndRedirect();
-          return;
+          return false;
         }
-        showToast("Failed to restore tradesman.", "error");
-        return;
-      }
-      setTradesmen((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, status: "Verified" } : t)),
-      );
-      loadUsers();
-      showToast(`${name} restored`, "success");
-    } catch {
-      showToast("Failed to restore tradesman.", "error");
-    }
-  };
-  const revokeHomeowner = async (id: string, name: string) => {
-    if (!authToken) {
-      showToast("Please sign in again.", "error");
-      return;
-    }
-    try {
-      const res = await fetch(`${apiBase}/api/admin/homeowners/${id}/revoke`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      if (!res.ok) {
-        if (res.status === 401 || res.status === 403) {
-          logoutAndRedirect();
-          return;
-        }
-        showToast("Failed to revoke homeowner.", "error");
-        return;
+        const data = await res.json().catch(() => ({}));
+        showToast(data.message || "Failed to suspend homeowner.", "error");
+        return false;
       }
       setHomeowners((prev) =>
         prev.map((h) => (h.id === id ? { ...h, status: "Inactive" } : h)),
       );
       loadUsers();
-      showToast(`${name} revoked`, "error");
+      showToast(`${name} suspended`, "error");
+      return true;
     } catch {
-      showToast("Failed to revoke homeowner.", "error");
+      showToast("Failed to suspend homeowner.", "error");
+      return false;
     }
   };
-  const restoreHomeowner = async (id: string, name: string) => {
+
+  const submitUserRevoke = async () => {
     if (!authToken) {
       showToast("Please sign in again.", "error");
       return;
     }
+    if (!userRevoke.role || !userRevoke.userId) {
+      showToast("Missing user context.", "error");
+      return;
+    }
+
+    const reason = userRevoke.reason.trim();
+    if (!reason) {
+      showToast("Reason is required.", "error");
+      return;
+    }
+
+    const suspensionDays = Number.parseInt(userRevoke.suspensionDays, 10);
+    if (!Number.isFinite(suspensionDays) || suspensionDays <= 0) {
+      showToast("Suspension days must be greater than zero.", "error");
+      return;
+    }
+
+    setUserRevoke((prev) => ({ ...prev, submitting: true }));
     try {
-      const res = await fetch(`${apiBase}/api/admin/homeowners/${id}/restore`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      if (!res.ok) {
-        if (res.status === 401 || res.status === 403) {
-          logoutAndRedirect();
-          return;
-        }
-        showToast("Failed to restore homeowner.", "error");
-        return;
+      let success = false;
+      if (userRevoke.role === "tradesperson") {
+        success = await revokeTradesman(
+          userRevoke.userId,
+          userRevoke.userName,
+          reason,
+          suspensionDays,
+        );
+      } else {
+        success = await revokeHomeowner(
+          userRevoke.userId,
+          userRevoke.userName,
+          reason,
+          suspensionDays,
+        );
       }
-      setHomeowners((prev) =>
-        prev.map((h) => (h.id === id ? { ...h, status: "Active" } : h)),
+      if (success) {
+        setUserRevoke({
+          open: false,
+          role: "",
+          userId: "",
+          userName: "",
+          reason: "",
+          suspensionDays: "",
+          submitting: false,
+        });
+      }
+    } finally {
+      setUserRevoke((prev) =>
+        prev.open ? { ...prev, submitting: false } : prev,
       );
-      loadUsers();
-      showToast(`${name} restored`, "success");
-    } catch {
-      showToast("Failed to restore homeowner.", "error");
     }
   };
 
@@ -6377,8 +6216,8 @@ export default function DashboardPage() {
     const canRevoke = isApprovedVerification || canRevokeAccount;
 
     const handleRevoke = () => {
-      closeInfoModal();
       if (isApprovedVerification && matchedVerification) {
+        closeInfoModal();
         openConfirm({
           title: `Revoke ${h.name}?`,
           message:
@@ -6388,17 +6227,48 @@ export default function DashboardPage() {
         });
         return;
       }
-      openConfirm({
-        title: `Revoke ${h.name}?`,
-        message: "This will suspend the homeowner account and block app login.",
-        confirmLabel: "Revoke",
-        onConfirm: () => revokeHomeowner(h.id, h.name),
-      });
+      openUserRevoke("homeowner", h.id, h.name);
     };
 
     setModal({
       open: true,
       title: "Homeowner Details",
+      footerAction: canRevoke ? (
+        <button
+          onClick={handleRevoke}
+          style={{
+            width: "100%",
+            padding: 13,
+            marginTop: 20,
+            background: "var(--danger-solid)",
+            border: "none",
+            borderRadius: 8,
+            fontFamily: "inherit",
+            fontSize: 14,
+            fontWeight: 800,
+            color: "var(--on-solid)",
+            cursor: "pointer",
+            transition: "background .2s",
+          }}
+          onMouseEnter={(e) =>
+            (e.currentTarget.style.background = "var(--danger-text)")
+          }
+          onMouseLeave={(e) =>
+            (e.currentTarget.style.background = "var(--danger-solid)")
+          }
+        >
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+            }}
+          >
+            {icons.x} Revoke
+          </span>
+        </button>
+      ) : undefined,
       hero: (
         <div
           style={{
@@ -6449,11 +6319,6 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
-          {canRevoke && (
-            <Btn variant="reject" onClick={handleRevoke}>
-              {icons.x} Revoke
-            </Btn>
-          )}
         </div>
       ),
       rows: [
@@ -6567,8 +6432,8 @@ export default function DashboardPage() {
     const canRevoke = isApprovedVerification || canRevokeAccount;
 
     const handleRevoke = () => {
-      closeInfoModal();
       if (isApprovedVerification && matchedVerification) {
+        closeInfoModal();
         openConfirm({
           title: `Revoke ${t.name}?`,
           message:
@@ -6578,23 +6443,53 @@ export default function DashboardPage() {
         });
         return;
       }
-      openConfirm({
-        title: `Revoke ${t.name}?`,
-        message: "This will suspend the tradesman account and block app login.",
-        confirmLabel: "Revoke",
-        onConfirm: () => revokeTradesman(t.id, t.name),
-      });
+      openUserRevoke("tradesperson", t.id, t.name);
     };
 
     setModal({
       open: true,
       title: "Tradesman Details",
+      footerAction: canRevoke ? (
+        <button
+          onClick={handleRevoke}
+          style={{
+            width: "100%",
+            padding: 13,
+            marginTop: 20,
+            background: "var(--danger-solid)",
+            border: "none",
+            borderRadius: 8,
+            fontFamily: "inherit",
+            fontSize: 14,
+            fontWeight: 800,
+            color: "var(--on-solid)",
+            cursor: "pointer",
+            transition: "background .2s",
+          }}
+          onMouseEnter={(e) =>
+            (e.currentTarget.style.background = "var(--danger-text)")
+          }
+          onMouseLeave={(e) =>
+            (e.currentTarget.style.background = "var(--danger-solid)")
+          }
+        >
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+            }}
+          >
+            {icons.x} Revoke
+          </span>
+        </button>
+      ) : undefined,
       hero: (
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
             gap: 14,
             padding: "2px 0 6px",
           }}
@@ -6626,7 +6521,14 @@ export default function DashboardPage() {
               >
                 {t.email}
               </div>
-              <div style={{ marginTop: 10 }}>
+              <div
+                style={{
+                  marginTop: 10,
+                  display: "flex",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
                 <Btn
                   variant="view"
                   onClick={() =>
@@ -6639,14 +6541,18 @@ export default function DashboardPage() {
                 >
                   {icons.license} View ID
                 </Btn>
+                <Btn
+                  variant="view"
+                  onClick={() =>
+                    openDocumentModal(`${t.name} · License/Cert`, t.credentialUrl)
+                  }
+                  disabled={!t.credentialUrl}
+                >
+                  {icons.license} View License/Cert
+                </Btn>
               </div>
             </div>
           </div>
-          {canRevoke && (
-            <Btn variant="reject" onClick={handleRevoke}>
-              {icons.x} Revoke
-            </Btn>
-          )}
         </div>
       ),
       rows: [
@@ -6668,15 +6574,6 @@ export default function DashboardPage() {
       ],
       actions: (
         <>
-          <Btn
-            variant="view"
-            onClick={() =>
-              openDocumentModal(`${t.name} · License/Cert`, t.credentialUrl)
-            }
-            disabled={!t.credentialUrl}
-          >
-            {icons.license} View License/Cert
-          </Btn>
           {isPendingVerification && matchedVerification && (
             <>
               <Btn
@@ -6963,7 +6860,7 @@ export default function DashboardPage() {
   // ── PAGES ──────────────────────────────────────────────────────
 
   const PageDashboard = () => (
-    <div style={{ animation: "fadeUp .35s ease both" }}>
+    <div>
       {/* Stats */}
       <div
         style={{
@@ -7098,7 +6995,7 @@ export default function DashboardPage() {
   );
 
   const PageVerification = () => (
-    <div style={{ animation: "fadeUp .35s ease both" }}>
+    <div>
       <Card style={{ overflow: "visible" }}>
         <CardHead
           title="Verification Requests"
@@ -7200,6 +7097,7 @@ export default function DashboardPage() {
                 </tr>
               );
             })}
+            {renderTablePaddingRows(5, pagedVerifications.length)}
           </tbody>
         </Table>
         <TablePagination
@@ -7213,7 +7111,7 @@ export default function DashboardPage() {
   );
 
   const PageTradesmen = () => (
-    <div style={{ animation: "fadeUp .35s ease both" }}>
+    <div>
       <Card style={{ overflow: "visible" }}>
         <CardHead
           title="All Tradesmen"
@@ -7299,6 +7197,7 @@ export default function DashboardPage() {
                 </Td>
               </tr>
             ))}
+            {renderTablePaddingRows(7, pagedTradesmen.length)}
           </tbody>
         </Table>
         <TablePagination
@@ -7363,7 +7262,7 @@ export default function DashboardPage() {
     const hasAnalyticsData = analyticsReviews.length > 0;
 
     return (
-      <div style={{ animation: "fadeUp .35s ease both" }}>
+      <div>
         <Card style={{ marginBottom: 20 }}>
           <CardHead
             title="Ratings Analytics"
@@ -8113,6 +8012,10 @@ export default function DashboardPage() {
                   </Td>
                 </tr>
               )}
+              {renderTablePaddingRows(
+                6,
+                filteredTradesmanRatings.length > 0 ? pagedTradesmanRatings.length : 0,
+              )}
             </tbody>
           </Table>
           <TablePagination
@@ -8127,7 +8030,7 @@ export default function DashboardPage() {
   };
 
   const PageHomeowners = () => (
-    <div style={{ animation: "fadeUp .35s ease both" }}>
+    <div>
       <Card style={{ overflow: "visible" }}>
         <CardHead
           title="All Homeowners"
@@ -8229,6 +8132,7 @@ export default function DashboardPage() {
                 </Td>
               </tr>
             ))}
+            {renderTablePaddingRows(7, pagedHomeowners.length)}
           </tbody>
         </Table>
         <TablePagination
@@ -8259,7 +8163,7 @@ export default function DashboardPage() {
     ];
 
     return (
-      <div style={{ animation: "fadeUp .35s ease both" }}>
+      <div>
         <Card>
           <CardHead
             title="User Reports"
@@ -8480,7 +8384,33 @@ export default function DashboardPage() {
                               value: report.status,
                               highlight: report.status === "Resolved",
                             },
+                            ...(report.resolutionNote
+                              ? [
+                                  {
+                                    label: "Resolution Reason",
+                                    value: report.resolutionNote,
+                                  },
+                                ]
+                              : []),
                           ],
+                          actions:
+                            report.status === "Resolved" ? undefined : (
+                              <>
+                                <Btn
+                                  variant="reject"
+                                  onClick={() => openReportAction(report, "cancel")}
+                                >
+                                  {icons.x} Cancel Report
+                                </Btn>
+                                <Btn
+                                  variant="reject"
+                                  onClick={() => openReportAction(report, "revoke")}
+                                >
+                                  {icons.x} Revoke User
+                                </Btn>
+                              </>
+                            ),
+                          closeLabel: "Close",
                         })
                       }
                     >
@@ -8498,6 +8428,10 @@ export default function DashboardPage() {
                     No reports match the current filters.
                   </Td>
                 </tr>
+              )}
+              {renderTablePaddingRows(
+                7,
+                filteredReports.length > 0 ? pagedReports.length : 0,
               )}
             </tbody>
           </Table>
@@ -8519,9 +8453,7 @@ export default function DashboardPage() {
     const adminRole = humanizeRole(adminProfile?.role);
 
     return (
-      <div
-        style={{ display: "grid", gap: 20, animation: "fadeUp .35s ease both" }}
-      >
+      <div style={{ display: "grid", gap: 20 }}>
         <Card>
           <CardHead
             title="Account Details"
@@ -9139,7 +9071,10 @@ export default function DashboardPage() {
         </div>
 
         {/* Page content */}
-        <div style={{ padding: "28px 32px", flex: 1 }}>
+        <div
+          key={activePage}
+          style={{ padding: "28px 32px", flex: 1, animation: "fadeUp .35s ease both" }}
+        >
           {activePage === "dashboard" && PageDashboard()}
           {activePage === "verification" && PageVerification()}
           {activePage === "tradesmen" && PageTradesmen()}
@@ -9161,6 +9096,10 @@ export default function DashboardPage() {
         hero={modal.hero}
         rows={modal.rows}
         actions={modal.actions}
+        headerAction={modal.headerAction}
+        footerAction={modal.footerAction}
+        hideCloseButton={modal.hideCloseButton}
+        closeLabel={modal.closeLabel}
       />
       <ProfileEditorModal
         open={profileEditor.open}
@@ -9189,6 +9128,46 @@ export default function DashboardPage() {
         confirmLabel={confirm.confirmLabel}
         onConfirm={handleConfirm}
         onClose={closeConfirm}
+      />
+      <ReportActionModal
+        open={reportAction.open}
+        mode={reportAction.mode}
+        reportLabel={
+          reportAction.report
+            ? `${reportAction.report.targetName} · ${formatReportId(reportAction.report.id)}`
+            : ""
+        }
+        reason={reportAction.reason}
+        suspensionDays={reportAction.suspensionDays}
+        submitting={reportAction.submitting}
+        onReasonChange={(value) =>
+          setReportAction((prev) => ({ ...prev, reason: value }))
+        }
+        onSuspensionDaysChange={(value) =>
+          setReportAction((prev) => ({ ...prev, suspensionDays: value }))
+        }
+        onSubmit={submitReportAction}
+        onClose={closeReportAction}
+      />
+      <ReportActionModal
+        open={userRevoke.open}
+        mode="revoke"
+        reportLabel={
+          userRevoke.userName
+            ? `${userRevoke.userName} · ${humanizeRole(userRevoke.role)}`
+            : ""
+        }
+        reason={userRevoke.reason}
+        suspensionDays={userRevoke.suspensionDays}
+        submitting={userRevoke.submitting}
+        onReasonChange={(value) =>
+          setUserRevoke((prev) => ({ ...prev, reason: value }))
+        }
+        onSuspensionDaysChange={(value) =>
+          setUserRevoke((prev) => ({ ...prev, suspensionDays: value }))
+        }
+        onSubmit={submitUserRevoke}
+        onClose={closeUserRevoke}
       />
       <ImageModal
         open={idModal.open}

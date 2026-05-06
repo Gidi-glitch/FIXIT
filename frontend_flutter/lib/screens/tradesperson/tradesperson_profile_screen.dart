@@ -38,6 +38,7 @@ class _TradespersonProfileScreenState extends State<TradespersonProfileScreen>
   static const Color _textMuted = Color(0xFF6B7280);
   static const Color _cardWhite = Color(0xFFFFFFFF);
   static const Color _successGreen = Color(0xFF10B981);
+  static const Color _warningYellow = Color(0xFFF59E0B);
   static const Color _dangerRed = Color(0xFFEF4444);
 
   final ImagePicker _imagePicker = ImagePicker();
@@ -1014,7 +1015,7 @@ class _TradespersonProfileScreenState extends State<TradespersonProfileScreen>
               icon: Icons.star_outline_rounded,
               value: ratingValue,
               label: 'Avg. Rating',
-              color: _accentOrange,
+              color: _warningYellow,
             ),
           ),
         ],

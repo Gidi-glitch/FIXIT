@@ -78,6 +78,7 @@ class _TradespersonRegistrationScreenState
     'HVAC',
     'Carpentry',
     'Appliance Repair',
+    'Aluminium Installer',
   ];
 
   // ── Valid ID Types ─────────────────────────────

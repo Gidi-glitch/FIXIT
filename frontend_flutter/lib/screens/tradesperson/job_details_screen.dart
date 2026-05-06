@@ -584,7 +584,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                     // ── Action buttons ─────────────────────────────
                     if (isAccepted) _buildStartJobButton(job),
                     if (isInProgress) _buildCompleteButton(job),
-                    if (isCancelled) _buildCancelledNote(),
+                    if (isCancelled) _buildCancelledNote(job),
                   ],
                 ),
               ),
@@ -1081,7 +1081,9 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                         ),
                       ),
                       Text(
-                        'This job was cancelled.',
+                        job['cancelledAt'] != null
+                            ? 'Cancelled on ${job['cancelledAt']}'
+                            : 'This job was cancelled.',
                         style: TextStyle(
                           fontSize: 12,
                           color: _textMuted.withValues(alpha: 0.7),
@@ -1222,7 +1224,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
         children: [
           _cardSectionHeader(
             Icons.star_rounded,
-            _accentOrange,
+            _warningYellow,
             'Homeowner Rating',
           ),
           const SizedBox(height: 14),
@@ -1232,7 +1234,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                 return Icon(
                   i < stars ? Icons.star_rounded : Icons.star_outline_rounded,
                   size: 28,
-                  color: i < stars ? _accentOrange : Colors.grey.shade300,
+                  color: i < stars ? _warningYellow : Colors.grey.shade300,
                 );
               }),
               const SizedBox(width: 12),
@@ -1241,7 +1243,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                 style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
-                  color: _accentOrange,
+                  color: _warningYellow,
                 ),
               ),
               const SizedBox(width: 6),
@@ -1362,7 +1364,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     );
   }
 
-  Widget _buildCancelledNote() {
+  Widget _buildCancelledNote(Map<String, dynamic> job) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1376,7 +1378,9 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'This job was cancelled and is no longer active.',
+              job['cancelledAt'] != null
+                  ? 'This job was cancelled on ${job['cancelledAt']} and is no longer active.'
+                  : 'This job was cancelled and is no longer active.',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
