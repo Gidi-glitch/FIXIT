@@ -47,6 +47,9 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
   int _messageUnreadCount = 0;
   double _averageRating = 0;
   int _reviewCount = 0;
+  double _responseRate = 0;
+  double _completionRate = 0;
+  double _onTimeArrivalRate = 0;
   String _verificationStatus = 'pending';
   int _notificationUnreadCount = 0;
   bool _isRefreshingNotificationCount = false;
@@ -357,10 +360,20 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
       final summary =
           (result['summary'] as Map?)?.cast<String, dynamic>() ??
           const <String, dynamic>{};
+      final performance =
+          (summary['performance'] as Map?)?.cast<String, dynamic>() ??
+          const <String, dynamic>{};
       final reviews = (result['reviews'] as List?) ?? const [];
 
       var rating = _asDouble(summary['average_rating']);
       var reviewCount = _asInt(summary['review_count']);
+      final responseRate = _clampUnit(_asDouble(performance['response_rate']));
+      final completionRate = _clampUnit(
+        _asDouble(performance['completion_rate']),
+      );
+      final onTimeArrivalRate = _clampUnit(
+        _asDouble(performance['on_time_arrival']),
+      );
 
       if (reviewCount <= 0 && reviews.isNotEmpty) {
         var sum = 0.0;
@@ -379,6 +392,9 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
       setState(() {
         _averageRating = rating.clamp(0.0, 5.0);
         _reviewCount = reviewCount;
+        _responseRate = responseRate;
+        _completionRate = completionRate;
+        _onTimeArrivalRate = onTimeArrivalRate;
       });
     } catch (_) {
       // Keep default values when metrics endpoint is unavailable.
@@ -404,6 +420,16 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
     if (value is double) return value;
     if (value is int) return value.toDouble();
     return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  double _clampUnit(double value) {
+    if (value < 0) return 0;
+    if (value > 1) return 1;
+    return value;
+  }
+
+  String _formatPercent(double value) {
+    return '${(_clampUnit(value) * 100).round()}%';
   }
 
   String _normalizeVerificationStatus(dynamic value) {
@@ -1834,12 +1860,17 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
               children: [
                 _buildPerformanceRow(
                   'Response Rate',
-                  '98%',
-                  0.98,
+                  _formatPercent(_responseRate),
+                  _responseRate,
                   _successGreen,
                 ),
                 const SizedBox(height: 16),
-                _buildPerformanceRow('Completion Rate', '95%', 0.95, _infoBlue),
+                _buildPerformanceRow(
+                  'Completion Rate',
+                  _formatPercent(_completionRate),
+                  _completionRate,
+                  _infoBlue,
+                ),
                 const SizedBox(height: 16),
                 _buildPerformanceRow(
                   'Customer Satisfaction',
@@ -1850,8 +1881,8 @@ class _TradesmanDashboardState extends State<TradesmanDashboard>
                 const SizedBox(height: 16),
                 _buildPerformanceRow(
                   'On-Time Arrival',
-                  '92%',
-                  0.92,
+                  _formatPercent(_onTimeArrivalRate),
+                  _onTimeArrivalRate,
                   _accentOrange,
                 ),
               ],

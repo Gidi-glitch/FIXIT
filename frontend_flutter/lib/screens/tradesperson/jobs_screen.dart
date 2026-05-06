@@ -1154,7 +1154,7 @@ class _JobsScreenState extends State<JobsScreen>
                         const Icon(
                           Icons.star_rounded,
                           size: 14,
-                          color: _accentOrange,
+                          color: _warningYellow,
                         ),
                         const SizedBox(width: 3),
                         Text(
@@ -1162,7 +1162,7 @@ class _JobsScreenState extends State<JobsScreen>
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: _accentOrange,
+                            color: _warningYellow,
                           ),
                         ),
                       ],

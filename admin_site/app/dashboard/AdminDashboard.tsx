@@ -1323,6 +1323,9 @@ const Modal = ({
   hero,
   rows,
   actions,
+  headerAction,
+  footerAction,
+  hideCloseButton = false,
   closeLabel = "Close",
 }: {
   open: boolean;
@@ -1331,6 +1334,9 @@ const Modal = ({
   hero?: ReactNode;
   rows: { label: string; value: string; highlight?: boolean }[];
   actions?: ReactNode;
+  headerAction?: ReactNode;
+  footerAction?: ReactNode;
+  hideCloseButton?: boolean;
   closeLabel?: string;
 }) => {
   if (!open) return null;
@@ -1378,35 +1384,39 @@ const Modal = ({
           >
             {title}
           </h3>
-          <button
-            onClick={onClose}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: "var(--surface-2)",
-              border: "1.5px solid var(--border)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              color: "var(--muted)",
-            }}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+          {headerAction ?? (
+            !hideCloseButton && (
+              <button
+                onClick={onClose}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  background: "var(--surface-2)",
+                  border: "1.5px solid var(--border)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  color: "var(--muted)",
+                }}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            )
+          )}
         </div>
         {hero && <div style={{ marginBottom: 18 }}>{hero}</div>}
         {rows.map((r, i) => (
@@ -1448,31 +1458,33 @@ const Modal = ({
             {actions}
           </div>
         )}
-        <button
-          onClick={onClose}
-          style={{
-            width: "100%",
-            padding: 13,
-            marginTop: 20,
-            background: "var(--accent)",
-            border: "none",
-            borderRadius: 8,
-            fontFamily: "inherit",
-            fontSize: 14,
-            fontWeight: 800,
-            color: "var(--on-solid)",
-            cursor: "pointer",
-            transition: "background .2s",
-          }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.background = "var(--accent-hover)")
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.background = "var(--accent)")
-          }
-        >
-          {closeLabel}
-        </button>
+        {footerAction ?? (
+          <button
+            onClick={onClose}
+            style={{
+              width: "100%",
+              padding: 13,
+              marginTop: 20,
+              background: "var(--accent)",
+              border: "none",
+              borderRadius: 8,
+              fontFamily: "inherit",
+              fontSize: 14,
+              fontWeight: 800,
+              color: "var(--on-solid)",
+              cursor: "pointer",
+              transition: "background .2s",
+            }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.background = "var(--accent-hover)")
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.background = "var(--accent)")
+            }
+          >
+            {closeLabel}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -4613,6 +4625,9 @@ export default function DashboardPage() {
     hero?: ReactNode;
     rows: { label: string; value: string; highlight?: boolean }[];
     actions?: ReactNode;
+    headerAction?: ReactNode;
+    footerAction?: ReactNode;
+    hideCloseButton?: boolean;
     closeLabel?: string;
   }>({ open: false, title: "", rows: [], closeLabel: "Close" });
   const [idModal, setIdModal] = useState<{
@@ -4645,6 +4660,23 @@ export default function DashboardPage() {
     open: false,
     mode: "cancel",
     report: null,
+    reason: "",
+    suspensionDays: "",
+    submitting: false,
+  });
+  const [userRevoke, setUserRevoke] = useState<{
+    open: boolean;
+    role: "tradesperson" | "homeowner" | "";
+    userId: string;
+    userName: string;
+    reason: string;
+    suspensionDays: string;
+    submitting: boolean;
+  }>({
+    open: false,
+    role: "",
+    userId: "",
+    userName: "",
     reason: "",
     suspensionDays: "",
     submitting: false,
@@ -5687,6 +5719,29 @@ export default function DashboardPage() {
     );
   };
 
+  const openUserRevoke = (
+    role: "tradesperson" | "homeowner",
+    userId: string,
+    userName: string,
+  ) => {
+    closeInfoModal();
+    setUserRevoke({
+      open: true,
+      role,
+      userId,
+      userName,
+      reason: "",
+      suspensionDays: "",
+      submitting: false,
+    });
+  };
+
+  const closeUserRevoke = () => {
+    setUserRevoke((prev) =>
+      prev.submitting ? prev : { ...prev, open: false, role: "", userId: "" },
+    );
+  };
+
   const submitReportAction = async () => {
     if (!authToken) {
       showToast("Please sign in again.", "error");
@@ -5802,61 +5857,152 @@ export default function DashboardPage() {
   }, [authToken, apiBase, router]);
 
   // Approve / Reject
-  const revokeTradesman = async (id: string, name: string) => {
+  const revokeTradesman = async (
+    id: string,
+    name: string,
+    reason: string,
+    suspensionDays: number,
+  ) => {
     if (!authToken) {
       showToast("Please sign in again.", "error");
-      return;
+      return false;
     }
     try {
       const res = await fetch(
         `${apiBase}/api/admin/tradespeople/${id}/revoke`,
         {
           method: "PATCH",
-          headers: { Authorization: `Bearer ${authToken}` },
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            reason,
+            suspension_days: suspensionDays,
+          }),
         },
       );
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) {
           logoutAndRedirect();
-          return;
+          return false;
         }
-        showToast("Failed to re-verify tradesman.", "error");
-        return;
+        const data = await res.json().catch(() => ({}));
+        showToast(data.message || "Failed to suspend tradesman.", "error");
+        return false;
       }
       setTradesmen((prev) =>
         prev.map((t) => (t.id === id ? { ...t, status: "Suspended" } : t)),
       );
       loadUsers();
       showToast(`${name} suspended`, "error");
+      return true;
     } catch {
-      showToast("Failed to re-verify tradesman.", "error");
+      showToast("Failed to suspend tradesman.", "error");
+      return false;
     }
   };
-  const revokeHomeowner = async (id: string, name: string) => {
+  const revokeHomeowner = async (
+    id: string,
+    name: string,
+    reason: string,
+    suspensionDays: number,
+  ) => {
     if (!authToken) {
       showToast("Please sign in again.", "error");
-      return;
+      return false;
     }
     try {
-      const res = await fetch(`${apiBase}/api/admin/homeowners/${id}/revoke`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
+      const res = await fetch(
+        `${apiBase}/api/admin/homeowners/${id}/revoke`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            reason,
+            suspension_days: suspensionDays,
+          }),
+        },
+      );
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) {
           logoutAndRedirect();
-          return;
+          return false;
         }
-        showToast("Failed to revoke homeowner.", "error");
-        return;
+        const data = await res.json().catch(() => ({}));
+        showToast(data.message || "Failed to suspend homeowner.", "error");
+        return false;
       }
       setHomeowners((prev) =>
         prev.map((h) => (h.id === id ? { ...h, status: "Inactive" } : h)),
       );
       loadUsers();
-      showToast(`${name} revoked`, "error");
+      showToast(`${name} suspended`, "error");
+      return true;
     } catch {
-      showToast("Failed to revoke homeowner.", "error");
+      showToast("Failed to suspend homeowner.", "error");
+      return false;
+    }
+  };
+
+  const submitUserRevoke = async () => {
+    if (!authToken) {
+      showToast("Please sign in again.", "error");
+      return;
+    }
+    if (!userRevoke.role || !userRevoke.userId) {
+      showToast("Missing user context.", "error");
+      return;
+    }
+
+    const reason = userRevoke.reason.trim();
+    if (!reason) {
+      showToast("Reason is required.", "error");
+      return;
+    }
+
+    const suspensionDays = Number.parseInt(userRevoke.suspensionDays, 10);
+    if (!Number.isFinite(suspensionDays) || suspensionDays <= 0) {
+      showToast("Suspension days must be greater than zero.", "error");
+      return;
+    }
+
+    setUserRevoke((prev) => ({ ...prev, submitting: true }));
+    try {
+      let success = false;
+      if (userRevoke.role === "tradesperson") {
+        success = await revokeTradesman(
+          userRevoke.userId,
+          userRevoke.userName,
+          reason,
+          suspensionDays,
+        );
+      } else {
+        success = await revokeHomeowner(
+          userRevoke.userId,
+          userRevoke.userName,
+          reason,
+          suspensionDays,
+        );
+      }
+      if (success) {
+        setUserRevoke({
+          open: false,
+          role: "",
+          userId: "",
+          userName: "",
+          reason: "",
+          suspensionDays: "",
+          submitting: false,
+        });
+      }
+    } finally {
+      setUserRevoke((prev) =>
+        prev.open ? { ...prev, submitting: false } : prev,
+      );
     }
   };
 
@@ -6070,8 +6216,8 @@ export default function DashboardPage() {
     const canRevoke = isApprovedVerification || canRevokeAccount;
 
     const handleRevoke = () => {
-      closeInfoModal();
       if (isApprovedVerification && matchedVerification) {
+        closeInfoModal();
         openConfirm({
           title: `Revoke ${h.name}?`,
           message:
@@ -6081,17 +6227,48 @@ export default function DashboardPage() {
         });
         return;
       }
-      openConfirm({
-        title: `Revoke ${h.name}?`,
-        message: "This will suspend the homeowner account and block app login.",
-        confirmLabel: "Revoke",
-        onConfirm: () => revokeHomeowner(h.id, h.name),
-      });
+      openUserRevoke("homeowner", h.id, h.name);
     };
 
     setModal({
       open: true,
       title: "Homeowner Details",
+      footerAction: canRevoke ? (
+        <button
+          onClick={handleRevoke}
+          style={{
+            width: "100%",
+            padding: 13,
+            marginTop: 20,
+            background: "var(--danger-solid)",
+            border: "none",
+            borderRadius: 8,
+            fontFamily: "inherit",
+            fontSize: 14,
+            fontWeight: 800,
+            color: "var(--on-solid)",
+            cursor: "pointer",
+            transition: "background .2s",
+          }}
+          onMouseEnter={(e) =>
+            (e.currentTarget.style.background = "var(--danger-text)")
+          }
+          onMouseLeave={(e) =>
+            (e.currentTarget.style.background = "var(--danger-solid)")
+          }
+        >
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+            }}
+          >
+            {icons.x} Revoke
+          </span>
+        </button>
+      ) : undefined,
       hero: (
         <div
           style={{
@@ -6142,11 +6319,6 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
-          {canRevoke && (
-            <Btn variant="reject" onClick={handleRevoke}>
-              {icons.x} Revoke
-            </Btn>
-          )}
         </div>
       ),
       rows: [
@@ -6260,8 +6432,8 @@ export default function DashboardPage() {
     const canRevoke = isApprovedVerification || canRevokeAccount;
 
     const handleRevoke = () => {
-      closeInfoModal();
       if (isApprovedVerification && matchedVerification) {
+        closeInfoModal();
         openConfirm({
           title: `Revoke ${t.name}?`,
           message:
@@ -6271,23 +6443,53 @@ export default function DashboardPage() {
         });
         return;
       }
-      openConfirm({
-        title: `Revoke ${t.name}?`,
-        message: "This will suspend the tradesman account and block app login.",
-        confirmLabel: "Revoke",
-        onConfirm: () => revokeTradesman(t.id, t.name),
-      });
+      openUserRevoke("tradesperson", t.id, t.name);
     };
 
     setModal({
       open: true,
       title: "Tradesman Details",
+      footerAction: canRevoke ? (
+        <button
+          onClick={handleRevoke}
+          style={{
+            width: "100%",
+            padding: 13,
+            marginTop: 20,
+            background: "var(--danger-solid)",
+            border: "none",
+            borderRadius: 8,
+            fontFamily: "inherit",
+            fontSize: 14,
+            fontWeight: 800,
+            color: "var(--on-solid)",
+            cursor: "pointer",
+            transition: "background .2s",
+          }}
+          onMouseEnter={(e) =>
+            (e.currentTarget.style.background = "var(--danger-text)")
+          }
+          onMouseLeave={(e) =>
+            (e.currentTarget.style.background = "var(--danger-solid)")
+          }
+        >
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+            }}
+          >
+            {icons.x} Revoke
+          </span>
+        </button>
+      ) : undefined,
       hero: (
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
             gap: 14,
             padding: "2px 0 6px",
           }}
@@ -6319,7 +6521,14 @@ export default function DashboardPage() {
               >
                 {t.email}
               </div>
-              <div style={{ marginTop: 10 }}>
+              <div
+                style={{
+                  marginTop: 10,
+                  display: "flex",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
                 <Btn
                   variant="view"
                   onClick={() =>
@@ -6332,14 +6541,18 @@ export default function DashboardPage() {
                 >
                   {icons.license} View ID
                 </Btn>
+                <Btn
+                  variant="view"
+                  onClick={() =>
+                    openDocumentModal(`${t.name} · License/Cert`, t.credentialUrl)
+                  }
+                  disabled={!t.credentialUrl}
+                >
+                  {icons.license} View License/Cert
+                </Btn>
               </div>
             </div>
           </div>
-          {canRevoke && (
-            <Btn variant="reject" onClick={handleRevoke}>
-              {icons.x} Revoke
-            </Btn>
-          )}
         </div>
       ),
       rows: [
@@ -6361,15 +6574,6 @@ export default function DashboardPage() {
       ],
       actions: (
         <>
-          <Btn
-            variant="view"
-            onClick={() =>
-              openDocumentModal(`${t.name} · License/Cert`, t.credentialUrl)
-            }
-            disabled={!t.credentialUrl}
-          >
-            {icons.license} View License/Cert
-          </Btn>
           {isPendingVerification && matchedVerification && (
             <>
               <Btn
@@ -8892,6 +9096,9 @@ export default function DashboardPage() {
         hero={modal.hero}
         rows={modal.rows}
         actions={modal.actions}
+        headerAction={modal.headerAction}
+        footerAction={modal.footerAction}
+        hideCloseButton={modal.hideCloseButton}
         closeLabel={modal.closeLabel}
       />
       <ProfileEditorModal
@@ -8941,6 +9148,26 @@ export default function DashboardPage() {
         }
         onSubmit={submitReportAction}
         onClose={closeReportAction}
+      />
+      <ReportActionModal
+        open={userRevoke.open}
+        mode="revoke"
+        reportLabel={
+          userRevoke.userName
+            ? `${userRevoke.userName} · ${humanizeRole(userRevoke.role)}`
+            : ""
+        }
+        reason={userRevoke.reason}
+        suspensionDays={userRevoke.suspensionDays}
+        submitting={userRevoke.submitting}
+        onReasonChange={(value) =>
+          setUserRevoke((prev) => ({ ...prev, reason: value }))
+        }
+        onSuspensionDaysChange={(value) =>
+          setUserRevoke((prev) => ({ ...prev, suspensionDays: value }))
+        }
+        onSubmit={submitUserRevoke}
+        onClose={closeUserRevoke}
       />
       <ImageModal
         open={idModal.open}

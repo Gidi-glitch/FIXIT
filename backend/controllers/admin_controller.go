@@ -37,6 +37,11 @@ type revokeAdminReportRequest struct {
 	SuspensionDays int    `json:"suspension_days"`
 }
 
+type revokeUserRequest struct {
+	Reason         string `json:"reason"`
+	SuspensionDays int    `json:"suspension_days"`
+}
+
 // ListDocuments handles GET /api/admin/documents
 // Optional query param: ?status=pending|approved|rejected|archived  (omit to return all)
 func ListDocuments(w http.ResponseWriter, r *http.Request) {
@@ -439,13 +444,24 @@ func AdminTradespersonByIDRouter(w http.ResponseWriter, r *http.Request) {
 
 	switch parts[4] {
 	case "revoke":
-		if err := setUserActiveState(uint(userID), false, "tradesperson"); err != nil {
+		var req revokeUserRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if err := setUserActiveState(
+			uint(userID),
+			false,
+			"tradesperson",
+			strings.TrimSpace(req.Reason),
+			req.SuspensionDays,
+		); err != nil {
 			handleUserStateError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"message": "tradesperson suspended"})
 	case "restore":
-		if err := setUserActiveState(uint(userID), true, "tradesperson"); err != nil {
+		if err := setUserActiveState(uint(userID), true, "tradesperson", "", 0); err != nil {
 			handleUserStateError(w, err)
 			return
 		}
@@ -475,13 +491,24 @@ func AdminHomeownerByIDRouter(w http.ResponseWriter, r *http.Request) {
 
 	switch parts[4] {
 	case "revoke":
-		if err := setUserActiveState(uint(userID), false, "homeowner"); err != nil {
+		var req revokeUserRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if err := setUserActiveState(
+			uint(userID),
+			false,
+			"homeowner",
+			strings.TrimSpace(req.Reason),
+			req.SuspensionDays,
+		); err != nil {
 			handleUserStateError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"message": "homeowner revoked"})
 	case "restore":
-		if err := setUserActiveState(uint(userID), true, "homeowner"); err != nil {
+		if err := setUserActiveState(uint(userID), true, "homeowner", "", 0); err != nil {
 			handleUserStateError(w, err)
 			return
 		}
@@ -1025,7 +1052,13 @@ func restoreVerification(verificationID uint) error {
 	return config.DB.Model(&doc).Update("status", "approved").Error
 }
 
-func setUserActiveState(userID uint, isActive bool, expectedRole string) error {
+func setUserActiveState(
+	userID uint,
+	isActive bool,
+	expectedRole string,
+	reason string,
+	suspensionDays int,
+) error {
 	var user models.User
 	if err := config.DB.First(&user, userID).Error; err != nil {
 		return err
@@ -1035,7 +1068,43 @@ func setUserActiveState(userID uint, isActive bool, expectedRole string) error {
 		return errConflict("user does not match the requested role")
 	}
 
-	return config.DB.Model(&user).Update("is_active", isActive).Error
+	if isActive {
+		return config.DB.Model(&user).Updates(map[string]any{
+			"is_active":         true,
+			"suspended_until":   nil,
+			"suspension_reason": "",
+		}).Error
+	}
+
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return errConflict("suspension reason is required")
+	}
+	if suspensionDays <= 0 {
+		return errConflict("suspension days must be greater than zero")
+	}
+	if suspensionDays > 3650 {
+		return errConflict("suspension days is too large")
+	}
+
+	suspendedUntil := time.Now().Add(time.Duration(suspensionDays) * 24 * time.Hour)
+	return config.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&user).Updates(map[string]any{
+			"is_active":         false,
+			"suspended_until":   &suspendedUntil,
+			"suspension_reason": reason,
+		}).Error; err != nil {
+			return err
+		}
+
+		notification := models.Notification{
+			UserID:  user.ID,
+			Title:   "Account suspended",
+			Message: "Your account has been suspended for " + strconv.Itoa(suspensionDays) + " day(s). Reason: " + reason,
+			Type:    "account_suspended",
+		}
+		return tx.Create(&notification).Error
+	})
 }
 
 func getLatestDocumentsByGroup(group string, userIDs []uint) map[uint]models.VerificationDocument {

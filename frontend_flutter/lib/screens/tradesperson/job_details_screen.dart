@@ -1224,7 +1224,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
         children: [
           _cardSectionHeader(
             Icons.star_rounded,
-            _accentOrange,
+            _warningYellow,
             'Homeowner Rating',
           ),
           const SizedBox(height: 14),
@@ -1234,7 +1234,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                 return Icon(
                   i < stars ? Icons.star_rounded : Icons.star_outline_rounded,
                   size: 28,
-                  color: i < stars ? _accentOrange : Colors.grey.shade300,
+                  color: i < stars ? _warningYellow : Colors.grey.shade300,
                 );
               }),
               const SizedBox(width: 12),
@@ -1243,7 +1243,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                 style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
-                  color: _accentOrange,
+                  color: _warningYellow,
                 ),
               ),
               const SizedBox(width: 6),

@@ -20,6 +20,9 @@ type Booking struct {
 	OfferedBudget      float64 `json:"offered_budget" gorm:"not null"`
 
 	Status             string     `json:"status" gorm:"not null;default:Pending"`
+	RespondedAt        *time.Time `json:"responded_at,omitempty" gorm:"index"`
+	AcceptedAt         *time.Time `json:"accepted_at,omitempty" gorm:"index"`
+	StartedAt          *time.Time `json:"started_at,omitempty" gorm:"index"`
 	CancelledAt        *time.Time `json:"cancelled_at"`
 	CompletedAt        *time.Time `json:"completed_at"`
 	CancellationReason string     `json:"cancellation_reason,omitempty" gorm:"default:''"`

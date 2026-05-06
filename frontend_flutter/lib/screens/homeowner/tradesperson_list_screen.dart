@@ -77,6 +77,11 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
       'icon': Icons.kitchen_rounded,
       'color': Color(0xFFEC4899),
     },
+    {
+      'name': 'Aluminium Installer',
+      'icon': Icons.window_rounded,
+      'color': Color(0xFF64748B),
+    },
   ];
 
   List<Map<String, dynamic>> _allPros = [];
@@ -97,6 +102,9 @@ class _TradespersonListScreenState extends State<TradespersonListScreen>
     }
     if (lower.contains('carpent')) return 'Carpentry';
     if (lower.contains('appliance')) return 'Appliance';
+    if (lower.contains('aluminium') || lower.contains('aluminum')) {
+      return 'Aluminium Installer';
+    }
 
     return raw;
   }

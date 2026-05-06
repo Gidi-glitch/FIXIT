@@ -520,7 +520,11 @@ func cancelBookingByID(w http.ResponseWriter, r *http.Request, bookingID uint) {
 	}
 
 	now := time.Now()
-	if err := config.DB.Model(&booking).Updates(map[string]any{"status": "Cancelled", "cancelled_at": &now}).Error; err != nil {
+	if err := config.DB.Model(&booking).Updates(map[string]any{
+		"status":              "Cancelled",
+		"cancelled_at":        &now,
+		"cancellation_reason": "cancelled_by_homeowner",
+	}).Error; err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to cancel booking")
 		return
 	}
@@ -1293,11 +1297,15 @@ func acceptTradespersonRequestByID(w http.ResponseWriter, r *http.Request, booki
 			return fmt.Errorf("time slot already taken")
 		}
 
-		if err := tx.Model(&booking).Update("status", "Accepted").Error; err != nil {
+		now := time.Now()
+		if err := tx.Model(&booking).Updates(map[string]any{
+			"status":       "Accepted",
+			"responded_at": &now,
+			"accepted_at":  &now,
+		}).Error; err != nil {
 			return err
 		}
 
-		now := time.Now()
 		if err := tx.Model(&models.Booking{}).
 			Where(
 				"tradesperson_id = ? AND preferred_date = ? AND preferred_time = ? AND id <> ? AND status = ?",
@@ -1358,7 +1366,12 @@ func declineTradespersonRequestByID(w http.ResponseWriter, r *http.Request, book
 	}
 
 	now := time.Now()
-	if err := config.DB.Model(&booking).Updates(map[string]any{"status": "Cancelled", "cancelled_at": &now}).Error; err != nil {
+	if err := config.DB.Model(&booking).Updates(map[string]any{
+		"status":              "Cancelled",
+		"responded_at":        &now,
+		"cancelled_at":        &now,
+		"cancellation_reason": "declined_by_tradesperson",
+	}).Error; err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to decline request")
 		return
 	}
@@ -1504,7 +1517,11 @@ func startTradespersonJobByID(w http.ResponseWriter, r *http.Request, bookingID 
 		return
 	}
 
-	if err := config.DB.Model(&booking).Update("status", "In Progress").Error; err != nil {
+	startedAt := time.Now()
+	if err := config.DB.Model(&booking).Updates(map[string]any{
+		"status":     "In Progress",
+		"started_at": &startedAt,
+	}).Error; err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to start job")
 		return
 	}

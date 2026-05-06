@@ -85,6 +85,16 @@ class _TradespersonTradeSkillsScreenState
       'Iron',
       'TV / Electronics',
     ],
+    'Aluminium Installer': [
+      'Sliding Window Installation',
+      'Sliding Door Installation',
+      'Screen Door Installation',
+      'Aluminium Cabinet Framing',
+      'Glass and Aluminium Partition',
+      'Storefront Framing',
+      'Window Repair',
+      'Door Alignment',
+    ],
   };
 
   static const List<String> _experienceLevels = [
